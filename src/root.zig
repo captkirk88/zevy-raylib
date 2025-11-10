@@ -5,9 +5,7 @@ const plugins = @import("plugins");
 const raylib_plugin = @import("app.plugin.zig");
 const assets_plugin = @import("assets.plugin.zig");
 
-/// Optional initialization function to set up the ECS manager with
-/// necessary plugins and configurations.
-pub fn init(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) !void {
+fn init(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) !void {
     _ = allocator;
     _ = ecs;
     try plugs.add(raylib_plugin.RaylibPlugin, raylib_plugin.RaylibPlugin{
@@ -18,6 +16,20 @@ pub fn init(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
     try plugs.add(assets_plugin.AssetsPlugin, assets_plugin.AssetsPlugin{});
 }
 
+test "zevy_raylib init" {
+    const allocator = std.testing.allocator;
+    var ecs = try zevy_ecs.Manager.init(allocator);
+    defer ecs.deinit();
+    var plugs = plugins.PluginManager.init(allocator);
+    defer plugs.deinit(&ecs);
+    try init(allocator, &plugs, &ecs);
+
+    try std.testing.expect(plugs.get(raylib_plugin.RaylibPlugin) != null);
+    try std.testing.expect(plugs.get(assets_plugin.AssetsPlugin) != null);
+
+    try plugs.build(&ecs);
+}
+
 test {
-    std.testing.refAllDecls(assets_plugin);
+    std.testing.refAllDecls(@This());
 }
