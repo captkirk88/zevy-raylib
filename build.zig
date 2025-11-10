@@ -11,6 +11,11 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const known_folders = b.dependency("known_folders", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const zevy_ecs_mod = b.dependency("zevy_ecs", .{
         .target = target,
         .optimize = optimize,
@@ -26,12 +31,21 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "known_folders", .module = known_folders.module("known-folders") },
             .{ .name = "zevy_ecs", .module = zevy_ecs_mod.module("zevy_ecs") },
             .{ .name = "raylib", .module = raylib.module("raylib") },
             .{ .name = "raygui", .module = raylib.module("raygui") },
             .{ .name = "plugins", .module = zevy_ecs_mod.module("plugins") },
         },
     });
+
+    const embed = @import("src/builtin/embed.zig");
+    _ = embed.addEmbeddedAssetsModule(b, target, optimize, mod, .{
+        .assets_dir = "embedded_assets/",
+        .import_name = "test_embedded_assets",
+    }) catch |err| {
+        std.debug.panic("Failed to add embedded assets module: {}\n", .{err});
+    };
 
     const mod_tests = b.addTest(.{
         .root_module = mod,

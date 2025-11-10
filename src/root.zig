@@ -2,8 +2,12 @@
 const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
+const io = @import("io/root.zig");
 const raylib_plugin = @import("app.plugin.zig");
 const assets_plugin = @import("assets.plugin.zig");
+
+/// Embed utility functions to include resources in the binary
+pub const embed = @import("builtin/embed.zig");
 
 fn init(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) !void {
     _ = allocator;
@@ -32,4 +36,6 @@ test "zevy_raylib init" {
 
 test {
     std.testing.refAllDecls(@This());
+    std.testing.refAllDeclsRecursive(@import("io/root.zig"));
+    std.testing.refAllDeclsRecursive(io);
 }
