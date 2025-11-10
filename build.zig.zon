@@ -1,0 +1,31 @@
+.{
+    .name = .zevy_raylib,
+
+    .version = "0.0.1",
+
+    .fingerprint = 0x73e22ea89041ce9, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.1",
+    // This field is optional.
+    // Each dependency must either provide a `url` and `hash`, or a `path`.
+    // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
+    // Once all dependencies are fetched, `zig build` no longer requires
+    // internet connectivity.
+    .dependencies = .{
+        .zevy_ecs = .{
+            .url = "H:\\Projects\\zig\\zevy-ecs",
+            .hash = "zevy_ecs-0.0.1-VoL9mRBdBQBVPubw9Hdt3rnO-k6igcQJed07YRkqFKXA",
+        },
+        .raylib_zig = .{
+            .url = "git+https://github.com/raylib-zig/raylib-zig#3cd4d3179d967fc8b931514603fdbc4a43a1d771",
+            .hash = "raylib_zig-5.6.0-dev-KE8REE1LBQCL7lia-DwUkusWI1G4kJmhtatLh2kNsuiE",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        // For example...
+        //"LICENSE",
+        //"README.md",
+    },
+}

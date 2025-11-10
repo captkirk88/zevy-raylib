@@ -1,0 +1,7 @@
+*.*workspace
+zig-out/
+.*/
+.github/
+.vscode/
+bin/
+build/
