@@ -3,6 +3,7 @@ const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const io = @import("io/root.zig");
+const input = @import("input/input.zig");
 const raylib_plugin = @import("app.plugin.zig");
 const assets_plugin = @import("assets.plugin.zig");
 
@@ -37,5 +38,7 @@ test "zevy_raylib init" {
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDeclsRecursive(@import("io/root.zig"));
+    std.testing.refAllDecls(@import("input/tests.zig"));
     std.testing.refAllDeclsRecursive(io);
+    std.testing.refAllDeclsRecursive(input);
 }

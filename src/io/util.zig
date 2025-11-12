@@ -305,16 +305,16 @@ pub fn writeTempFile(allocator: std.mem.Allocator, prefix: []const u8, extension
 }
 
 /// Write a temporary file with a specific filename (no random generation)
-pub fn writeTempFileNamed(allocator: std.mem.Allocator, filename: []const u8, data: []const u8) error{ OutOfMemory, IOError }![]const u8 {
+pub fn writeTempFileNamed(allocator: std.mem.Allocator, filename: []const u8, data: []const u8) anyerror![]const u8 {
     const tmp_dir_path = known_folders.getPath(allocator, .cache) catch return error.IOError;
     defer if (tmp_dir_path) |td| allocator.free(td);
 
-    var tmp_dir = std.fs.openDirAbsolute(tmp_dir_path.?, .{}) catch return error.IOError;
+    var tmp_dir = try std.fs.openDirAbsolute(tmp_dir_path.?, .{});
     defer tmp_dir.close();
-    var temp_file = tmp_dir.createFile(filename, .{ .read = true }) catch return error.IOError;
+    var temp_file = try tmp_dir.createFile(filename, .{ .read = true });
     defer temp_file.close();
 
-    _ = temp_file.write(data) catch return error.IOError;
+    _ = try temp_file.write(data);
 
     // Return the absolute path to the temp file
     const abs_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path.?, filename });

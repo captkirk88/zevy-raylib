@@ -16,6 +16,7 @@ pub const ResolveResult = union(enum) {
 pub const SchemeResolver = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
+    destroy_fn: ?*const fn (ptr: *anyopaque, allocator: std.mem.Allocator) void, // Optional function to destroy the pointer itself
 
     const VTable = struct {
         resolve: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator, path: []const u8) anyerror!ResolveResult,
@@ -30,12 +31,12 @@ pub const SchemeResolver = struct {
 
         const gen = struct {
             fn resolveImpl(ptr: *anyopaque, allocator: std.mem.Allocator, path: []const u8) anyerror!ResolveResult {
-                const self = @as(Ptr, @ptrCast(@alignCast(ptr)));
+                const self: Ptr = @ptrCast(@alignCast(ptr));
                 return @call(.always_inline, ptr_info.pointer.child.resolve, .{ self, allocator, path });
             }
 
             fn deinitImpl(ptr: *anyopaque, allocator: std.mem.Allocator) void {
-                const self = @as(Ptr, @ptrCast(@alignCast(ptr)));
+                const self: Ptr = @ptrCast(@alignCast(ptr));
                 if (@hasDecl(ptr_info.pointer.child, "deinit")) {
                     @call(.always_inline, ptr_info.pointer.child.deinit, .{ self, allocator });
                 }
@@ -50,16 +51,58 @@ pub const SchemeResolver = struct {
         return SchemeResolver{
             .ptr = @ptrCast(pointer),
             .vtable = &gen.vtable,
+            .destroy_fn = null, // Don't destroy borrowed pointers
         };
     }
 
-    pub fn resolve(self: SchemeResolver, allocator: std.mem.Allocator, path: []const u8) !ResolveResult {
+    /// Create a SchemeResolver that will destroy its pointer when deinited
+    pub fn initOwned(pointer: anytype) SchemeResolver {
+        const Ptr = @TypeOf(pointer);
+        const ptr_info = @typeInfo(Ptr);
+
+        if (ptr_info != .pointer) @compileError("Expected pointer type");
+
+        const gen = struct {
+            fn resolveImpl(ptr: *anyopaque, allocator: std.mem.Allocator, path: []const u8) anyerror!ResolveResult {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                return @call(.always_inline, ptr_info.pointer.child.resolve, .{ self, allocator, path });
+            }
+
+            fn deinitImpl(ptr: *anyopaque, allocator: std.mem.Allocator) void {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                if (@hasDecl(ptr_info.pointer.child, "deinit")) {
+                    @call(.always_inline, ptr_info.pointer.child.deinit, .{ self, allocator });
+                }
+            }
+
+            fn destroyImpl(ptr: *anyopaque, allocator: std.mem.Allocator) void {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                allocator.destroy(self);
+            }
+
+            const vtable = VTable{
+                .resolve = resolveImpl,
+                .deinit = if (@hasDecl(ptr_info.pointer.child, "deinit")) deinitImpl else null,
+            };
+        };
+
+        return SchemeResolver{
+            .ptr = @ptrCast(pointer),
+            .vtable = &gen.vtable,
+            .destroy_fn = &gen.destroyImpl,
+        };
+    }
+
+    pub fn resolve(self: SchemeResolver, allocator: std.mem.Allocator, path: []const u8) anyerror!ResolveResult {
         return self.vtable.resolve(self.ptr, allocator, path);
     }
 
     pub fn deinit(self: SchemeResolver, allocator: std.mem.Allocator) void {
         if (self.vtable.deinit) |deinit_fn| {
             deinit_fn(self.ptr, allocator);
+        }
+        if (self.destroy_fn) |destroy| {
+            destroy(self.ptr, allocator);
         }
     }
 };
@@ -109,7 +152,7 @@ pub const SchemeRegistry = struct {
     }
 
     /// Resolve a URI using registered schemes
-    pub fn resolve(self: *SchemeRegistry, uri: []const u8) !ResolveResult {
+    pub fn resolve(self: *SchemeRegistry, uri: []const u8) anyerror!ResolveResult {
         if (std.mem.indexOf(u8, uri, "://")) |separator_pos| {
             const scheme = uri[0..separator_pos];
             const path = uri[separator_pos + 3 ..];
@@ -146,17 +189,8 @@ pub const SchemeRegistry = struct {
 
 // ===== BUILT-IN RESOLVERS =====
 
-/// Embedded asset resolver - resolves embedded://path to embedded data
-// pub const EmbeddedResolver = struct {
-//     const embedded_assets = @import("embedded_assets");
-//     pub fn resolve(self: *EmbeddedResolver, allocator: std.mem.Allocator, path: []const u8) !ResolveResult {
-//         _ = self;
-//         const file = embedded_assets.get(path) orelse return error.AssetNotFound;
-//         const data = try allocator.dupe(u8, file);
-//         return ResolveResult{ .embedded_data = data };
-//     }
-// };
-
+/// Embedded asset resolver - NOTE: This is defined in assets.zig as it needs access to embedded_assets module
+/// Use the EmbeddedResolver from assets.zig instead
 /// File system resolver - resolves file://path to absolute file path
 pub const FileResolver = struct {
     pub fn resolve(self: *FileResolver, allocator: std.mem.Allocator, path: []const u8) !ResolveResult {
