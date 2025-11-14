@@ -11,13 +11,15 @@ pub const RaylibPlugin = struct {
     width: i32,
     height: i32,
 
-    pub fn build(self: *Self, e: *zevy_ecs.Manager) !void {
-        _ = e;
+    log_level: rl.TraceLogLevel = .warning,
+
+    pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
         const is_testing = @import("builtin").is_test;
         _ = is_testing;
         const log = std.log.scoped(.zevy_raylib);
-
-        rl.setTraceLogLevel(.warning);
+        const scheduler = try zevy_ecs.Scheduler.init(e.allocator);
+        _ = try e.addResource(zevy_ecs.Scheduler, scheduler);
+        rl.setTraceLogLevel(self.log_level);
         rl.initWindow(self.width, self.height, self.title);
         log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
         rl.initAudioDevice();

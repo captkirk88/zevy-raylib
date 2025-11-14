@@ -284,7 +284,7 @@ pub fn randomFileName(allocator: std.mem.Allocator, length: usize, extension: []
     return name;
 }
 
-pub fn writeTempFile(allocator: std.mem.Allocator, prefix: []const u8, extension: []const u8, data: []const u8) error{ OutOfMemory, IOError }![]const u8 {
+pub fn writeTempFile(allocator: std.mem.Allocator, prefix: []const u8, extension: []const u8, data: []const u8) anyerror![]const u8 {
     const tmp_dir_path = known_folders.getPath(allocator, .cache) catch return error.IOError;
     defer if (tmp_dir_path) |td| allocator.free(td);
 
@@ -292,14 +292,14 @@ pub fn writeTempFile(allocator: std.mem.Allocator, prefix: []const u8, extension
     defer allocator.free(temp_file_name);
 
     const temp_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path.?, prefix, temp_file_name });
-    defer allocator.free(temp_path);
+    errdefer allocator.free(temp_path);
 
-    var tmp_dir = std.fs.openDirAbsolute(tmp_dir_path.?, .{}) catch return error.IOError;
+    var tmp_dir = try std.fs.openDirAbsolute(tmp_dir_path.?, .{});
     defer tmp_dir.close();
-    var temp_file = tmp_dir.createFile(temp_path, .{ .read = true }) catch return error.IOError;
+    var temp_file = try tmp_dir.createFile(temp_path, .{ .read = true });
     defer temp_file.close();
 
-    _ = temp_file.write(data) catch return error.IOError;
+    _ = try temp_file.write(data);
 
     return temp_path;
 }
