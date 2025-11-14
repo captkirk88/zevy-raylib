@@ -25,13 +25,29 @@ pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
     try plugs.add(InputPlugin, InputPlugin{});
 }
 
-test "zevy_raylib init" {
+test "zevy_raylib" {
+    const TestPlugin = struct {
+        pub fn build(self: *@This(), e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
+            _ = self;
+            _ = e;
+            try std.testing.expect(plugin_manager.has(RaylibPlugin));
+            try std.testing.expect(plugin_manager.has(AssetsPlugin));
+
+            if (plugin_manager.get(RaylibPlugin)) |raylib_plug| {
+                try std.testing.expect(std.mem.eql(u8, raylib_plug.title, "Zevy Raylib App"));
+            } else {
+                try std.testing.expect(false);
+            }
+        }
+    };
+
     const allocator = std.testing.allocator;
     var ecs = try zevy_ecs.Manager.init(allocator);
     defer ecs.deinit();
     var plugs = plugins.PluginManager.init(allocator);
     defer plugs.deinit(&ecs);
     try plug(allocator, &plugs, &ecs);
+    try plugs.add(TestPlugin, TestPlugin{});
 
     try std.testing.expect(plugs.get(RaylibPlugin) != null);
     try std.testing.expect(plugs.get(AssetsPlugin) != null);
@@ -40,7 +56,6 @@ test "zevy_raylib init" {
 }
 
 test {
-    std.testing.refAllDecls(@This());
     std.testing.refAllDeclsRecursive(@import("io/root.zig"));
     std.testing.refAllDecls(@import("input/tests.zig"));
     std.testing.refAllDeclsRecursive(io);
