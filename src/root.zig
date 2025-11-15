@@ -4,16 +4,18 @@ const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const io = @import("io/root.zig");
 const input = @import("input/input.zig");
+const ui = @import("gui/ui.zig");
 
 /// Embed utility functions to include resources in the binary
 pub const embed = @import("builtin/embed.zig");
 
 pub const RaylibPlugin = @import("app.plugin.zig").RaylibPlugin;
+pub const RayGuiPlugin = @import("app.plugin.zig").RayGuiPlugin;
 pub const AssetsPlugin = @import("assets.plugin.zig").AssetsPlugin;
 pub const InputPlugin = @import("input.plugin.zig").InputPlugin;
 
 /// Registers all plugins defined in this package
-pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) !void {
+pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) anyerror!void {
     _ = allocator;
     _ = ecs;
     try plugs.add(RaylibPlugin, RaylibPlugin{
@@ -21,8 +23,9 @@ pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
         .width = 800,
         .height = 600,
     });
+    try plugs.add(RayGuiPlugin(zevy_ecs.DefaultParamRegistry), RayGuiPlugin(zevy_ecs.DefaultParamRegistry){});
     try plugs.add(AssetsPlugin, AssetsPlugin{});
-    try plugs.add(InputPlugin, InputPlugin{});
+    try plugs.add(InputPlugin, InputPlugin(zevy_ecs.DefaultParamRegistry){});
 }
 
 test "zevy_raylib" {
@@ -60,4 +63,5 @@ test {
     std.testing.refAllDecls(@import("input/tests.zig"));
     std.testing.refAllDeclsRecursive(io);
     std.testing.refAllDeclsRecursive(input);
+    std.testing.refAllDeclsRecursive(ui);
 }

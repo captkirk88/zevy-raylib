@@ -14,8 +14,6 @@ pub const RaylibPlugin = struct {
     log_level: rl.TraceLogLevel = .warning,
 
     pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
-        const is_testing = @import("builtin").is_test;
-        _ = is_testing;
         const log = std.log.scoped(.zevy_raylib);
         const scheduler = try zevy_ecs.Scheduler.init(e.allocator);
         _ = try e.addResource(zevy_ecs.Scheduler, scheduler);
@@ -28,11 +26,33 @@ pub const RaylibPlugin = struct {
     }
 
     pub fn deinit(self: *Self, ecs: *zevy_ecs.Manager) void {
-        const is_testing = @import("builtin").is_test;
+        const log = std.log.scoped(.zevy_raylib);
         _ = self;
         _ = ecs;
         rl.closeAudioDevice();
+        if (!rl.isAudioDeviceReady()) log.info("Audio device closed", .{}) else log.err("Audio device failed to close", .{});
         rl.closeWindow();
-        if (is_testing) std.debug.print("Deinitialized Raylib window and audio device\n", .{});
+        if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
     }
 };
+
+pub const GuiStage = struct {};
+
+pub fn RayGuiPlugin(comptime ParamRegistry: type) type {
+    return struct {
+        const raygui = @import("raygui");
+        const ui = @import("gui/ui.zig");
+        const Self = @This();
+
+        pub fn build(self: *Self, manager: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
+            _ = self;
+            _ = plugin_manager;
+            const scheduler = manager.getResource(zevy_ecs.Scheduler) orelse return error.MissingSchedulerResource;
+            try scheduler.addStage(zevy_ecs.Stage(GuiStage));
+            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.uiInputSystem, ParamRegistry);
+            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.flexLayoutSystem, ParamRegistry);
+            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.gridLayoutSystem, ParamRegistry);
+            scheduler.addSystem(manager, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiRenderSystem, ParamRegistry);
+        }
+    };
+}

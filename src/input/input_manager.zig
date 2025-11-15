@@ -93,25 +93,43 @@ const EventHandlerInfo = struct {
     user_data: ?*anyopaque,
 };
 
+/// Wrapper for raylib function callbacks; groups platform-specific
+/// function pointers so callers can set them in one place.
+pub const RaylibBindings = struct {
+    is_key_down: ?*const fn (key: rl.KeyboardKey) bool,
+    is_mouse_button_down: ?*const fn (button: rl.MouseButton) bool,
+    is_gamepad_available: ?*const fn (gamepad: i32) bool,
+    is_gamepad_button_down: ?*const fn (gamepad: i32, button: rl.GamepadButton) bool,
+    get_touch_point_count: ?*const fn () i32,
+    get_touch_position: ?*const fn (index: i32) rl.Vector2,
+    get_gesture_detected: ?*const fn () rl.Gesture,
+    is_gesture_detected: ?*const fn (gesture: rl.Gesture) bool,
+
+    pub fn default() RaylibBindings {
+        return RaylibBindings{
+            .is_key_down = rl.isKeyDown,
+            .is_mouse_button_down = rl.isMouseButtonDown,
+            .is_gamepad_available = rl.isGamepadAvailable,
+            .is_gamepad_button_down = rl.isGamepadButtonDown,
+            .get_touch_point_count = rl.getTouchPointCount,
+            .get_touch_position = rl.getTouchPosition,
+            .get_gesture_detected = rl.getGestureDetected,
+            .is_gesture_detected = rl.isGestureDetected,
+        };
+    }
+};
+
 /// Main input manager that processes input and triggers bindings
 pub const InputManager = struct {
+    raylib: RaylibBindings = undefined,
     bindings: InputBindings,
     current_state: InputState,
     previous_state: InputState,
     event_handlers: std.ArrayList(EventHandlerInfo),
     allocator: std.mem.Allocator,
 
-    // Raylib function pointers (to be set by the user)
-    is_key_down: ?*const fn (key: rl.KeyboardKey) bool = rl.isKeyDown,
-    is_mouse_button_down: ?*const fn (button: rl.MouseButton) bool = rl.isMouseButtonDown,
-    is_gamepad_available: ?*const fn (gamepad: i32) bool = rl.isGamepadAvailable,
-    is_gamepad_button_down: ?*const fn (gamepad: i32, button: rl.GamepadButton) bool = rl.isGamepadButtonDown,
-    get_touch_point_count: ?*const fn () i32 = rl.getTouchPointCount,
-    get_touch_position: ?*const fn (index: i32) rl.Vector2 = rl.getTouchPosition,
-    get_gesture_detected: ?*const fn () rl.Gesture = rl.getGestureDetected,
-    is_gesture_detected: ?*const fn (gesture: rl.Gesture) bool = rl.isGestureDetected,
-
     pub fn init(allocator: std.mem.Allocator) InputManager {
+        //const log = std.log.scoped(.zevy_raylib);
         return InputManager{
             .bindings = InputBindings.init(allocator),
             .current_state = InputState.init(allocator),
@@ -119,6 +137,7 @@ pub const InputManager = struct {
             .event_handlers = std.ArrayList(EventHandlerInfo).initCapacity(allocator, 10) catch |err| {
                 std.debug.panic("Initializing InputManager: {s}", .{@errorName(err)});
             },
+            .raylib = RaylibBindings.default(),
             .allocator = allocator,
         };
     }
@@ -130,32 +149,9 @@ pub const InputManager = struct {
         self.event_handlers.deinit(self.allocator);
     }
 
-    /// Set raylib function pointers for input checking
-    pub fn setRaylibFunctions(
-        self: *InputManager,
-        is_key_down: *const fn (key: rl.KeyboardKey) bool,
-        is_mouse_button_down: *const fn (button: rl.MouseButton) bool,
-        is_gamepad_available: *const fn (gamepad: i32) bool,
-        is_gamepad_button_down: *const fn (gamepad: i32, button: rl.GamepadButton) bool,
-    ) void {
-        self.is_key_down = is_key_down;
-        self.is_mouse_button_down = is_mouse_button_down;
-        self.is_gamepad_available = is_gamepad_available;
-        self.is_gamepad_button_down = is_gamepad_button_down;
-    }
-
-    /// Set raylib function pointers for touch and gesture input checking
-    pub fn setRaylibTouchGestureFunctions(
-        self: *InputManager,
-        get_touch_point_count: *const fn () i32,
-        get_touch_position: *const fn (index: i32) rl.Vector2,
-        get_gesture_detected: *const fn () rl.Gesture,
-        is_gesture_detected: *const fn (gesture: rl.Gesture) bool,
-    ) void {
-        self.get_touch_point_count = get_touch_point_count;
-        self.get_touch_position = get_touch_position;
-        self.get_gesture_detected = get_gesture_detected;
-        self.is_gesture_detected = is_gesture_detected;
+    /// Set all raylib bindings at once
+    pub fn setRaylibBindings(self: *InputManager, bindings: RaylibBindings) void {
+        self.raylib = bindings;
     }
 
     /// Add an input binding
@@ -190,7 +186,7 @@ pub const InputManager = struct {
         self.bindings.clear();
     }
 
-    /// Update input state and process bindings (call this every frame)
+    /// Update input state and process bindings
     pub fn update(self: *InputManager) !void {
         // Store previous state
         self.previous_state.clear();
@@ -207,7 +203,7 @@ pub const InputManager = struct {
     /// Update the current input state by checking raylib functions
     fn updateInputState(self: *InputManager) !void {
         // Check keyboard keys
-        if (self.is_key_down) |is_key_down_fn| {
+        if (self.raylib.is_key_down) |is_key_down_fn| {
             const keys_to_check = std.enums.values(input_types.KeyCode);
 
             for (keys_to_check) |key| {
@@ -218,7 +214,7 @@ pub const InputManager = struct {
         }
 
         // Check mouse buttons
-        if (self.is_mouse_button_down) |is_mouse_button_down_fn| {
+        if (self.raylib.is_mouse_button_down) |is_mouse_button_down_fn| {
             const buttons_to_check = std.enums.values(input_types.MouseButton);
 
             for (buttons_to_check) |button| {
@@ -229,14 +225,14 @@ pub const InputManager = struct {
         }
 
         // Check gamepad buttons (check up to 4 gamepads)
-        if (self.is_gamepad_available != null and self.is_gamepad_button_down != null) {
+        if (self.raylib.is_gamepad_available != null and self.raylib.is_gamepad_button_down != null) {
             if (self.is_gamepad_available) |gamepad_available_fn| {
                 for (0..4) |gamepad_id| {
                     if (gamepad_available_fn(@intCast(gamepad_id))) {
                         const buttons_to_check = std.enums.values(input_types.GamepadButton);
 
                         for (buttons_to_check) |button| {
-                            if (self.is_gamepad_button_down.?(@intCast(gamepad_id), @enumFromInt(@intFromEnum(button)))) {
+                            if (self.raylib.is_gamepad_button_down.?(@intCast(gamepad_id), @enumFromInt(@intFromEnum(button)))) {
                                 try self.current_state.add(InputKey{ .gamepad = .{
                                     .gamepad_id = @intCast(gamepad_id),
                                     .button = button,
@@ -249,13 +245,13 @@ pub const InputManager = struct {
         }
 
         // Check touch inputs
-        if (self.get_touch_point_count) |get_count_fn| {
+        if (self.raylib.get_touch_point_count) |get_count_fn| {
             const touch_count = get_count_fn();
 
             // Check each touch point (up to 10 supported by raylib)
             var i: c_int = 0;
             while (i < touch_count and i < 10) : (i += 1) {
-                if (self.get_touch_position) |get_pos_fn| {
+                if (self.raylib.get_touch_position) |get_pos_fn| {
                     const pos = get_pos_fn(i);
                     // Touch is considered active if we have a valid position
                     if (pos.x >= 0 and pos.y >= 0) {
@@ -269,7 +265,7 @@ pub const InputManager = struct {
         }
 
         // Check gesture inputs
-        if (self.get_gesture_detected) |get_gesture_fn| {
+        if (self.raylib.get_gesture_detected) |get_gesture_fn| {
             const detected_gesture = get_gesture_fn();
             var gesture_input: ?GestureInput = null;
 
