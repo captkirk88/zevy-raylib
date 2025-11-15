@@ -30,6 +30,10 @@ fn deinitTest(ecs: *zevy_ecs.Manager) void {
 
 fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void) anyerror!void {
     const scheduler = ecs.getResource(zevy_ecs.Scheduler) orelse return;
+
+    // Run startup stage once before the loop
+    try scheduler.runStage(ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup));
+
     const start = std.time.milliTimestamp();
     const max_duration_ms = 10 * std.time.ms_per_s; // Run for 10 seconds
     while (!rl.windowShouldClose()) {
@@ -50,8 +54,8 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
     }
 }
 
-test {
-    var ecs = try initTest("Render Button");
+test "Render Button default" {
+    var ecs = try initTest("Render Button default");
     defer {
         deinitTest(&ecs);
     }
@@ -70,7 +74,47 @@ test {
     }.run);
 }
 
-test {
+test "Render Button flat" {
+    var ecs = try initTest("Render Button flat");
+    defer {
+        deinitTest(&ecs);
+    }
+    _ = ecs.create(.{
+        comps.UIRect.init(350, 250, 100, 50),
+        comps.UIButton.init("Click Me").withStyle(.flat),
+        //comps.UIVisible.init(true),
+        //comps.UILayer.init(1),
+    });
+
+    try testLoop(&ecs, struct {
+        fn run(e: *zevy_ecs.Manager) void {
+            _ = e;
+            // Update logic can be added here if needed
+        }
+    }.run);
+}
+
+test "Render Button toggle" {
+    var ecs = try initTest("Render Button toggle");
+    defer {
+        deinitTest(&ecs);
+    }
+    _ = ecs.create(.{
+        comps.UIRect.init(350, 250, 100, 50),
+        comps.UIButton.init("Click Me").withStyle(.toggle),
+        //comps.UIVisible.init(true),
+        //comps.UILayer.init(1),
+    });
+
+    try testLoop(&ecs, struct {
+        fn run(e: *zevy_ecs.Manager) void {
+            _ = e;
+            // Update logic can be added here if needed
+        }
+    }.run);
+}
+
+test "Render Flex Layout" {
     var ecs = try initTest("Render Flex Layout");
     defer {
         deinitTest(&ecs);
@@ -84,20 +128,20 @@ test {
 
     _ = ecs.create(.{
         comps.UIRect.init(0, 0, 380, 50),
-        //comps.UIPanel.init("Panel 1"),
-        comps.UIText.init("Panel 1").withFontSize(16),
+        comps.UIPanel.init("Panel 1"),
+        //comps.UIText.init("Panel 1").withFontSize(16),
         zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
     });
     _ = ecs.create(.{
         comps.UIRect.init(0, 0, 380, 50),
-        //comps.UIPanel.init("Panel 2"),
-        comps.UIText.init("Panel 2"),
+        comps.UIPanel.init("Panel 2"),
+        //comps.UIText.init("Panel 2"),
         zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
     });
     _ = ecs.create(.{
         comps.UIRect.init(0, 0, 380, 50),
-        //comps.UIPanel.init("Panel 3"),
-        comps.UIText.init("Panel 3"),
+        comps.UIPanel.init("Panel 3"),
+        //comps.UIText.init("Panel 3"),
         zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
     });
 
@@ -109,7 +153,7 @@ test {
     }.run);
 }
 
-test {
+test "Render Grid Layout" {
     var ecs = try initTest("Render Grid Layout");
     defer {
         deinitTest(&ecs);
@@ -121,12 +165,14 @@ test {
         layouts.UIContainer.init("grid_container"),
     });
 
-    for (0..6) |_| {
-        _ = ecs.create(.{
+    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const titles = [_][:0]const u8{ "Grid Item 0", "Grid Item 1", "Grid Item 2", "Grid Item 3", "Grid Item 4", "Grid Item 5" };
+    for (titles) |title| {
+        const child = ecs.create(.{
             comps.UIRect.init(0, 0, 190, 190),
-            comps.UIPanel.init("Grid Item"),
-            zevy_ecs.Relation(zevy_ecs.relations.Child).init(grid_container, .{}),
+            comps.UIPanel.init(title),
         });
+        try rel.add(&ecs, child, grid_container, zevy_ecs.relations.Child);
     }
 
     try testLoop(&ecs, struct {
