@@ -12,11 +12,20 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
 
     var ecs = try zevy_ecs.Manager.init(allocator);
     var sch = try ecs.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(ecs.allocator));
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), ui.systems.uiInputSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.anchorLayoutSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.gridLayoutSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.dockLayoutSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiRenderSystem, zevy_ecs.DefaultParamRegistry);
 
     return ecs;
+}
+
+fn deinitTest(ecs: *zevy_ecs.Manager) void {
+    ecs.deinit();
+    rl.closeWindow();
 }
 
 fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void) anyerror!void {
@@ -44,8 +53,7 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
 test {
     var ecs = try initTest("Render Button");
     defer {
-        ecs.deinit();
-        rl.closeWindow();
+        deinitTest(&ecs);
     }
     _ = ecs.create(.{
         comps.UIRect.init(350, 250, 100, 50),
@@ -65,32 +73,61 @@ test {
 test {
     var ecs = try initTest("Render Flex Layout");
     defer {
-        ecs.deinit();
-        rl.closeWindow();
+        deinitTest(&ecs);
     }
 
-    const flex_entity = ecs.create(.{
+    const flex_container = ecs.create(.{
         comps.UIRect.init(200, 150, 400, 300),
         layouts.FlexLayout.column().withGap(10),
-        //comps.UIVisible.init(true),
-        //comps.UILayer.init(1),
+        layouts.UIContainer.init("flex_container"),
     });
 
     _ = ecs.create(.{
         comps.UIRect.init(0, 0, 380, 50),
-        comps.UIPanel.init("Panel 1"),
-        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_entity, .{}),
+        //comps.UIPanel.init("Panel 1"),
+        comps.UIText.init("Panel 1").withFontSize(16),
+        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
     });
     _ = ecs.create(.{
         comps.UIRect.init(0, 0, 380, 50),
-        comps.UIPanel.init("Panel 2"),
-        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_entity, .{}),
+        //comps.UIPanel.init("Panel 2"),
+        comps.UIText.init("Panel 2"),
+        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
     });
     _ = ecs.create(.{
         comps.UIRect.init(0, 0, 380, 50),
-        comps.UIPanel.init("Panel 3"),
-        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_entity, .{}),
+        //comps.UIPanel.init("Panel 3"),
+        comps.UIText.init("Panel 3"),
+        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
     });
+
+    try testLoop(&ecs, struct {
+        fn run(e: *zevy_ecs.Manager) void {
+            _ = e;
+            // Update logic can be added here if needed
+        }
+    }.run);
+}
+
+test {
+    var ecs = try initTest("Render Grid Layout");
+    defer {
+        deinitTest(&ecs);
+    }
+
+    const grid_container = ecs.create(.{
+        comps.UIRect.init(100, 100, 600, 400),
+        layouts.GridLayout.init(3, 2).withGap(10.0, 10.0),
+        layouts.UIContainer.init("grid_container"),
+    });
+
+    for (0..6) |_| {
+        _ = ecs.create(.{
+            comps.UIRect.init(0, 0, 190, 190),
+            comps.UIPanel.init("Grid Item"),
+            zevy_ecs.Relation(zevy_ecs.relations.Child).init(grid_container, .{}),
+        });
+    }
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.Manager) void {

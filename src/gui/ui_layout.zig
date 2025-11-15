@@ -106,6 +106,8 @@ pub const GridLayout = struct {
         return .{ .columns = columns, .rows = rows };
     }
 
+    /// Set the gap between columns and rows.
+    /// Gap is the spacing between grid cells.
     pub fn withGap(self: GridLayout, column_gap: f32, row_gap: f32) GridLayout {
         var result = self;
         result.column_gap = column_gap;
@@ -113,6 +115,8 @@ pub const GridLayout = struct {
         return result;
     }
 
+    /// Set padding around the grid container.
+    /// Padding is the space between the container edges and the grid cells.
     pub fn withPadding(self: GridLayout, padding: Padding) GridLayout {
         var result = self;
         result.padding = padding;

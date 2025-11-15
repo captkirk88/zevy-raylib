@@ -7,6 +7,15 @@ const components = @import("ui_components.zig");
 const layout = @import("ui_layout.zig");
 const renderer = @import("ui_renderer.zig");
 
+pub fn startupUiSystem(
+    manager: *zevy_ecs.Manager,
+) !void {
+    _ = manager;
+    rg.loadStyleDefault();
+    const default_font = try rl.getFontDefault();
+    rg.setFont(default_font);
+}
+
 const ChildInfo = struct {
     child: zevy_ecs.Entity,
     rect: *components.UIRect,
@@ -440,7 +449,7 @@ pub fn uiRenderSystem(
     // Render panels first (backgrounds)
     while (panel_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        renderer.renderPanel(q.rect.*, q.panel.*, vis);
+        renderer.renderPanel(q.rect, q.panel, vis);
     }
 
     // Render scroll panels
@@ -458,7 +467,7 @@ pub fn uiRenderSystem(
     // Render text labels
     while (text_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        renderer.renderText(q.rect.*, q.text.*, vis);
+        renderer.renderText(q.rect, q.text, vis);
     }
 
     // Render progress bars
@@ -625,9 +634,6 @@ pub fn flexLayoutSystem(
             is_row,
             is_reverse,
         );
-
-        // DEBUG: print computed sizes when running tests
-        defer std.debug.print("computed_sizes (grow): {any}\n", .{computed_sizes.items});
     }
 }
 

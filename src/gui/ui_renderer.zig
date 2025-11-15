@@ -44,7 +44,7 @@ pub const FlexItemAlign = layout.FlexItemAlign;
 pub const FlexWrap = layout.FlexWrap;
 
 /// Render a UI text component
-pub fn renderText(rect: UIRect, text: UIText, visible: ?UIVisible) void {
+pub fn renderText(rect: *const UIRect, text: *const UIText, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
@@ -179,7 +179,7 @@ pub fn renderTextBox(rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) voi
 }
 
 /// Render a UI panel component
-pub fn renderPanel(rect: UIRect, panel: UIPanel, visible: ?UIVisible) void {
+pub fn renderPanel(rect: *const UIRect, panel: *const UIPanel, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
@@ -190,12 +190,12 @@ pub fn renderPanel(rect: UIRect, panel: UIPanel, visible: ?UIVisible) void {
         if (panel.color) |color| {
             rl.drawRectangleRec(bounds, color);
         } else {
-            _ = rg.panel(bounds, panel.title);
+            _ = rg.panel(bounds, panel.title.ptr);
         }
     }
 
     if (panel.border) {
-        rl.drawRectangleLinesEx(bounds, 1, rl.Color.gray);
+        rl.drawRectangleLinesEx(bounds, 1, panel.color orelse rl.Color.gray);
     }
 }
 
@@ -224,7 +224,7 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
     const bounds = rect.toRectangle();
 
     if (!dropdown.enabled) {
-        rg.disable();
+        return;
     }
 
     // Join items with semicolons for raygui

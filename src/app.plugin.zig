@@ -49,6 +49,7 @@ pub fn RayGuiPlugin(comptime ParamRegistry: type) type {
             _ = plugin_manager;
             const scheduler = manager.getResource(zevy_ecs.Scheduler) orelse return error.MissingSchedulerResource;
             try scheduler.addStage(zevy_ecs.Stage(GuiStage));
+            scheduler.addSystem(manager, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, ParamRegistry);
             scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.uiInputSystem, ParamRegistry);
             scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.flexLayoutSystem, ParamRegistry);
             scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.gridLayoutSystem, ParamRegistry);
