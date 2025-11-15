@@ -39,6 +39,8 @@ pub const Assets = struct {
     allocator: std.mem.Allocator,
     managers: std.AutoHashMap(u64, ManagerEntry),
     scheme_registry: schemes.SchemeRegistry,
+    // Pending multi-file temporary files pending cleanup after manager processes the load
+    pending_temp_files: std.AutoHashMap(AssetHandle, std.ArrayList([]const u8)),
 
     pub fn init(allocator: std.mem.Allocator) Assets {
         const managers = std.AutoHashMap(u64, ManagerEntry).init(allocator);
@@ -48,6 +50,7 @@ pub const Assets = struct {
             .allocator = allocator,
             .managers = managers,
             .scheme_registry = scheme_registry,
+            .pending_temp_files = std.AutoHashMap(AssetHandle, std.ArrayList([]const u8)).init(allocator),
         };
 
         // Register default schemes
@@ -69,6 +72,16 @@ pub const Assets = struct {
         }
         self.managers.deinit();
         self.scheme_registry.deinit();
+        // Clean up any remaining pending temporary files
+        var pit = self.pending_temp_files.iterator();
+        while (pit.next()) |entry| {
+            for (entry.value_ptr.items) |temp_file| {
+                _ = io_utils.deleteFile(temp_file);
+                self.allocator.free(temp_file);
+            }
+            entry.value_ptr.deinit(self.allocator);
+        }
+        self.pending_temp_files.deinit();
     }
 
     pub fn addManager(self: *Assets, comptime AssetType: type, loader: anytype) !void {
@@ -394,11 +407,9 @@ pub const Assets = struct {
             // The temp file path is already owned and will be kept alive
             const handle = try entry.load_asset_fn(entry.ptr, temp_files.items[0], settings_ptr);
 
-            // Don't free temp_files yet - the manager needs them to remain valid
-            // They will be leaked for now, but the manager should load them immediately
-            // TODO: Implement proper temp file cleanup after async load completes
-            temp_files.deinit(self.allocator);
-
+            // Move temp files into pending map so they can be cleaned up after manager processes
+            try self.pending_temp_files.putNoClobber(handle, temp_files);
+            // Ownership transferred to the pending map - don't deinit local
             return handle;
         }
 
@@ -499,6 +510,35 @@ pub const Assets = struct {
         while (it.next()) |entry| {
             try entry.value_ptr.process_fn(entry.value_ptr.ptr);
         }
+
+        // After managers have processed queued loads, clean up any pending temp files
+        var pit = self.pending_temp_files.iterator();
+        while (pit.next()) |entry| {
+            const handle = entry.key_ptr.*;
+            // manager hash is not stored per-entry here, so try to find it by checking all managers
+            var mgr_it = self.managers.iterator();
+            var loaded = false;
+            while (mgr_it.next()) |mgr_entry| {
+                if (mgr_entry.value_ptr.get_fn(mgr_entry.value_ptr.ptr, handle) != null) {
+                    // The manager has loaded this handle; clean up temp files
+                    for (entry.value_ptr.items) |temp_file| {
+                        _ = io_utils.deleteFile(temp_file);
+                        self.allocator.free(temp_file);
+                    }
+                    entry.value_ptr.deinit(self.allocator);
+                    _ = self.pending_temp_files.remove(handle);
+                    loaded = true;
+                    break;
+                }
+            }
+            // If not yet loaded, leave pending until next process call
+            if (loaded) continue;
+        }
+    }
+
+    /// For testing: return number of pending multi-file temp entries
+    pub fn pendingMultiFileCount(self: *Assets) usize {
+        return self.pending_temp_files.count();
     }
 };
 
@@ -549,6 +589,35 @@ test "Assets load embedded asset" {
         return err;
     };
     try testing.expect(rl.isTextureValid(data));
+}
+
+test "Assets multi-file queued cleanup" {
+    const testing = std.testing;
+    var assets = Assets.init(std.testing.allocator);
+    defer assets.deinit();
+
+    // Ensure texture manager exists
+    rl.initWindow(320, 240, "test");
+    defer rl.closeWindow();
+
+    // Queue a multi-file load using embedded assets (two same files for simplicity)
+    const handle = try assets.loadAsset(rl.Texture, "embedded://alien.png;embedded://alien.png", null);
+
+    // Pending temp files should be tracked
+    try testing.expect(assets.pendingMultiFileCount() > 0);
+
+    // Run the processing loop until pending entries are cleaned up
+    var loops: usize = 0;
+    while (assets.pendingMultiFileCount() > 0 and loops < 10) : (loops += 1) {
+        try assets.process();
+    }
+
+    try testing.expect(assets.pendingMultiFileCount() == 0);
+
+    // Check asset is loaded
+    const tex_ptr = assets.get(rl.Texture, handle);
+    try testing.expect(tex_ptr != null);
+    if (tex_ptr) |tp| try testing.expect(rl.isTextureValid(tp));
 }
 
 test "Assets loadAssetNow with various error conditions" {

@@ -169,6 +169,45 @@ pub const AbsoluteLayout = struct {
     }
 };
 
+/// Anchor / absolute positioning for a child relative to its container.
+/// The child's `UIRect` width/height are taken as-is; only x/y are computed
+/// from the container rect and the chosen anchor, with optional offsets.
+pub const AnchorLayout = struct {
+    anchor: AbsoluteLayout.Anchor = .top_left,
+    offset_x: f32 = 0.0,
+    offset_y: f32 = 0.0,
+
+    pub fn init(anchor: AbsoluteLayout.Anchor) AnchorLayout {
+        return .{ .anchor = anchor };
+    }
+
+    pub fn withOffset(self: AnchorLayout, dx: f32, dy: f32) AnchorLayout {
+        var result = self;
+        result.offset_x = dx;
+        result.offset_y = dy;
+        return result;
+    }
+};
+
+/// Dock layout positions children along the edges of a container in order.
+/// Docked children consume space from the corresponding side; any child with
+/// `.fill` true will fill the remaining space.
+pub const DockLayout = struct {
+    pub const DockSide = enum {
+        left,
+        right,
+        top,
+        bottom,
+        fill,
+    };
+
+    side: DockSide = .fill,
+
+    pub fn init(side: DockSide) DockLayout {
+        return .{ .side = side };
+    }
+};
+
 /// Padding specification
 pub const Padding = struct {
     top: f32 = 0.0,
@@ -290,32 +329,58 @@ pub const FlexItem = struct {
     basis: ?f32 = null,
     align_self: FlexItemAlign = .auto,
     order: i32 = 0,
+    constraints: SizeConstraints = SizeConstraints.init(),
 
     pub fn init() FlexItem {
         return .{};
     }
 
+    /// Set the flex grow factor for this flex item.
+    /// This determines how much the item will grow relative to other flex items
+    /// when there is extra space in the container.
     pub fn withGrow(self: FlexItem, grow: f32) FlexItem {
         var result = self;
         result.grow = grow;
         return result;
     }
 
+    /// Set the flex shrink factor for this flex item.
+    /// This determines how much the item will shrink relative to other flex items
+    /// when there is not enough space in the container.
     pub fn withShrink(self: FlexItem, shrink: f32) FlexItem {
         var result = self;
         result.shrink = shrink;
         return result;
     }
 
+    /// Set the flex basis size for this flex item.
+    /// The flex basis is the initial main size of the flex item before any available space
+    /// is distributed according to the flex factors. If set to null (default), the item uses its content size.
     pub fn withBasis(self: FlexItem, basis: f32) FlexItem {
         var result = self;
         result.basis = basis;
         return result;
     }
 
+    /// Set the alignment for this flex item, overriding the container's align_items setting.
     pub fn withAlignSelf(self: FlexItem, alignment: FlexItemAlign) FlexItem {
         var result = self;
         result.align_self = alignment;
+        return result;
+    }
+
+    /// Set the order of this flex item.
+    /// Items with lower order values are laid out first.
+    pub fn withOrder(self: FlexItem, order: i32) FlexItem {
+        var result = self;
+        result.order = order;
+        return result;
+    }
+
+    /// Set size constraints for this flex item.
+    pub fn withConstraints(self: FlexItem, constraints: SizeConstraints) FlexItem {
+        var result = self;
+        result.constraints = constraints;
         return result;
     }
 };

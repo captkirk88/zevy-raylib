@@ -226,7 +226,7 @@ pub const InputManager = struct {
 
         // Check gamepad buttons (check up to 4 gamepads)
         if (self.raylib.is_gamepad_available != null and self.raylib.is_gamepad_button_down != null) {
-            if (self.is_gamepad_available) |gamepad_available_fn| {
+            if (self.raylib.is_gamepad_available) |gamepad_available_fn| {
                 for (0..4) |gamepad_id| {
                     if (gamepad_available_fn(@intCast(gamepad_id))) {
                         const buttons_to_check = std.enums.values(input_types.GamepadButton);

@@ -12,8 +12,8 @@
     // internet connectivity.
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "H:\\Projects\\zig\\zevy-ecs",
-            .hash = "zevy_ecs-0.0.1-VoL9mWhjBQA6Dz1yQ5dIco6now4ZdcQGxlhAl0oguHES",
+            .url = "H:\\\\projects\\\\zig\\\\zevy-ecs",
+            .hash = "zevy_ecs-0.0.1-VoL9mQCFBQCbk41UZPkZLnCSJQvE6fNG7vbPk8JIY21s",
         },
         .raylib_zig = .{
             .url = "git+https://github.com/raylib-zig/raylib-zig#3cd4d3179d967fc8b931514603fdbc4a43a1d771",

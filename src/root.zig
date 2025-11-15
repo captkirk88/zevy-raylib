@@ -25,7 +25,7 @@ pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
     });
     try plugs.add(RayGuiPlugin(zevy_ecs.DefaultParamRegistry), RayGuiPlugin(zevy_ecs.DefaultParamRegistry){});
     try plugs.add(AssetsPlugin, AssetsPlugin{});
-    try plugs.add(InputPlugin, InputPlugin(zevy_ecs.DefaultParamRegistry){});
+    try plugs.add(InputPlugin(zevy_ecs.DefaultParamRegistry), InputPlugin(zevy_ecs.DefaultParamRegistry){});
 }
 
 test "zevy_raylib" {
