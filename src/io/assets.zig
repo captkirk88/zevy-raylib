@@ -580,6 +580,10 @@ test "Assets load embedded asset" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
+    // Skip test if no embedded assets are available
+    const embedded_assets = @import("test_embedded_assets");
+    if (embedded_assets.list().len == 0) return error.SkipZigTest;
+
     var assets = Assets.init(allocator);
     defer assets.deinit();
     rl.initWindow(800, 700, "Test");
@@ -593,6 +597,11 @@ test "Assets load embedded asset" {
 
 test "Assets multi-file queued cleanup" {
     const testing = std.testing;
+
+    // Skip test if no embedded assets are available
+    const embedded_assets = @import("test_embedded_assets");
+    if (embedded_assets.list().len == 0) return error.SkipZigTest;
+
     var assets = Assets.init(std.testing.allocator);
     defer assets.deinit();
 
@@ -1142,6 +1151,10 @@ test "Assets scheme error handling" {
 test "Assets embedded scheme integration" {
     const testing = std.testing;
     const allocator = testing.allocator;
+
+    // Skip test if no embedded assets are available
+    const embedded_assets = @import("test_embedded_assets");
+    if (embedded_assets.list().len == 0) return error.SkipZigTest;
 
     var assets = Assets.init(allocator);
     defer assets.deinit();

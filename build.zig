@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
         .assets_dir = "embedded_assets/",
         .import_name = "test_embedded_assets",
     }) catch |err| {
-        std.debug.panic("Failed to add embedded assets module: {}\n", .{err});
+        std.debug.panic("Failed to add embedded assets module: {s}\n", .{@errorName(err)});
     };
 
     const mod_tests = b.addTest(.{
