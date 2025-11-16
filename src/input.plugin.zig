@@ -13,7 +13,7 @@ pub fn InputPlugin(comptime ParamRegistry: type) type {
             _ = self;
             _ = plugin_manager;
             _ = try e.addResource(input.InputManager, input.InputManager.init(e.allocator));
-            const scheduler = try e.getOrAddResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator));
+            const scheduler = e.getResource(zevy_ecs.Scheduler) orelse try e.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator));
             scheduler.addSystem(e, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), inputUpdateSystem, ParamRegistry);
         }
     };

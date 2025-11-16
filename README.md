@@ -13,6 +13,7 @@ Zevy Raylib is an integration layer that connects the Zevy ECS with the Raylib g
 ### Table of contents
 
 - [Introduction](#introduction)
+- [Quick Start](#quick-start)
 - [Input](#input)
   - [InputManager](#inputmanager)
   - [Bindings & Types](#bindings--types)
@@ -37,6 +38,25 @@ Zevy Raylib is an integration layer that connects the Zevy ECS with the Raylib g
 ## Introduction
 
 Zevy Raylib is a small library that wires the Raylib runtime into a Zevy ECS-based app. It handles window creation, input harvesting, asset management and sets up RayGui-based UI systems over the Zevy scheduler.
+
+---
+
+## Quick Start
+
+An example application demonstrating manual plugin integration is included. To build and run it:
+
+```bash
+zig build run
+```
+
+This launches a window showing bouncing colored circles, demonstrating:
+
+- Manual plugin registration (`RaylibPlugin`, `AssetsPlugin`, `InputPlugin`, `RayGuiPlugin`)
+- Custom ECS systems for movement and rendering
+- Entity creation with Position, Velocity, and Sprite components
+- Integration of the Zevy ECS scheduler with Raylib's game loop
+
+The example source is located in `example_main.zig` at the repository root.
 
 > [!WARNING]
 > This library and its APIs are experimental. They are intended as a convenient integration layer for example apps and prototypes.
@@ -131,7 +151,6 @@ Examples are available in `src/gui/examples.zig` and unit tests in `src/gui/ui_t
 The `embed` module exposes helpers to include binary assets in the compiled artifact. See `embed.zig` in `src/builtin`. Use `embedded://` URIs with the asset manager to reference compiled-in assets.
 
 - `src/builtin/embed.zig` — helper utilities
-- `embedded_assets/` — small sample files compiled into the binary, e.g., `embedded_assets/alien.png`
 
 ---
 

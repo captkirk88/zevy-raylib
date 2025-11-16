@@ -42,10 +42,56 @@ pub fn build(b: *std.Build) void {
     const embed = @import("src/builtin/embed.zig");
     _ = embed.addEmbeddedAssetsModule(b, target, optimize, mod, .{
         .assets_dir = "embedded_assets/",
-        .import_name = "test_embedded_assets",
+        .import_name = "embedded_assets",
     }) catch |err| {
         std.debug.panic("Failed to add embedded assets module: {s}\n", .{@errorName(err)});
     };
+
+    _ = embed.addEmbeddedAssetsModule(b, target, optimize, mod, .{
+        .assets_dir = "embedded_assets/",
+        .import_name = "test_embedded_assets",
+        .generated_file = "test_embedded_assets/generated.zig",
+    }) catch |err| {
+        std.debug.panic("Failed to add test embedded assets module: {s}\n", .{@errorName(err)});
+    };
+
+    // Example executable that showcases manual plugin integration
+    const example_mod = b.createModule(.{
+        .root_source_file = b.path("example_main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "zevy_ecs", .module = zevy_ecs_mod.module("zevy_ecs") },
+            .{ .name = "plugins", .module = zevy_ecs_mod.module("plugins") },
+            .{ .name = "raylib", .module = raylib.module("raylib") },
+            .{ .name = "raygui", .module = raylib.module("raygui") },
+            .{ .name = "zevy_raylib", .module = mod },
+        },
+    });
+
+    _ = embed.addEmbeddedAssetsModule(b, target, optimize, example_mod, .{
+        .assets_dir = "embedded_assets/",
+    }) catch |err| {
+        std.debug.panic("Failed to add embedded assets module to example: {s}\n", .{@errorName(err)});
+    };
+
+    const example_exe = b.addExecutable(.{
+        .name = "zevy_raylib_example",
+        .root_module = example_mod,
+    });
+
+    example_exe.linkLibrary(raylib.artifact("raylib"));
+    b.installArtifact(example_exe);
+
+    const run_example = b.addRunArtifact(example_exe);
+    run_example.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| {
+        run_example.addArgs(args);
+    }
+
+    const run_step = b.step("run", "Run the plugin integration example");
+    run_step.dependOn(&run_example.step);
 
     const mod_tests = b.addTest(.{
         .root_module = mod,
