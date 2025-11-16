@@ -1,0 +1,4 @@
+[submodule "deps/zevy-ecs"]
+	path = deps/zevy-ecs
+	url = https://github.com/captkirk88/zevy-ecs
+    branch = main
