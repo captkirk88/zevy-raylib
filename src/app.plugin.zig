@@ -1,8 +1,13 @@
 const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
-const rl = @import("raylib");
-const assets_plugin = @import("assets.plugin.zig");
 const plugins = @import("plugins");
+const rl = @import("raylib");
+const raygui = @import("raygui");
+
+const ui = @import("gui/ui.zig");
+const assets_plugin = @import("assets.plugin.zig");
+
+pub const ExitAppEvent = struct {};
 
 pub const RaylibPlugin = struct {
     const Self = @This();
@@ -15,8 +20,10 @@ pub const RaylibPlugin = struct {
 
     pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
         const log = std.log.scoped(.zevy_raylib);
-        const scheduler = try zevy_ecs.Scheduler.init(e.allocator);
-        _ = try e.addResource(zevy_ecs.Scheduler, scheduler);
+        const sch = try e.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator));
+
+        try sch.registerEvent(e, ExitAppEvent);
+
         rl.setTraceLogLevel(self.log_level);
         rl.initWindow(self.width, self.height, self.title);
         log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
@@ -36,33 +43,29 @@ pub const RaylibPlugin = struct {
         rl.closeWindow();
         if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
     }
+
+    pub fn setWidth(self: *Self, width: i32) void {
+        self.width = width;
+        rl.setWindowSize(self.width, self.height);
+    }
+
+    pub fn setHeight(self: *Self, height: i32) void {
+        self.height = height;
+        rl.setWindowSize(self.width, self.height);
+    }
+
+    pub fn setTargetFPS(self: *Self, fps: i32) void {
+        self.target_fps = fps;
+        rl.setTargetFPS(self.target_fps);
+    }
+
+    pub fn setLevel(self: *Self, level: rl.TraceLogLevel) void {
+        self.log_level = level;
+        rl.setTraceLogLevel(self.log_level);
+    }
+
+    pub fn setTitle(self: *Self, title: [:0]const u8) void {
+        self.title = title;
+        rl.setWindowTitle(self.title);
+    }
 };
-
-pub const GuiStage = struct {};
-
-pub fn RayGuiPlugin(comptime ParamRegistry: type) type {
-    return struct {
-        const raygui = @import("raygui");
-        const ui = @import("gui/ui.zig");
-        const Self = @This();
-
-        pub fn build(self: *Self, manager: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
-            _ = self;
-            _ = plugin_manager;
-            const scheduler = manager.getResource(zevy_ecs.Scheduler) orelse return error.MissingSchedulerResource;
-            const gui_stage = zevy_ecs.StageInRange(
-                GuiStage,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
-                zevy_ecs.Stage(zevy_ecs.Stages.PostUpdate),
-            );
-            try scheduler.addStage(gui_stage);
-            scheduler.addSystem(manager, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, ParamRegistry);
-            scheduler.addSystem(manager, gui_stage, ui.systems.uiInputSystem, ParamRegistry);
-            scheduler.addSystem(manager, gui_stage, ui.systems.flexLayoutSystem, ParamRegistry);
-            scheduler.addSystem(manager, gui_stage, ui.systems.gridLayoutSystem, ParamRegistry);
-            scheduler.addSystem(manager, gui_stage, ui.systems.anchorLayoutSystem, ParamRegistry);
-            scheduler.addSystem(manager, gui_stage, ui.systems.dockLayoutSystem, ParamRegistry);
-            scheduler.addSystem(manager, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiRenderSystem, ParamRegistry);
-        }
-    };
-}

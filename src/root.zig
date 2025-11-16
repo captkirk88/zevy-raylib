@@ -10,23 +10,26 @@ pub const ui = @import("gui/ui.zig");
 /// Embed utility functions to include resources in the binary
 pub const embed = @import("builtin/embed.zig");
 
-pub const RaylibPlugin = @import("app.plugin.zig").RaylibPlugin;
-pub const RayGuiPlugin = @import("app.plugin.zig").RayGuiPlugin;
+const app_plugin = @import("app.plugin.zig");
+pub const RaylibPlugin = app_plugin.RaylibPlugin;
+pub const UIPlugin = ui.UIPlugin;
 pub const AssetsPlugin = @import("assets.plugin.zig").AssetsPlugin;
 pub const InputPlugin = @import("input.plugin.zig").InputPlugin;
+
+pub const ExitAppEvent = app_plugin.ExitAppEvent;
 
 /// Registers all plugins defined in this package
 pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) anyerror!void {
     _ = allocator;
     _ = ecs;
-    try plugs.add(RaylibPlugin, RaylibPlugin{
+    try plugs.add(RaylibPlugin, .{
         .title = "Zevy Raylib App",
-        .width = 800,
-        .height = 600,
+        .width = 1280,
+        .height = 720,
     });
-    try plugs.add(RayGuiPlugin(zevy_ecs.DefaultParamRegistry), RayGuiPlugin(zevy_ecs.DefaultParamRegistry){});
     try plugs.add(AssetsPlugin, AssetsPlugin{});
-    try plugs.add(InputPlugin(zevy_ecs.DefaultParamRegistry), InputPlugin(zevy_ecs.DefaultParamRegistry){});
+    try plugs.add(InputPlugin(zevy_ecs.DefaultParamRegistry), .{});
+    try plugs.add(UIPlugin(zevy_ecs.DefaultParamRegistry), .{});
 }
 
 test "zevy_raylib" {
@@ -51,7 +54,7 @@ test "zevy_raylib" {
     var plugs = plugins.PluginManager.init(allocator);
     defer plugs.deinit(&ecs);
     try plug(allocator, &plugs, &ecs);
-    try plugs.add(TestPlugin, TestPlugin{});
+    try plugs.add(TestPlugin, .{});
 
     try std.testing.expect(plugs.get(RaylibPlugin) != null);
     try std.testing.expect(plugs.get(AssetsPlugin) != null);

@@ -13,7 +13,7 @@
     .dependencies = .{
         .zevy_ecs = .{
             .url = "deps/zevy-ecs",
-            .hash = "zevy_ecs-0.0.1-VoL9mTC6BQDUSPQYmegJY8fc366bbW3TEoMv6y4Fw7QY",
+            .hash = "zevy_ecs-0.0.1-VoL9mb-6BQDUFHpAPic4vfcQF_KMYOnaTKc5cAoq6tys",
         },
         .raylib_zig = .{
             .url = "git+https://github.com/raylib-zig/raylib-zig#3cd4d3179d967fc8b931514603fdbc4a43a1d771",

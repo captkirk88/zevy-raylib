@@ -4,6 +4,7 @@ const zevy_ecs = @import("zevy_ecs");
 const ui = @import("ui.zig");
 const layouts = ui.layout;
 const comps = ui.components;
+const input = @import("../input/input.zig");
 
 fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     const allocator = std.testing.allocator;
@@ -11,9 +12,10 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     rl.initWindow(800, 600, name);
 
     var ecs = try zevy_ecs.Manager.init(allocator);
+    _ = try ecs.addResource(input.InputManager, .init(allocator));
     var sch = try ecs.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(ecs.allocator));
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), ui.systems.uiInputSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), ui.input.uiInteractionDetectionSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.anchorLayoutSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.gridLayoutSystem, zevy_ecs.DefaultParamRegistry);

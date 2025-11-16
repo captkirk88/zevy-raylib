@@ -213,14 +213,25 @@ pub const InputBinding = struct {
         self.action.deinit(allocator);
     }
 
-    /// Check if this binding matches the given pressed keys
-    pub fn matches(self: *const InputBinding, pressed_keys: []const InputKey) bool {
-        return self.enabled and self.chord.matches(pressed_keys);
+    /// Check if this binding matches the current input state
+    pub fn matches(self: *const InputBinding, current_keys: []const InputKey) bool {
+        if (!self.enabled) return false;
+
+        // Single-key chords use subset matching to avoid gesture interference
+        // (e.g., MouseLeft binding should work even when GestureTap is also detected)
+        if (self.chord.keys.items.len == 1) {
+            return self.chord.isSubsetOf(current_keys);
+        }
+
+        // Multi-key chords require exact matching to preserve combo behavior
+        // (e.g., Ctrl+S should not trigger when Ctrl+Shift+S is pressed)
+        return self.chord.matches(current_keys);
     }
 
-    /// Check if this binding could potentially match (is a subset)
-    pub fn couldMatch(self: *const InputBinding, pressed_keys: []const InputKey) bool {
-        return self.enabled and self.chord.isSubsetOf(pressed_keys);
+    /// Check if this binding could potentially match (is a subset of current keys)
+    pub fn couldMatch(self: *const InputBinding, current_keys: []const InputKey) bool {
+        if (!self.enabled) return false;
+        return self.chord.isSubsetOf(current_keys);
     }
 
     /// Get the priority of this binding (based on chord length)

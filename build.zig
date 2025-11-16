@@ -40,10 +40,10 @@ pub fn build(b: *std.Build) void {
     });
 
     const embed = @import("src/builtin/embed.zig");
-    _ = embed.addEmbeddedAssetsModule(b, target, optimize, mod, .{
+    const embed_opts: embed.EmbedAssetsOptions = .{
         .assets_dir = "embedded_assets/",
-        .import_name = "embedded_assets",
-    }) catch |err| {
+    };
+    const embed_assets_mod = embed.addEmbeddedAssetsModule(b, target, optimize, mod, embed_opts) catch |err| {
         std.debug.panic("Failed to add embedded assets module: {s}\n", .{@errorName(err)});
     };
 
@@ -66,14 +66,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "raylib", .module = raylib.module("raylib") },
             .{ .name = "raygui", .module = raylib.module("raygui") },
             .{ .name = "zevy_raylib", .module = mod },
+            .{ .name = embed_opts.import_name, .module = embed_assets_mod },
         },
     });
-
-    _ = embed.addEmbeddedAssetsModule(b, target, optimize, example_mod, .{
-        .assets_dir = "embedded_assets/",
-    }) catch |err| {
-        std.debug.panic("Failed to add embedded assets module to example: {s}\n", .{@errorName(err)});
-    };
 
     const example_exe = b.addExecutable(.{
         .name = "zevy_raylib_example",

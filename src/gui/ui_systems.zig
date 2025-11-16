@@ -539,40 +539,6 @@ pub fn uiRenderSystem(
     }
 }
 
-/// UI Input System
-/// Handles input for interactive UI components
-/// This system should be called during the update stage before rendering
-///
-/// Example usage with zevy_ecs:
-/// ```zig
-/// scheduler.addSystem(
-///     zevy_ecs.Stage(zevy_ecs.Stages.Update),
-///     ecs.createSystemCached(uiInputSystem, zevy_ecs.DefaultParamRegistry),
-/// );
-/// ```
-pub fn uiInputSystem(
-    _: *zevy_ecs.Manager,
-    // Query for buttons
-    button_query: zevy_ecs.Query(struct {
-        rect: components.UIRect,
-        button: components.UIButton,
-        visible: ?components.UIVisible,
-    }, .{}),
-) void {
-    // Update button hover states
-    const mouse_pos = input.getMousePosition() orelse return;
-    while (button_query.next()) |q| {
-        const rect: *components.UIRect = q.rect;
-        const button: *components.UIButton = q.button;
-        if (q.visible) |v| {
-            if (!v.visible) continue;
-        }
-
-        const bounds = rect.toRectangle();
-        button.hovered = rl.checkCollisionPointRec(mouse_pos, bounds);
-    }
-}
-
 /// Layout calculation system for flex layouts
 /// Uses extracted helper functions for child collection, size computation, and positioning.
 pub fn flexLayoutSystem(
