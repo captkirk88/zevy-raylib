@@ -119,31 +119,24 @@ test "Render Flex Layout" {
     defer {
         deinitTest(&ecs);
     }
+    const screen_width = rl.getScreenWidth();
+    const screen_height = rl.getScreenHeight();
 
     const flex_container = ecs.create(.{
-        comps.UIRect.init(200, 150, 400, 300),
-        layouts.FlexLayout.column().withGap(10),
+        comps.UIRect.init(0, 0, @floatFromInt(screen_width), @floatFromInt(screen_height)),
+        layouts.FlexLayout.column().withGap(10).withJustify(.center).withAlign(.stretch),
         layouts.UIContainer.init("flex_container"),
     });
-
-    _ = ecs.create(.{
-        comps.UIRect.init(0, 0, 380, 50),
-        comps.UIPanel.init("Panel 1"),
-        //comps.UIText.init("Panel 1").withFontSize(16),
-        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
-    });
-    _ = ecs.create(.{
-        comps.UIRect.init(0, 0, 380, 50),
-        comps.UIPanel.init("Panel 2"),
-        //comps.UIText.init("Panel 2"),
-        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
-    });
-    _ = ecs.create(.{
-        comps.UIRect.init(0, 0, 380, 50),
-        comps.UIPanel.init("Panel 3"),
-        //comps.UIText.init("Panel 3"),
-        zevy_ecs.Relation(zevy_ecs.relations.Child).init(flex_container, .{}),
-    });
+    const titles = [_]?[:0]const u8{ "Panel 1", "Panel 2", "Panel 3", null };
+    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    for (0..4) |i| {
+        const child = ecs.create(.{
+            comps.UIRect.init(0, 0, 380, 50),
+            comps.UIPanel.init(titles[i]),
+            //comps.UIText.init("Panel {d}", .{i + 1}).withFontSize(16),
+        });
+        try rel.add(&ecs, child, flex_container, zevy_ecs.relations.Child);
+    }
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.Manager) void {

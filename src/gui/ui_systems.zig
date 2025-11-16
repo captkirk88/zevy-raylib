@@ -453,9 +453,6 @@ pub fn uiRenderSystem(
         const vis = if (q.visible) |v| v.* else null;
         renderer.renderPanel(q.rect, q.panel, vis);
     }
-    if (panel_count > 0) {
-        std.debug.print("Rendered {d} panels\n", .{panel_count});
-    }
 
     // Render scroll panels
     while (scroll_panel_query.next()) |q| {

@@ -209,13 +209,13 @@ pub const UITextBox = struct {
 
 /// Panel/Container component for grouping UI elements
 pub const UIPanel = struct {
-    title: [:0]const u8 = "",
+    title: ?[:0]const u8 = "",
     border: bool = true,
     background: bool = true,
     color: ?rl.Color = null,
     padding: f32 = 5.0,
 
-    pub fn init(title: [:0]const u8) UIPanel {
+    pub fn init(title: ?[:0]const u8) UIPanel {
         return .{ .title = title };
     }
 

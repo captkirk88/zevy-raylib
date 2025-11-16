@@ -16,20 +16,31 @@ pub const FlexDirection = enum {
 
 /// Flex alignment options
 pub const FlexAlign = enum {
+    /// Aligns items to the start of the container (left for rows, top for columns).
     start,
+    /// Centers items in the container.
     center,
+    /// Aligns items to the end of the container (right for rows, bottom for columns).
     end,
+    /// Distributes items evenly with space between them, but no space at the ends.
     space_between,
+    /// Distributes items evenly with equal space around each item, including at the ends.
     space_around,
+    /// Distributes items evenly with equal space between and around them.
     space_evenly,
 };
 
 /// Flex item alignment
 pub const FlexItemAlign = enum {
+    /// Inherits the align-items value from the parent flex container.
     auto,
+    /// Aligns the item to the start of the cross axis (left for rows, top for columns).
     start,
+    /// Centers the item along the cross axis.
     center,
+    /// Aligns the item to the end of the cross axis (right for rows, bottom for columns).
     end,
+    /// Stretches the item to fill the entire cross axis dimension.
     stretch,
 };
 

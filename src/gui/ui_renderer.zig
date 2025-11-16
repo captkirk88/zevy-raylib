@@ -190,7 +190,8 @@ pub fn renderPanel(rect: *const UIRect, panel: *const UIPanel, visible: ?UIVisib
         if (panel.color) |color| {
             rl.drawRectangleRec(bounds, color);
         } else {
-            _ = rg.panel(bounds, panel.title.ptr);
+            const title = if (panel.title) |t| t.ptr else null;
+            _ = rg.panel(bounds, title);
         }
     }
 
