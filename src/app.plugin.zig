@@ -10,7 +10,7 @@ pub const RaylibPlugin = struct {
     title: [:0]const u8,
     width: i32,
     height: i32,
-
+    target_fps: i32 = 60,
     log_level: rl.TraceLogLevel = .warning,
 
     pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
@@ -22,7 +22,9 @@ pub const RaylibPlugin = struct {
         log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
         rl.initAudioDevice();
         log.info("Audio device: {s}", .{if (rl.isAudioDeviceReady()) "Ready" else "Not Ready"});
-        rl.setTargetFPS(500);
+
+        if (self.target_fps < 30) self.target_fps = 30;
+        rl.setTargetFPS(self.target_fps);
     }
 
     pub fn deinit(self: *Self, ecs: *zevy_ecs.Manager) void {
@@ -48,17 +50,18 @@ pub fn RayGuiPlugin(comptime ParamRegistry: type) type {
             _ = self;
             _ = plugin_manager;
             const scheduler = manager.getResource(zevy_ecs.Scheduler) orelse return error.MissingSchedulerResource;
-            try scheduler.addStage(zevy_ecs.StageInRange(
+            const gui_stage = zevy_ecs.StageInRange(
                 GuiStage,
                 zevy_ecs.Stage(zevy_ecs.Stages.Update),
                 zevy_ecs.Stage(zevy_ecs.Stages.PostUpdate),
-            ));
+            );
+            try scheduler.addStage(gui_stage);
             scheduler.addSystem(manager, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, ParamRegistry);
-            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.uiInputSystem, ParamRegistry);
-            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.flexLayoutSystem, ParamRegistry);
-            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.gridLayoutSystem, ParamRegistry);
-            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.anchorLayoutSystem, ParamRegistry);
-            scheduler.addSystem(manager, zevy_ecs.Stage(GuiStage), ui.systems.dockLayoutSystem, ParamRegistry);
+            scheduler.addSystem(manager, gui_stage, ui.systems.uiInputSystem, ParamRegistry);
+            scheduler.addSystem(manager, gui_stage, ui.systems.flexLayoutSystem, ParamRegistry);
+            scheduler.addSystem(manager, gui_stage, ui.systems.gridLayoutSystem, ParamRegistry);
+            scheduler.addSystem(manager, gui_stage, ui.systems.anchorLayoutSystem, ParamRegistry);
+            scheduler.addSystem(manager, gui_stage, ui.systems.dockLayoutSystem, ParamRegistry);
             scheduler.addSystem(manager, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiRenderSystem, ParamRegistry);
         }
     };

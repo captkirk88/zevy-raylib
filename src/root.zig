@@ -4,7 +4,8 @@ const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const io = @import("io/root.zig");
 const input = @import("input/input.zig");
-const ui = @import("gui/ui.zig");
+
+pub const ui = @import("gui/ui.zig");
 
 /// Embed utility functions to include resources in the binary
 pub const embed = @import("builtin/embed.zig");
