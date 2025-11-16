@@ -84,7 +84,7 @@ pub const Assets = struct {
         self.pending_temp_files.deinit();
     }
 
-    pub fn addManager(self: *Assets, comptime AssetType: type, loader: anytype) !void {
+    pub fn addManager(self: *Assets, comptime AssetType: type, loader: anytype) error{ ManagerAlreadyExists, OutOfMemory }!void {
         const LoaderType = @TypeOf(loader);
         const hash = std.hash_map.hashString(@typeName(AssetType));
         if (self.managers.contains(hash)) return error.ManagerAlreadyExists;

@@ -103,7 +103,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
         queue: std.ArrayList(LoadRequest),
         loader: LoaderType,
 
-        pub fn initEx(allocator: std.mem.Allocator, loader: LoaderType) !@This() {
+        pub fn initEx(allocator: std.mem.Allocator, loader: LoaderType) error{OutOfMemory}!@This() {
             return @This(){
                 .allocator = allocator,
                 .mutex = std.Thread.Mutex{},
@@ -113,7 +113,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             };
         }
 
-        pub fn init(allocator: std.mem.Allocator) !@This() {
+        pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!@This() {
             return @This(){
                 .allocator = allocator,
                 .mutex = std.Thread.Mutex{},
@@ -154,7 +154,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             return self.queue.items.len;
         }
 
-        pub fn loadAsset(self: *@This(), file: []const u8, settings: anytype) error{ OutOfMemory, InvalidPath }!AssetHandle {
+        pub fn loadAsset(self: *@This(), file: []const u8, settings: anytype) error{ InvalidPath, OutOfMemory }!AssetHandle {
 
             // Check if already loaded using direct string comparison
             if (self.assets.get(file)) |entry| {

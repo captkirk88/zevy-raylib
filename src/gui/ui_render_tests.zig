@@ -175,3 +175,97 @@ test "Render Grid Layout" {
         }
     }.run);
 }
+
+test "Render Anchor Layout" {
+    var ecs = try initTest("Render Anchor Layout");
+    defer {
+        deinitTest(&ecs);
+    }
+
+    const screen_width = rl.getScreenWidth();
+    const screen_height = rl.getScreenHeight();
+
+    const anchor_container = ecs.create(.{
+        comps.UIRect.init(0, 0, @floatFromInt(screen_width), @floatFromInt(screen_height)),
+        layouts.UIContainer.init("anchor_container"),
+    });
+
+    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const top_left = ecs.create(.{ comps.UIRect.init(0, 0, 100, 50), comps.UIPanel.init("Top Left"), layouts.AnchorLayout.init(.top_left) });
+    try rel.add(&ecs, top_left, anchor_container, zevy_ecs.relations.Child);
+
+    const bottom_right = ecs.create(.{ comps.UIRect.init(0, 0, 100, 50), comps.UIPanel.init("Bottom Right"), layouts.AnchorLayout.init(.bottom_right) });
+    try rel.add(&ecs, bottom_right, anchor_container, zevy_ecs.relations.Child);
+
+    try testLoop(&ecs, struct {
+        fn run(e: *zevy_ecs.Manager) void {
+            _ = e;
+            // Update logic can be added here if needed
+        }
+    }.run);
+}
+
+test "Render Dock Layout" {
+    var ecs = try initTest("Render Dock Layout");
+    defer {
+        deinitTest(&ecs);
+    }
+
+    const screen_width = rl.getScreenWidth();
+    const screen_height = rl.getScreenHeight();
+
+    // Container that fills the screen
+    const dock_container = ecs.create(.{
+        comps.UIRect.init(0, 0, @floatFromInt(screen_width), @floatFromInt(screen_height)),
+        layouts.UIContainer.init("dock_container"),
+    });
+
+    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+
+    // Left docked panel
+    const left = ecs.create(.{
+        comps.UIRect.init(0, 0, 150, @floatFromInt(screen_height)),
+        comps.UIPanel.init("Left"),
+        layouts.DockLayout.init(.left),
+    });
+    try rel.add(&ecs, left, dock_container, zevy_ecs.relations.Child);
+
+    // Top docked panel
+    const top = ecs.create(.{
+        comps.UIRect.init(0, 0, @floatFromInt(screen_width), 120),
+        comps.UIPanel.init("Top"),
+        layouts.DockLayout.init(.top),
+    });
+    try rel.add(&ecs, top, dock_container, zevy_ecs.relations.Child);
+
+    // Right docked panel
+    const right = ecs.create(.{
+        comps.UIRect.init(0, 0, 150, @floatFromInt(screen_height)),
+        comps.UIPanel.init("Right"),
+        layouts.DockLayout.init(.right),
+    });
+    try rel.add(&ecs, right, dock_container, zevy_ecs.relations.Child);
+
+    // Bottom docked panel
+    const bottom = ecs.create(.{
+        comps.UIRect.init(0, 0, @floatFromInt(screen_width), 80),
+        comps.UIPanel.init("Bottom"),
+        layouts.DockLayout.init(.bottom),
+    });
+    try rel.add(&ecs, bottom, dock_container, zevy_ecs.relations.Child);
+
+    // Fill the remaining area with a panel
+    const fill = ecs.create(.{
+        comps.UIRect.init(0, 0, 0, 0),
+        comps.UIPanel.init("Fill"),
+        layouts.DockLayout.init(.fill),
+    });
+    try rel.add(&ecs, fill, dock_container, zevy_ecs.relations.Child);
+
+    try testLoop(&ecs, struct {
+        fn run(e: *zevy_ecs.Manager) void {
+            _ = e;
+            // No per-frame logic required for this test
+        }
+    }.run);
+}

@@ -2,6 +2,8 @@ const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const io = @import("io/root.zig");
 
+/// Assets Plugin
+/// Adds asset management capabilities to the ECS manager.
 pub const AssetsPlugin = struct {
     const Self = @This();
 
