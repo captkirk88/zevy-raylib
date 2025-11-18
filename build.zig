@@ -16,10 +16,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const zevy_ecs_mod = b.dependency("zevy_ecs", .{
+    const zevy_ecs_mod = b.lazyDependency("zevy_ecs", .{
         .target = target,
         .optimize = optimize,
-    });
+    }) orelse return;
 
     const raylib = b.dependency("raylib_zig", .{
         .target = target,
