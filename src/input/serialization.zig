@@ -35,7 +35,8 @@ const BindingsFileJson = struct {
 };
 
 /// Serialize input bindings to a writer
-pub fn serializeToWriter(bindings: *const InputBindings, writer: std.io.AnyWriter, allocator: std.mem.Allocator) !void {
+/// Accepts std.Io.Writer type for JSON serialization
+pub fn serializeToWriter(bindings: *const InputBindings, writer: anytype, allocator: std.mem.Allocator) !void {
     var binding_jsons = std.ArrayList(BindingJson){};
     defer binding_jsons.deinit(allocator);
 
@@ -62,28 +63,12 @@ pub fn serializeToWriter(bindings: *const InputBindings, writer: std.io.AnyWrite
         .bindings = binding_jsons.items,
     };
 
-    // Serialize to JSON manually
-    try writer.writeAll("{\n  \"version\": ");
-    try writer.print("{}", .{file_json.version});
-    try writer.writeAll(",\n  \"bindings\": [\n");
-
-    for (file_json.bindings, 0..) |binding, i| {
-        if (i > 0) {
-            try writer.writeAll(",\n");
-        }
-        try writer.writeAll("    {\n");
-        try writer.writeAll("      \"action_name\": \"");
-        try writer.writeAll(binding.action_name);
-        try writer.writeAll("\",\n      \"action_description\": \"");
-        try writer.writeAll(binding.action_description);
-        try writer.writeAll("\",\n      \"chord\": \"");
-        try writer.writeAll(binding.chord);
-        try writer.writeAll("\",\n      \"enabled\": ");
-        try writer.writeAll(if (binding.enabled) "true" else "false");
-        try writer.writeAll("\n    }");
-    }
-
-    try writer.writeAll("\n  ]\n}");
+    // Serialize to JSON using std.json
+    const json_str = try std.json.Stringify.valueAlloc(allocator, file_json, .{
+        .whitespace = .indent_2,
+    });
+    defer allocator.free(json_str);
+    try writer.writeAll(json_str);
 
     // Clean up allocated strings
     for (binding_jsons.items) |binding_json| {
@@ -94,7 +79,8 @@ pub fn serializeToWriter(bindings: *const InputBindings, writer: std.io.AnyWrite
 }
 
 /// Deserialize input bindings from a reader
-pub fn deserializeFromReader(reader: std.io.AnyReader, allocator: std.mem.Allocator) !InputBindings {
+/// Accepts any reader type that implements the reader interface
+pub fn deserializeFromReader(reader: anytype, allocator: std.mem.Allocator) !InputBindings {
     // Read all content
     const content = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(content);
@@ -139,10 +125,15 @@ pub fn deserializeFromReader(reader: std.io.AnyReader, allocator: std.mem.Alloca
 
 /// Convenience function to serialize to a file
 pub fn serializeToFile(bindings: *const InputBindings, file_path: []const u8, allocator: std.mem.Allocator) !void {
-    const file = try std.fs.cwd().createFile(file_path, .{});
+    const create_flags = std.fs.File.CreateFlags{
+        .truncate = true,
+        .exclusive = true,
+    };
+    const file = try std.fs.cwd().createFile(file_path, create_flags);
     defer file.close();
 
-    try serializeToWriter(bindings, file.deprecatedWriter().any(), allocator);
+    var writer = file.deprecatedWriter().any();
+    try serializeToWriter(bindings, &writer, allocator);
 }
 
 /// Convenience function to deserialize from a file
@@ -150,22 +141,64 @@ pub fn deserializeFromFile(file_path: []const u8, allocator: std.mem.Allocator) 
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
-    return try deserializeFromReader(file.deprecatedReader().any(), allocator);
+    var rdr = file.deprecatedReader().any();
+    return try deserializeFromReader(&rdr, allocator);
 }
 
-/// Serialize input bindings to a string
-pub fn serializeToString(bindings: *const InputBindings, allocator: std.mem.Allocator) ![]u8 {
+/// Serialize input bindings to a slice
+pub fn serializeToSlice(bindings: *const InputBindings, allocator: std.mem.Allocator) ![]u8 {
     var string_writer = std.ArrayList(u8){};
     defer string_writer.deinit(allocator);
 
-    try serializeToWriter(bindings, string_writer.writer(allocator).any(), allocator);
-    return string_writer.toOwnedSlice(allocator);
+    var writer = string_writer.writer(allocator).any();
+    try serializeToWriter(bindings, &writer, allocator);
+    return try string_writer.toOwnedSlice(allocator);
 }
 
-/// Deserialize input bindings from a string
-pub fn deserializeFromString(json_string: []const u8, allocator: std.mem.Allocator) !InputBindings {
-    var stream = std.io.fixedBufferStream(json_string);
-    return try deserializeFromReader(stream.reader().any(), allocator);
+/// Alias for serializeToSlice for convenience
+pub const serializeToString = serializeToSlice;
+
+/// Deserialize input bindings from a string (alias for deserializeFromSlice)
+pub const deserializeFromString = deserializeFromSlice;
+
+/// Deserialize input bindings from a slice
+pub fn deserializeFromSlice(json_data: []const u8, allocator: std.mem.Allocator) !InputBindings {
+    // Parse JSON directly from slice
+    var parsed = std.json.parseFromSlice(BindingsFileJson, allocator, json_data, .{}) catch |err| {
+        switch (err) {
+            error.SyntaxError, error.UnexpectedToken => return SerializationError.InvalidFormat,
+            else => return err,
+        }
+    };
+    defer parsed.deinit();
+
+    const file_json = parsed.value;
+
+    // Check version
+    if (file_json.version != SERIALIZATION_VERSION) {
+        return SerializationError.UnsupportedVersion;
+    }
+
+    // Create bindings collection
+    var bindings = InputBindings.init(allocator);
+    errdefer bindings.deinit();
+
+    // Parse each binding
+    for (file_json.bindings) |binding_json| {
+        // Parse the chord
+        const chord = try InputChord.fromString(binding_json.chord, allocator) orelse return SerializationError.InvalidChord;
+
+        // Create action (init will duplicate the strings)
+        const action = try InputAction.init(allocator, binding_json.action_name, binding_json.action_description);
+
+        // Create binding
+        var binding = InputBinding.init(chord, action);
+        binding.enabled = binding_json.enabled;
+
+        try bindings.addBinding(binding);
+    }
+
+    return bindings;
 }
 
 /// Validate that a set of bindings doesn't have conflicts
@@ -193,7 +226,7 @@ pub fn validateBindings(bindings: *const InputBindings, allocator: std.mem.Alloc
 }
 
 /// Print bindings in a human-readable format
-pub fn printBindings(bindings: *const InputBindings, writer: std.io.AnyWriter, allocator: std.mem.Allocator) !void {
+pub fn printBindings(bindings: *const InputBindings, writer: anytype, allocator: std.mem.Allocator) !void {
     try writer.writeAll("Input Bindings:\n");
     try writer.writeAll("===============\n\n");
 
@@ -216,4 +249,6 @@ pub fn printBindings(bindings: *const InputBindings, writer: std.io.AnyWriter, a
         }
         try writer.writeAll("\n");
     }
+
+    try writer.flush();
 }

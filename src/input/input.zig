@@ -34,6 +34,7 @@ const types = @import("input_types.zig");
 pub const bindings = @import("input_bindings.zig");
 const input_man = @import("input_manager.zig");
 const serialize = @import("serialization.zig");
+pub const params = @import("params.zig");
 
 // Raylib function bindings
 pub const RaylibBindings = input_man.RaylibBindings;
@@ -66,7 +67,9 @@ pub const SerializationError = serialize.SerializationError;
 // Convenience functions
 pub const serializeToFile = serialize.serializeToFile;
 pub const deserializeFromFile = serialize.deserializeFromFile;
+pub const serializeToSlice = serialize.serializeToSlice;
 pub const serializeToString = serialize.serializeToString;
+pub const deserializeFromSlice = serialize.deserializeFromSlice;
 pub const deserializeFromString = serialize.deserializeFromString;
 pub const validateBindings = serialize.validateBindings;
 pub const printBindings = serialize.printBindings;

@@ -230,8 +230,7 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
 
     // Join items with semicolons for raygui
     var buffer: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var writer = std.Io.Writer.fixed(buffer[0..]);
 
     for (dropdown.items, 0..) |item, i| {
         if (i > 0) {
@@ -240,7 +239,7 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
         writer.writeAll(item) catch break;
     }
     writer.writeByte(0) catch {};
-    const items_str = fbs.getWritten();
+    const items_str = writer.buffered();
 
     _ = rg.comboBox(
         bounds,
@@ -336,8 +335,7 @@ pub fn renderListView(rect: UIRect, list_view: *UIListView, visible: ?UIVisible)
 
     // Join items with semicolons for raygui
     var buffer: [2048]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var writer = std.Io.Writer.fixed(buffer[0..]);
 
     for (list_view.items, 0..) |item, i| {
         if (i > 0) {
@@ -346,7 +344,7 @@ pub fn renderListView(rect: UIRect, list_view: *UIListView, visible: ?UIVisible)
         writer.writeAll(item) catch break;
     }
     writer.writeByte(0) catch {};
-    const items_str = fbs.getWritten();
+    const items_str = writer.buffered();
 
     _ = rg.listView(
         bounds,

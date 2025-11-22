@@ -246,15 +246,21 @@ pub fn uiInteractionDetectionSystem(
 
         // Handle clicks
         if (is_hovered and click_triggered and item.button.enabled) {
-            item.button.*.pressed = true;
+            // For toggle buttons, toggle the pressed state on click
+            if (item.button.style == .toggle) {
+                item.button.*.pressed = !item.button.*.pressed;
+            } else {
+                // For default and flat buttons, just set pressed for this frame
+                item.button.*.pressed = true;
+            }
             click_writer.write(.{
                 .entity = item.entity,
                 .input_device = .mouse, // TODO: Detect actual device from InputManager
                 .position = cursor_pos,
                 .button = .left,
             });
-        } else {
-            // Reset pressed state every frame when not clicking
+        } else if (item.button.style != .toggle) {
+            // Only reset pressed state for non-toggle buttons when not clicking
             item.button.*.pressed = false;
         }
     }

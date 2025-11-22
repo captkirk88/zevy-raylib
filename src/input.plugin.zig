@@ -3,6 +3,8 @@ const plugins = @import("plugins");
 const input = @import("input/input.zig");
 const zevy_ecs = @import("zevy_ecs");
 
+pub const params = input.params;
+
 /// Input Plugin
 /// Adds input handling capabilities to the ECS manager.
 pub fn InputPlugin(comptime ParamRegistry: type) type {
@@ -19,7 +21,7 @@ pub fn InputPlugin(comptime ParamRegistry: type) type {
     };
 }
 
-fn inputUpdateSystem(manager: *zevy_ecs.Manager, input_manager: zevy_ecs.Res(input.InputManager)) !void {
+fn inputUpdateSystem(manager: *zevy_ecs.Manager, input_manager: *params.Bindings) !void {
     _ = manager;
-    try input_manager.ptr.update();
+    try input_manager.update();
 }

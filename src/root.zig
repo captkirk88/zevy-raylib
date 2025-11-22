@@ -18,6 +18,15 @@ pub const InputPlugin = @import("input.plugin.zig").InputPlugin;
 
 pub const ExitAppEvent = app_plugin.ExitAppEvent;
 
+pub const params = struct {
+    pub const Bindings = input.params.Bindings;
+};
+
+pub const ParamRegistry = zevy_ecs.MergedSystemParamRegistry(&[_]type{
+    zevy_ecs.DefaultParamRegistry,
+    input.params.InputBindingsParam,
+});
+
 /// Registers all plugins defined in this package
 pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) anyerror!void {
     _ = allocator;
@@ -28,8 +37,8 @@ pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
         .height = 720,
     });
     try plugs.add(AssetsPlugin, AssetsPlugin{});
-    try plugs.add(InputPlugin(zevy_ecs.DefaultParamRegistry), .{});
-    try plugs.add(UIPlugin(zevy_ecs.DefaultParamRegistry), .{});
+    try plugs.add(InputPlugin(ParamRegistry), .{});
+    try plugs.add(UIPlugin(ParamRegistry), .{});
 }
 
 test "zevy_raylib" {

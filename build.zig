@@ -6,22 +6,28 @@ const std = @import("std");
 // for defining build steps and express dependencies between them, allowing the
 // build runner to parallelize the build automatically (and the cache system to
 // know when a step doesn't need to be re-run).
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const known_folders = b.dependency("known_folders", .{
+    const known_folders_dep = b.lazyDependency("known_folders", .{
+        .target = target,
+        .optimize = optimize,
+    }) orelse return error.KnownFolders_DepNotFound;
+
+    const zevy_ecs_dep = b.lazyDependency("zevy_ecs", .{
+        .target = target,
+        .optimize = optimize,
+    }) orelse return error.ZevyECS_DepNotFound;
+
+    const raylib_dep = b.dependency("raylib_zig", .{
         .target = target,
         .optimize = optimize,
     });
 
-    const zevy_ecs_mod = b.lazyDependency("zevy_ecs", .{
-        .target = target,
-        .optimize = optimize,
-    }) orelse return;
-
-    const raylib = b.dependency("raylib_zig", .{
+    _ = b.addModule("embed", .{
+        .root_source_file = b.path("src/builtin/embed.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -31,11 +37,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "known_folders", .module = known_folders.module("known-folders") },
-            .{ .name = "zevy_ecs", .module = zevy_ecs_mod.module("zevy_ecs") },
-            .{ .name = "raylib", .module = raylib.module("raylib") },
-            .{ .name = "raygui", .module = raylib.module("raygui") },
-            .{ .name = "plugins", .module = zevy_ecs_mod.module("plugins") },
+            .{ .name = "known_folders", .module = known_folders_dep.module("known-folders") },
+            .{ .name = "zevy_ecs", .module = zevy_ecs_dep.module("zevy_ecs") },
+            .{ .name = "raylib", .module = raylib_dep.module("raylib") },
+            .{ .name = "raygui", .module = raylib_dep.module("raygui") },
+            .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
         },
     });
 
@@ -61,10 +67,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "zevy_ecs", .module = zevy_ecs_mod.module("zevy_ecs") },
-            .{ .name = "plugins", .module = zevy_ecs_mod.module("plugins") },
-            .{ .name = "raylib", .module = raylib.module("raylib") },
-            .{ .name = "raygui", .module = raylib.module("raygui") },
+            .{ .name = "zevy_ecs", .module = zevy_ecs_dep.module("zevy_ecs") },
+            .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
+            .{ .name = "raylib", .module = raylib_dep.module("raylib") },
+            .{ .name = "raygui", .module = raylib_dep.module("raygui") },
             .{ .name = "zevy_raylib", .module = mod },
             .{ .name = embed_opts.import_name, .module = embed_assets_mod },
         },
@@ -75,7 +81,7 @@ pub fn build(b: *std.Build) void {
         .root_module = example_mod,
     });
 
-    example_exe.linkLibrary(raylib.artifact("raylib"));
+    example_exe.linkLibrary(raylib_dep.artifact("raylib"));
     b.installArtifact(example_exe);
 
     const run_example = b.addRunArtifact(example_exe);
