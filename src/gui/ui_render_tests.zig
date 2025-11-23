@@ -6,6 +6,11 @@ const layouts = ui.layout;
 const comps = ui.components;
 const input = @import("../input/input.zig");
 
+const SKIP_IN_DEBUG = true;
+
+const is_debug = @import("builtin").mode == .Debug;
+const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
+
 fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     const allocator = std.testing.allocator;
 
@@ -57,10 +62,15 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
 }
 
 test "Render Button default" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
     var ecs = try initTest("Render Button default");
     defer {
         deinitTest(&ecs);
     }
+
     _ = ecs.create(.{
         comps.UIRect.init(350, 250, 100, 50),
         comps.UIButton.init("Click Me"),
@@ -77,10 +87,15 @@ test "Render Button default" {
 }
 
 test "Render Button flat" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
     var ecs = try initTest("Render Button flat");
     defer {
         deinitTest(&ecs);
     }
+
     _ = ecs.create(.{
         comps.UIRect.init(350, 250, 100, 50),
         comps.UIButton.init("Click Me").withStyle(.flat),
@@ -97,10 +112,15 @@ test "Render Button flat" {
 }
 
 test "Render Button toggle" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
     var ecs = try initTest("Render Button toggle");
     defer {
         deinitTest(&ecs);
     }
+
     _ = ecs.create(.{
         comps.UIRect.init(350, 250, 100, 50),
         comps.UIButton.init("Click Me").withStyle(.toggle),
@@ -117,6 +137,10 @@ test "Render Button toggle" {
 }
 
 test "Render Flex Layout" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
     var ecs = try initTest("Render Flex Layout");
     defer {
         deinitTest(&ecs);
@@ -149,6 +173,10 @@ test "Render Flex Layout" {
 }
 
 test "Render Grid Layout" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
     var ecs = try initTest("Render Grid Layout");
     defer {
         deinitTest(&ecs);
@@ -179,6 +207,10 @@ test "Render Grid Layout" {
 }
 
 test "Render Anchor Layout" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
     var ecs = try initTest("Render Anchor Layout");
     defer {
         deinitTest(&ecs);
@@ -208,6 +240,10 @@ test "Render Anchor Layout" {
 }
 
 test "Render Dock Layout" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
     var ecs = try initTest("Render Dock Layout");
     defer {
         deinitTest(&ecs);

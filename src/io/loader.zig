@@ -7,11 +7,18 @@ pub const FileResolver = struct {
     /// Absolute base directory path
     base_dir: []const u8,
 
+    /// Original URI that was resolved to reach this file (e.g., "embedded://path/to/file.xml")
+    /// Optional - may be null for regular file paths
+    original_uri: ?[]const u8 = null,
+
     /// Resolve a relative path to an absolute path within the base directory
     resolve_path: *const fn (self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) std.mem.Allocator.Error![]u8,
 
     /// Check if a relative path exists within the base directory
     path_exists: *const fn (self: *const FileResolver, relative_path: []const u8) bool,
+    /// Pointer to the Loaders registry so a loader can request other
+    /// asset types (via a small, typed API) without importing concrete managers.
+    loaders: *Loaders,
 };
 
 /// AssetLoader wrapper type: validates that a loader implements the required interface
@@ -103,8 +110,65 @@ pub fn AssetUnloader(comptime AssetType: type) type {
             };
         }
 
+        // TODO make AssetType a pointer to allow unloading of large structs without copying
         pub fn unload(self: Self, asset: AssetType) void {
             self.unloadFn(asset);
         }
     };
 }
+
+/// Runtime registry for exposing manager entry views to loaders.
+pub const Loaders = struct {
+    pub const ManagerView = struct {
+        ptr: *anyopaque,
+        // Lifecycle / control callbacks
+        deinit_fn: ?*const fn (*anyopaque) void,
+        process_fn: *const fn (*anyopaque) anyerror!void,
+        destroy_fn: ?*const fn (*anyopaque, std.mem.Allocator) void,
+
+        // Public access/load callbacks
+        get_fn: *const fn (*anyopaque, usize) ?*anyopaque,
+        load_asset_fn: *const fn (*anyopaque, []const u8, ?*anyopaque) anyerror!usize,
+        load_asset_now_fn: *const fn (*anyopaque, []const u8, ?*anyopaque) anyerror!*anyopaque,
+    };
+
+    allocator: std.mem.Allocator,
+    map: std.AutoHashMap(u64, ManagerView),
+
+    pub fn init(allocator: std.mem.Allocator) anyerror!Loaders {
+        return Loaders{
+            .allocator = allocator,
+            .map = std.AutoHashMap(u64, ManagerView).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Loaders) void {
+        self.map.deinit();
+    }
+
+    pub fn register(self: *Loaders, hash: u64, view: ManagerView) error{OutOfMemory}!void {
+        try self.map.putNoClobber(hash, view);
+    }
+
+    pub fn unregister(self: *Loaders, hash: u64) void {
+        _ = self.map.remove(hash);
+    }
+
+    pub fn load(self: *Loaders, comptime AssetType: type, path: []const u8) anyerror!usize {
+        const hash = std.hash_map.hashString(@typeName(AssetType));
+        if (self.map.get(hash)) |view| {
+            const handle = try view.load_asset_fn(view.ptr, path, null);
+            return handle;
+        }
+        return error.NoManagerForType;
+    }
+
+    pub fn loadNow(self: *Loaders, comptime AssetType: type, path: []const u8) anyerror!AssetType {
+        const hash = std.hash_map.hashString(@typeName(AssetType));
+        if (self.map.get(hash)) |view| {
+            const res = try view.load_asset_now_fn(view.ptr, path, null);
+            return @as(*AssetType, @ptrCast(@alignCast(res))).*;
+        }
+        return error.NoManagerForType;
+    }
+};

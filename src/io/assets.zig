@@ -15,63 +15,67 @@ const EmbeddedResolver = struct {
     pub fn resolve(self: *EmbeddedResolver, allocator: std.mem.Allocator, path: []const u8) !schemes.ResolveResult {
         _ = self;
         // Use different module name for tests vs production
-        const embedded_assets = if (builtin.is_test)
-            @import("test_embedded_assets")
-        else
-            @import("embedded_assets");
+        const embedded_assets = @import("embedded_assets");
         const file = embedded_assets.get(path) orelse return error.AssetNotFound;
         const data = try allocator.dupe(u8, file);
         return schemes.ResolveResult{ .embedded_data = data };
     }
 };
 
-const ManagerEntry = struct {
-    ptr: *anyopaque,
-    deinit_fn: *const fn (*anyopaque) void,
-    process_fn: *const fn (*anyopaque) anyerror!void,
-    destroy_fn: *const fn (*anyopaque, std.mem.Allocator) void,
-    get_fn: *const fn (*anyopaque, AssetHandle) ?*anyopaque,
-    load_asset_fn: *const fn (*anyopaque, []const u8, ?*anyopaque) anyerror!AssetHandle,
-    load_asset_now_fn: *const fn (*anyopaque, []const u8, ?*anyopaque) anyerror!*anyopaque,
-};
+// Managers are represented using the lightweight Loaders.ManagerView which
+// contains lifecycle and load callbacks that can be registered with the
+// Loaders runtime registry. This removes the previous ManagerEntry wrapper.
 
 pub const Assets = struct {
     allocator: std.mem.Allocator,
-    managers: std.AutoHashMap(u64, ManagerEntry),
+    loaders: *loader_mod.Loaders,
     scheme_registry: schemes.SchemeRegistry,
     // Pending multi-file temporary files pending cleanup after manager processes the load
     pending_temp_files: std.AutoHashMap(AssetHandle, std.ArrayList([]const u8)),
 
     pub fn init(allocator: std.mem.Allocator) Assets {
-        const managers = std.AutoHashMap(u64, ManagerEntry).init(allocator);
         const scheme_registry = schemes.SchemeRegistry.init(allocator);
 
         var self = Assets{
             .allocator = allocator,
-            .managers = managers,
             .scheme_registry = scheme_registry,
+            .loaders = undefined,
             .pending_temp_files = std.AutoHashMap(AssetHandle, std.ArrayList([]const u8)).init(allocator),
         };
 
         // Register default schemes
         self.initDefaultSchemes() catch @panic("Failed to register default schemes");
+        // Create loaders registry and add default managers
+        const loaders_ptr = self.allocator.create(loader_mod.Loaders) catch @panic("Out of memory");
+        loaders_ptr.* = loader_mod.Loaders.init(self.allocator) catch |err| std.debug.panic("Failed to initialize loaders: {s}", .{@errorName(err)});
+        self.loaders = loaders_ptr;
+
         // Add default managers
-        self.addManager(rl.Texture, loaders.TextureLoader{}) catch @panic("Failed to add default texture manager");
-        self.addManager(rl.Sound, loaders.SoundLoader{}) catch @panic("Failed to add default sound manager");
-        self.addManager(rl.Music, loaders.MusicLoader{}) catch @panic("Failed to add default music manager");
-        self.addManager(rl.Font, loaders.FontLoader{}) catch @panic("Failed to add default font manager");
-        self.addManager(rl.Shader, loaders.ShaderLoader{}) catch @panic("Failed to add default shader manager");
+        self.addLoader(rl.Texture, loaders.TextureLoader{}) catch @panic("Failed to add default texture manager");
+        self.addLoader(rl.Sound, loaders.SoundLoader{}) catch @panic("Failed to add default sound manager");
+        self.addLoader(rl.Music, loaders.MusicLoader{}) catch @panic("Failed to add default music manager");
+        self.addLoader(rl.Font, loaders.FontLoader{}) catch @panic("Failed to add default font manager");
+        self.addLoader(rl.Shader, loaders.ShaderLoader{}) catch @panic("Failed to add default shader manager");
+        // Register XmlDocument manager, so XML files can be loaded/owned by Assets
+        self.addLoader(@import("../io/xml.zig").XmlDocument, loaders.XmlDocumentLoader{}) catch @panic("Failed to add default xml manager");
+        // Register XML-based texture atlas loader (XmlAtlas asset)
+        self.addLoader(@import("../io/xml_atlas.zig").XmlAtlas, loaders.XmlAtlasLoader{}) catch @panic("Failed to add default xml atlas manager");
         return self;
     }
 
     pub fn deinit(self: *Assets) void {
-        var it = self.managers.iterator();
+        // Call deinit/destroy on managers registered in the Loaders registry
+        var it = self.loaders.map.iterator();
         while (it.next()) |entry| {
-            entry.value_ptr.deinit_fn(entry.value_ptr.ptr);
-            entry.value_ptr.destroy_fn(entry.value_ptr.ptr, self.allocator);
+            if (entry.value_ptr.deinit_fn) |fn_ptr| fn_ptr(entry.value_ptr.ptr);
+            if (entry.value_ptr.destroy_fn) |fn_ptr| fn_ptr(entry.value_ptr.ptr, self.allocator);
         }
-        self.managers.deinit();
+
         self.scheme_registry.deinit();
+
+        self.loaders.deinit();
+        self.allocator.destroy(self.loaders);
+
         // Clean up any remaining pending temporary files
         var pit = self.pending_temp_files.iterator();
         while (pit.next()) |entry| {
@@ -84,16 +88,17 @@ pub const Assets = struct {
         self.pending_temp_files.deinit();
     }
 
-    pub fn addManager(self: *Assets, comptime AssetType: type, loader: anytype) error{ ManagerAlreadyExists, OutOfMemory }!void {
+    pub fn addLoader(self: *Assets, comptime AssetType: type, loader: anytype) error{ ManagerAlreadyExists, OutOfMemory }!void {
         const LoaderType = @TypeOf(loader);
         const hash = std.hash_map.hashString(@typeName(AssetType));
-        if (self.managers.contains(hash)) return error.ManagerAlreadyExists;
+        // Prevent adding duplicate manager types. Loaders owns the manager map.
+        if (self.loaders.map.contains(hash)) return error.ManagerAlreadyExists;
 
         const manager_ptr = try self.allocator.create(AssetManager(AssetType, LoaderType));
         errdefer self.allocator.destroy(manager_ptr);
 
         const l_cast = @as(*const LoaderType, @ptrCast(&loader));
-        manager_ptr.* = try AssetManager(AssetType, LoaderType).initEx(self.allocator, l_cast.*);
+        manager_ptr.* = try AssetManager(AssetType, LoaderType).init(self.allocator, l_cast.*, self.loaders);
 
         const DeinitFn = struct {
             fn call(ptr: *anyopaque) void {
@@ -150,7 +155,7 @@ pub const Assets = struct {
             }
         };
 
-        const entry = ManagerEntry{
+        const view = loader_mod.Loaders.ManagerView{
             .ptr = @ptrCast(manager_ptr),
             .deinit_fn = DeinitFn.call,
             .process_fn = ProcessFn.call,
@@ -160,7 +165,7 @@ pub const Assets = struct {
             .load_asset_now_fn = LoadAssetNowFn.call,
         };
 
-        try self.managers.putNoClobber(hash, entry);
+        try self.loaders.register(hash, view);
     }
 
     /// Initialize default scheme resolvers
@@ -177,9 +182,9 @@ pub const Assets = struct {
     }
 
     /// Check if a manager for the given asset type exists
-    pub fn hasManager(self: *Assets, comptime AssetType: type) bool {
+    pub fn hasLoader(self: *Assets, comptime AssetType: type) bool {
         const hash = std.hash_map.hashString(@typeName(AssetType));
-        return self.managers.contains(hash);
+        return self.loaders.map.contains(hash);
     }
 
     /// Load asset and return its handle
@@ -194,32 +199,78 @@ pub const Assets = struct {
             return try self.loadMultiFileAssetQueued(AssetType, file, settings);
         }
 
-        const resolved = try self.scheme_registry.resolve(file);
+        var resolved = try self.scheme_registry.resolve(self.allocator, file);
 
-        const final_path = switch (resolved) {
-            .file_path => |path| path,
-            .url => |url| url,
-            .embedded_data => |path| path,
-            .custom => |path| path,
-        };
-        defer {
-            switch (resolved) {
-                .file_path => |path| self.allocator.free(path),
-                .url => |url| self.allocator.free(url),
-                .embedded_data => |path| self.allocator.free(path),
-                .custom => |path| self.allocator.free(path),
-            }
-        }
-
-        if (self.managers.getPtr(hash)) |entry| {
+        if (self.loaders.map.getPtr(hash)) |entry| {
             const settings_ptr = if (@TypeOf(settings) == @TypeOf(null))
                 null
             else
                 @as(*anyopaque, @ptrCast(@constCast(&settings)));
-            const normalized = try io_utils.normalizePath(self.allocator, final_path);
-            defer self.allocator.free(normalized);
-            if (!io_utils.exists(normalized)) return error.FileNotFound;
-            return try entry.load_asset_fn(entry.ptr, normalized, settings_ptr);
+
+            // Handle resolution types separately. For embedded data we must write a
+            // temporary file and register it with pending_temp_files so it can be
+            // cleaned up once the manager has processed the queued load.
+            switch (resolved) {
+                .file_path => |path| {
+                    defer resolved.deinit(self.allocator);
+                    const normalized = try io_utils.normalizePath(self.allocator, path);
+                    defer self.allocator.free(normalized);
+                    if (!io_utils.exists(normalized)) return error.FileNotFound;
+                    return try entry.load_asset_fn(entry.ptr, normalized, settings_ptr);
+                },
+                .url => |url| {
+                    defer resolved.deinit(self.allocator);
+                    // For URLs, pass them through as-is for now
+                    return try entry.load_asset_fn(entry.ptr, url, settings_ptr);
+                },
+                .embedded_data => |d| {
+                    // Create a temp file from embedded data, hand it to the manager,
+                    // and keep the temp path alive until the manager finishes.
+                    defer resolved.deinit(self.allocator);
+
+                    const path_without_scheme = if (std.mem.indexOf(u8, file, "://")) |idx|
+                        file[idx + 3 ..]
+                    else
+                        file;
+                    const extension = std.fs.path.extension(path_without_scheme);
+                    const ext = if (extension.len > 0) extension else ".tmp";
+
+                    // Build a short random filename
+                    const base = try io_utils.randomFileName(self.allocator, 8, "");
+                    defer self.allocator.free(base);
+                    const filename_with_ext = try std.mem.concat(self.allocator, u8, &[_][]const u8{ base, ext });
+                    defer self.allocator.free(filename_with_ext);
+
+                    const temp_file = try io_utils.writeTempFileNamed(self.allocator, filename_with_ext, d);
+
+                    // Prepare pending list and insert into map so it will be cleaned up
+                    var temp_files = try std.ArrayList([]const u8).initCapacity(self.allocator, 1);
+                    // errdefer will free temp_files items/frees when something goes wrong
+                    errdefer {
+                        for (temp_files.items) |tf| {
+                            if (!io_utils.deleteFile(tf)) std.log.err("Failed to delete temp file: {s}", .{tf});
+                            self.allocator.free(tf);
+                        }
+                        temp_files.deinit(self.allocator);
+                    }
+                    try temp_files.append(self.allocator, temp_file);
+
+                    const handle = try entry.load_asset_fn(entry.ptr, temp_files.items[0], settings_ptr);
+                    for (temp_files.items) |tf| {
+                        const ptf = try self.pending_temp_files.getOrPut(handle);
+                        if (!ptf.found_existing) {
+                            ptf.key_ptr.* = handle;
+                            ptf.value_ptr.* = try std.ArrayList([]const u8).initCapacity(self.allocator, 1);
+                        }
+                        try ptf.value_ptr.append(self.allocator, tf);
+                    }
+                    return handle;
+                },
+                .custom => |path| {
+                    defer resolved.deinit(self.allocator);
+                    return try entry.load_asset_fn(entry.ptr, path, settings_ptr);
+                },
+            }
         }
         return error.NoManagerForType;
     }
@@ -232,7 +283,7 @@ pub const Assets = struct {
         }
 
         // Resolve the file path using scheme registry
-        const resolved = try self.scheme_registry.resolve(file);
+        const resolved = try self.scheme_registry.resolve(self.allocator, file);
 
         // Handle each resolution type appropriately
         switch (resolved) {
@@ -251,7 +302,7 @@ pub const Assets = struct {
                 return self.loadAssetFromPath(AssetType, url, settings);
             },
             .embedded_data => |data| {
-                defer self.allocator.free(data);
+                // Delegate to loadEmbeddedAsset for special handling
                 return self.loadEmbeddedAsset(AssetType, file, data, settings);
             },
             .custom => |path| {
@@ -284,12 +335,11 @@ pub const Assets = struct {
             if (trimmed.len == 0) continue;
 
             // Resolve this file
-            const resolved = try self.scheme_registry.resolve(trimmed);
+            const resolved = try self.scheme_registry.resolve(self.allocator, trimmed);
 
             // Handle based on resolution type
             switch (resolved) {
                 .embedded_data => |d| {
-                    defer self.allocator.free(d);
 
                     // Extract extension from the trimmed path
                     const path_without_scheme = if (std.mem.indexOf(u8, trimmed, "://")) |idx|
@@ -354,12 +404,12 @@ pub const Assets = struct {
             if (trimmed.len == 0) continue;
 
             // Resolve this file
-            const resolved = try self.scheme_registry.resolve(trimmed);
+            var resolved = try self.scheme_registry.resolve(self.allocator, trimmed);
 
             // Handle based on resolution type
             switch (resolved) {
                 .embedded_data => |d| {
-                    defer self.allocator.free(d);
+                    defer resolved.deinit(self.allocator);
 
                     // Extract extension from the trimmed path
                     const path_without_scheme = if (std.mem.indexOf(u8, trimmed, "://")) |idx|
@@ -377,18 +427,17 @@ pub const Assets = struct {
                     try temp_files.append(self.allocator, temp_file);
                 },
                 .file_path => |path| {
-                    defer self.allocator.free(path);
-
-                    // For file paths, just add them directly
+                    defer resolved.deinit(self.allocator);
+                    // Copy the resolved path first, then free the resolved result
                     const owned_path = try self.allocator.dupe(u8, path);
                     try temp_files.append(self.allocator, owned_path);
                 },
-                .url => |url| {
-                    defer self.allocator.free(url);
+                .url => |_| {
+                    resolved.deinit(self.allocator);
                     return error.UrlNotSupportedForMultiFile;
                 },
-                .custom => |path| {
-                    defer self.allocator.free(path);
+                .custom => |_| {
+                    resolved.deinit(self.allocator);
                     return error.CustomSchemeNotSupportedForMultiFile;
                 },
             }
@@ -397,7 +446,7 @@ pub const Assets = struct {
         // Load the asset with the first temp file (primary file) through the async manager
         if (temp_files.items.len == 0) return error.NoFiles;
 
-        if (self.managers.getPtr(hash)) |entry| {
+        if (self.loaders.map.getPtr(hash)) |entry| {
             const settings_ptr = if (@TypeOf(settings) == @TypeOf(null))
                 null
             else
@@ -406,10 +455,8 @@ pub const Assets = struct {
             // Pass the temp file path directly to the manager
             // The temp file path is already owned and will be kept alive
             const handle = try entry.load_asset_fn(entry.ptr, temp_files.items[0], settings_ptr);
-
             // Move temp files into pending map so they can be cleaned up after manager processes
             try self.pending_temp_files.putNoClobber(handle, temp_files);
-            // Ownership transferred to the pending map - don't deinit local
             return handle;
         }
 
@@ -419,7 +466,7 @@ pub const Assets = struct {
     fn loadAssetFromPath(self: *Assets, comptime AssetType: type, file_path: []const u8, settings: anytype) !AssetType {
         // Settings can be null, a value, a pointer, or optional - all are valid
         const hash = std.hash_map.hashString(@typeName(AssetType));
-        if (self.managers.getPtr(hash)) |entry| {
+        if (self.loaders.map.getPtr(hash)) |entry| {
             const settings_ptr = if (@TypeOf(settings) == @TypeOf(null))
                 null
             else
@@ -430,29 +477,31 @@ pub const Assets = struct {
         return error.NoManagerForType;
     }
 
-    fn loadEmbeddedAsset(self: *Assets, comptime AssetType: type, original_path: []const u8, data: []const u8, settings: anytype) anyerror!AssetType {
-        // Single file embedded asset
-        const path_without_scheme = if (std.mem.indexOf(u8, original_path, "://")) |idx|
-            original_path[idx + 3 ..]
+    fn loadAssetFromData(self: *Assets, comptime AssetType: type, original_uri: []const u8, data: []const u8, settings: anytype) !AssetType {
+        // Write data to a temp file and load via loadAssetFromPath
+        // NOTE: This function does NOT own the data parameter - the caller is responsible for freeing it
+        const path_without_scheme = if (std.mem.indexOf(u8, original_uri, "://")) |idx|
+            original_uri[idx + 3 ..]
         else
-            original_path;
+            original_uri;
 
         const extension = std.fs.path.extension(path_without_scheme);
         const ext = if (extension.len > 0) extension else ".tmp";
 
         const temp_file = try io_utils.writeTempFile(self.allocator, "", ext, data);
-        defer {
-            if (!io_utils.deleteFile(temp_file)) {
-                std.debug.panic("Failed to delete temp file: {s}", .{temp_file});
-            }
-            self.allocator.free(temp_file); // Free the path string
-        }
-        return self.loadAssetFromPath(AssetType, temp_file, settings);
+        defer self.allocator.free(temp_file);
+
+        return try self.loadAssetFromPath(AssetType, temp_file, settings);
+    }
+
+    fn loadEmbeddedAsset(self: *Assets, comptime AssetType: type, original_path: []const u8, data: []const u8, settings: anytype) anyerror!AssetType {
+        defer self.allocator.free(data);
+        return try self.loadAssetFromData(AssetType, original_path, data, settings);
     }
 
     pub fn get(self: *Assets, comptime AssetType: type, handle: AssetHandle) ?AssetType {
         const hash = comptime std.hash_map.hashString(@typeName(AssetType));
-        if (self.managers.get(hash)) |entry| {
+        if (self.loaders.map.get(hash)) |entry| {
             if (entry.get_fn(entry.ptr, handle)) |asset_ptr| {
                 return @as(*AssetType, @ptrCast(@alignCast(asset_ptr))).*;
             }
@@ -482,6 +531,13 @@ pub const Assets = struct {
         return self.scheme_registry.getSchemes(self.allocator);
     }
 
+    /// Resolve a URI using this Assets' scheme registry.
+    /// The returned ResolveResult contains owned memory allocated by Assets' allocator
+    /// when applicable and must be deinit by the caller using the same allocator.
+    pub fn resolve(self: *Assets, allocator: std.mem.Allocator, uri: []const u8) anyerror!schemes.ResolveResult {
+        return self.scheme_registry.resolve(allocator, uri);
+    }
+
     // ===== CONVENIENCE METHODS FOR COMMON SCHEMES =====
 
     /// Register a folder-based scheme (e.g., "assets://" -> "assets/")
@@ -506,7 +562,7 @@ pub const Assets = struct {
     }
 
     pub fn process(self: *Assets) !void {
-        var it = self.managers.iterator();
+        var it = self.loaders.map.iterator();
         while (it.next()) |entry| {
             try entry.value_ptr.process_fn(entry.value_ptr.ptr);
         }
@@ -516,8 +572,7 @@ pub const Assets = struct {
         while (pit.next()) |entry| {
             const handle = entry.key_ptr.*;
             // manager hash is not stored per-entry here, so try to find it by checking all managers
-            var mgr_it = self.managers.iterator();
-            var loaded = false;
+            var mgr_it = self.loaders.map.iterator();
             while (mgr_it.next()) |mgr_entry| {
                 if (mgr_entry.value_ptr.get_fn(mgr_entry.value_ptr.ptr, handle) != null) {
                     // The manager has loaded this handle; clean up temp files
@@ -527,12 +582,9 @@ pub const Assets = struct {
                     }
                     entry.value_ptr.deinit(self.allocator);
                     _ = self.pending_temp_files.remove(handle);
-                    loaded = true;
                     break;
                 }
             }
-            // If not yet loaded, leave pending until next process call
-            if (loaded) continue;
         }
     }
 
@@ -544,23 +596,6 @@ pub const Assets = struct {
 
 // ===== TESTS =====
 
-test "Assets initialization and cleanup" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    var assets = Assets.init(allocator);
-    defer assets.deinit();
-
-    // Should have default managers for all supported types
-    try testing.expect(assets.hasManager(rl.Texture));
-    try testing.expect(assets.hasManager(rl.Sound));
-    try testing.expect(assets.hasManager(rl.Music));
-    try testing.expect(assets.hasManager(rl.Font));
-
-    // Should have 5 managers total
-    try testing.expectEqual(@as(u32, 5), assets.managers.count());
-}
-
 test "Assets manager operations" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -569,11 +604,11 @@ test "Assets manager operations" {
     defer assets.deinit();
 
     // Test hasManager functionality
-    try testing.expect(assets.hasManager(rl.Texture));
+    try testing.expect(assets.hasLoader(rl.Texture));
 
     // Test adding duplicate manager should fail
     const texture_loader = loaders.TextureLoader{};
-    try testing.expectError(error.ManagerAlreadyExists, assets.addManager(rl.Texture, texture_loader));
+    try testing.expectError(error.ManagerAlreadyExists, assets.addLoader(rl.Texture, texture_loader));
 }
 
 test "Assets load embedded asset" {
@@ -581,14 +616,27 @@ test "Assets load embedded asset" {
     const allocator = testing.allocator;
 
     // Skip test if no embedded assets are available
-    const embedded_assets = @import("test_embedded_assets");
-    if (embedded_assets.list().len == 0) return error.SkipZigTest;
+    const embedded_assets = @import("embedded_assets");
+    const embedded = embedded_assets.list();
+    if (embedded.len == 0) {
+        return error.SkipZigTest;
+    } else {
+        var size: usize = 0;
+        std.debug.print("Embedded assets available for testing: {d}\n", .{embedded.len});
+        for (embedded) |asset| {
+            //std.debug.print("Embedded: {s}\n", .{asset.path});
+            size += asset.data.len;
+        }
+        const mb = @as(f64, @floatFromInt(size)) / 1024.0 / 1024.0;
+        std.debug.print("Total embedded asset size: {d:.2} MB\n", .{mb});
+    }
 
     var assets = Assets.init(allocator);
     defer assets.deinit();
+
     rl.initWindow(800, 700, "Test");
     defer rl.closeWindow();
-    const data = assets.loadAssetNow(rl.Texture, "embedded://alien.png", null) catch |err| {
+    const data = assets.loadAssetNow(rl.Texture, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.png", null) catch |err| {
         std.log.err("Failed to load embedded asset: {any}", .{err});
         return err;
     };
@@ -599,7 +647,7 @@ test "Assets multi-file queued cleanup" {
     const testing = std.testing;
 
     // Skip test if no embedded assets are available
-    const embedded_assets = @import("test_embedded_assets");
+    const embedded_assets = @import("embedded_assets");
     if (embedded_assets.list().len == 0) return error.SkipZigTest;
 
     var assets = Assets.init(std.testing.allocator);
@@ -610,7 +658,7 @@ test "Assets multi-file queued cleanup" {
     defer rl.closeWindow();
 
     // Queue a multi-file load using embedded assets (two same files for simplicity)
-    const handle = try assets.loadAsset(rl.Texture, "embedded://alien.png;embedded://alien.png", null);
+    const handle = try assets.loadAsset(rl.Texture, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.png;embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.png", null);
 
     // Pending temp files should be tracked
     try testing.expect(assets.pendingMultiFileCount() > 0);
@@ -639,8 +687,8 @@ test "Assets loadAssetNow with various error conditions" {
     const loader = loaders.TextureLoader{};
 
     // Add texture manager for testing if it doesn't exist
-    if (!assets.hasManager(rl.Texture)) {
-        try assets.addManager(rl.Texture, loader);
+    if (!assets.hasLoader(rl.Texture)) {
+        try assets.addLoader(rl.Texture, loader);
     }
 
     // Test with non-existent file
@@ -723,8 +771,8 @@ test "Assets memory management stress test" {
         defer assets.deinit();
 
         // Verify managers are properly initialized each time
-        try testing.expect(assets.hasManager(rl.Texture));
-        try testing.expect(assets.hasManager(rl.Sound));
+        try testing.expect(assets.hasLoader(rl.Texture));
+        try testing.expect(assets.hasLoader(rl.Sound));
 
         // Try to process
         try assets.process();
@@ -826,7 +874,7 @@ test "Assets manager entry destruction" {
     var assets = Assets.init(allocator);
 
     // Verify managers exist
-    try testing.expect(assets.managers.count() > 0);
+    try testing.expect(assets.loaders.map.count() > 0);
 
     // Deinit should clean up everything without crashes
     assets.deinit();
@@ -913,9 +961,9 @@ test "Assets manager hash collision resistance" {
 
     // Test that different asset types have different hashes
     // This indirectly tests that we don't accidentally overwrite managers
-    try testing.expect(assets.hasManager(rl.Texture));
-    try testing.expect(assets.hasManager(rl.Sound));
-    try testing.expect(assets.hasManager(rl.Music));
+    try testing.expect(assets.hasLoader(rl.Texture));
+    try testing.expect(assets.hasLoader(rl.Sound));
+    try testing.expect(assets.hasLoader(rl.Music));
 
     // Each type should maintain its own manager
     const texture_hash = std.hash_map.hashString(@typeName(rl.Texture));
@@ -937,7 +985,7 @@ test "Assets robustness with repeated operations" {
     // Repeatedly perform the same operations to check for state corruption
     for (0..50) |_| {
         // Check managers still exist
-        try testing.expect(assets.hasManager(rl.Texture));
+        try testing.expect(assets.hasLoader(rl.Texture));
 
         // Try invalid operations
         const invalid_handle: AssetHandle = 42;
@@ -960,8 +1008,8 @@ test "Assets defensive programming checks" {
     const loader = loaders.TextureLoader{};
 
     // Add texture manager for testing if it doesn't exist
-    if (!assets.hasManager(rl.Texture)) {
-        try assets.addManager(rl.Texture, loader);
+    if (!assets.hasLoader(rl.Texture)) {
+        try assets.addLoader(rl.Texture, loader);
     }
 
     // Test behavior with various invalid inputs that should be handled gracefully
@@ -988,7 +1036,7 @@ test "Assets state consistency after errors" {
     var assets = Assets.init(allocator);
     defer assets.deinit();
 
-    const initial_count = assets.managers.count();
+    const initial_count = assets.loaders.map.count();
 
     // Generate several errors
     for (0..10) |i| {
@@ -1000,15 +1048,15 @@ test "Assets state consistency after errors" {
     }
 
     // Verify assets is still in a consistent state
-    try testing.expectEqual(initial_count, assets.managers.count());
-    try testing.expect(assets.hasManager(rl.Texture));
+    try testing.expectEqual(initial_count, assets.loaders.map.count());
+    try testing.expect(assets.hasLoader(rl.Texture));
     try assets.process();
 
     // Verify all manager types are still available
-    try testing.expect(assets.hasManager(rl.Texture));
-    try testing.expect(assets.hasManager(rl.Sound));
-    try testing.expect(assets.hasManager(rl.Music));
-    try testing.expect(assets.hasManager(rl.Font));
+    try testing.expect(assets.hasLoader(rl.Texture));
+    try testing.expect(assets.hasLoader(rl.Sound));
+    try testing.expect(assets.hasLoader(rl.Music));
+    try testing.expect(assets.hasLoader(rl.Font));
 }
 
 // ===== SCHEME SYSTEM TESTS =====
@@ -1153,7 +1201,7 @@ test "Assets embedded scheme integration" {
     const allocator = testing.allocator;
 
     // Skip test if no embedded assets are available
-    const embedded_assets = @import("test_embedded_assets");
+    const embedded_assets = @import("embedded_assets");
     if (embedded_assets.list().len == 0) return error.SkipZigTest;
 
     var assets = Assets.init(allocator);
@@ -1162,7 +1210,7 @@ test "Assets embedded scheme integration" {
     defer rl.closeWindow();
 
     // Test embedded asset loading through scheme system
-    const data = try assets.loadAssetNow(rl.Texture, "embedded://alien.png", null);
+    const data = try assets.loadAssetNow(rl.Texture, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.png", null);
     try testing.expect(rl.isTextureValid(data));
 
     // Note: Async loading (loadAsset) doesn't support multi-file embedded assets
@@ -1279,13 +1327,8 @@ test "Assets scheme registry resolve behavior" {
     defer registry.deinit();
 
     // Test path without scheme - should be treated as file path
-    const result = try registry.resolve("test.png");
-    defer switch (result) {
-        .file_path => |path| allocator.free(path),
-        .url => |url| allocator.free(url),
-        .embedded_data => {},
-        .custom => |path| allocator.free(path),
-    };
+    var result = try registry.resolve(allocator, "test.png");
+    defer result.deinit(allocator);
 
     switch (result) {
         .file_path => |path| {

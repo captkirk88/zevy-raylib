@@ -10,6 +10,15 @@ pub const ResolveResult = union(enum) {
     embedded_data: []const u8,
     /// Custom resolver result (opaque data)
     custom: []const u8,
+
+    pub fn deinit(self: *ResolveResult, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .file_path => |path| allocator.free(path),
+            .url => |url| allocator.free(url),
+            .embedded_data => |data| allocator.free(data),
+            .custom => |data| allocator.free(data),
+        }
+    }
 };
 
 /// Scheme resolver interface - can resolve scheme://path to actual location
@@ -152,19 +161,19 @@ pub const SchemeRegistry = struct {
     }
 
     /// Resolve a URI using registered schemes
-    pub fn resolve(self: *SchemeRegistry, uri: []const u8) anyerror!ResolveResult {
+    pub fn resolve(self: *SchemeRegistry, allocator: std.mem.Allocator, uri: []const u8) anyerror!ResolveResult {
         if (std.mem.indexOf(u8, uri, "://")) |separator_pos| {
             const scheme = uri[0..separator_pos];
             const path = uri[separator_pos + 3 ..];
 
             if (self.resolvers.get(scheme)) |resolver| {
-                return resolver.resolve(self.allocator, path);
+                return resolver.resolve(allocator, path);
             }
             return error.UnknownScheme;
         }
 
         // No scheme - treat as regular file path
-        const owned_path = try self.allocator.dupe(u8, uri);
+        const owned_path = try allocator.dupe(u8, uri);
         return ResolveResult{ .file_path = owned_path };
     }
 
@@ -286,8 +295,8 @@ test "SchemeRegistry resolve file path" {
     defer registry.deinit();
 
     // Test regular file path (no scheme)
-    const result = try registry.resolve("test.txt");
-    defer allocator.free(result.file_path);
+    var result = try registry.resolve(allocator, "test.txt");
+    defer result.deinit(allocator);
 
     try testing.expect(result == .file_path);
     try testing.expectEqualStrings("test.txt", result.file_path);
@@ -303,8 +312,8 @@ test "SchemeRegistry resolve with file scheme" {
     var file_resolver = FileResolver{};
     try registry.registerScheme("file", SchemeResolver.init(&file_resolver));
 
-    const result = try registry.resolve("file://test.txt");
-    defer allocator.free(result.file_path);
+    var result = try registry.resolve(allocator, "file://test.txt");
+    defer result.deinit(allocator);
 
     try testing.expect(result == .file_path);
     try testing.expectEqualStrings("test.txt", result.file_path);
@@ -320,8 +329,8 @@ test "SchemeRegistry resolve with folder scheme" {
     var folder_resolver = FolderResolver.init("assets");
     try registry.registerScheme("assets", SchemeResolver.init(&folder_resolver));
 
-    const result = try registry.resolve("assets://player.png");
-    defer allocator.free(result.file_path);
+    var result = try registry.resolve(allocator, "assets://player.png");
+    defer result.deinit(allocator);
 
     try testing.expect(result == .file_path);
     try testing.expect(std.mem.endsWith(u8, result.file_path, "assets/player.png") or
@@ -338,8 +347,8 @@ test "SchemeRegistry resolve with URL scheme" {
     var url_resolver = UrlResolver.init("https://cdn.example.com");
     try registry.registerScheme("cdn", SchemeResolver.init(&url_resolver));
 
-    const result = try registry.resolve("cdn://texture.jpg");
-    defer allocator.free(result.url);
+    var result = try registry.resolve(allocator, "cdn://texture.jpg");
+    defer result.deinit(allocator);
 
     try testing.expect(result == .url);
     try testing.expectEqualStrings("https://cdn.example.com/texture.jpg", result.url);
@@ -352,7 +361,7 @@ test "SchemeRegistry unknown scheme error" {
     var registry = SchemeRegistry.init(allocator);
     defer registry.deinit();
 
-    const result = registry.resolve("unknown://test.txt");
+    const result = registry.resolve(allocator, "unknown://test.txt");
     try testing.expectError(error.UnknownScheme, result);
 }
 
@@ -400,7 +409,7 @@ test "SchemeRegistry environment resolver" {
     var env_resolver = EnvironmentResolver.init("dev_assets", "prod_assets", true);
     try registry.registerScheme("env", SchemeResolver.init(&env_resolver));
 
-    const result = try registry.resolve("env://config.json");
+    const result = try registry.resolve(allocator, "env://config.json");
     defer allocator.free(result.file_path);
 
     try testing.expect(result == .file_path);
@@ -449,7 +458,7 @@ test "SchemeRegistry complex URI parsing" {
     try registry.registerScheme("cdn", SchemeResolver.init(&url_resolver));
 
     for (test_cases) |uri| {
-        const result = try registry.resolve(uri);
+        const result = try registry.resolve(allocator, uri);
 
         switch (result) {
             .file_path => |path| {

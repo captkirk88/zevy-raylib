@@ -31,6 +31,33 @@ pub const TextureLoader = struct {
     }
 };
 
+pub const ImageLoader = struct {
+    pub const LoadSettings = struct {
+        // Example: add fields as needed
+    };
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Image {
+        _ = _settings; // Suppress unused parameter warning
+        _ = _file_resolver; // Simple loader doesn't need file resolver
+
+        // Use absolute path directly with raylib
+        const path_z = try std.heap.c_allocator.dupeZ(u8, absolute_path);
+        defer std.heap.c_allocator.free(path_z);
+        const image = try rl.loadImage(path_z);
+        if (!rl.isImageValid(image)) {
+            return error.OutOfMemoryCPU;
+        }
+        return image;
+    }
+
+    pub fn extensions() []const []const u8 {
+        return &[_][]const u8{ ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif" };
+    }
+
+    pub fn unload(_: @This(), image: rl.Image) void {
+        rl.unloadImage(image);
+    }
+};
+
 pub const SoundLoader = struct {
     pub const LoadSettings = struct {
         // Example: add fields as needed, e.g. streaming, format hints, etc.
@@ -178,5 +205,82 @@ pub const ShaderLoader = struct {
 
     pub fn unload(_: @This(), shader: rl.Shader) void {
         rl.unloadShader(shader);
+    }
+};
+
+pub const XmlDocumentLoader = struct {
+    pub const LoadSettings = struct {};
+
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!@import("../io/xml.zig").XmlDocument {
+        _ = _settings;
+        _ = _file_resolver;
+        const allocator = std.heap.page_allocator;
+        const file = try std.fs.openFileAbsolute(absolute_path, .{});
+        defer file.close();
+
+        const data = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+        // XmlDocument will take ownership of `data` and free it on deinit
+        return try @import("../io/xml.zig").XmlDocument.initFromSlice(allocator, data, .{});
+    }
+
+    pub fn extensions() []const []const u8 {
+        return &[_][]const u8{".xml"};
+    }
+
+    pub fn unload(_: @This(), doc: @import("../io/xml.zig").XmlDocument) void {
+        var d = doc;
+        d.deinit();
+    }
+};
+
+pub const XmlAtlasLoader = struct {
+    pub const LoadSettings = struct {};
+
+    pub fn load(_: @This(), absolute_path: []const u8, file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!@import("../io/xml_atlas.zig").XmlAtlas {
+        _ = _settings;
+
+        const allocator = std.heap.page_allocator;
+        const resolver = file_resolver orelse return error.RequiresFileResolver;
+
+        // Read XML file into memory
+        const file = try std.fs.openFileAbsolute(absolute_path, .{});
+        defer file.close();
+        const data = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10 MB limit
+
+        // Parse XML using XmlDocument and the reusable helper
+        const XmlDocument = @import("../io/xml.zig").XmlDocument;
+        var doc = try XmlDocument.initFromSlice(allocator, data, .{});
+        defer doc.deinit();
+
+        const parsed = try doc.parseTextureAtlas(allocator);
+        const rel = parsed.image_path orelse return error.InvalidFile;
+        const frames = parsed.frames;
+
+        var tex: rl.Texture = undefined;
+        var owns_tex: bool = true;
+
+        const base_dir = resolver.base_dir;
+        const image_path = try std.fs.path.join(allocator, &[_][]const u8{ base_dir, rel });
+        defer allocator.free(image_path);
+        tex = try resolver.loaders.loadNow(rl.Texture, image_path);
+        owns_tex = false;
+
+        // Build XmlAtlas (owns the texture)
+        const XmlAtlas = @import("../io/xml_atlas.zig").XmlAtlas;
+        return XmlAtlas{
+            .texture = tex,
+            .frames = frames,
+            .allocator = allocator,
+            .owns_texture = owns_tex,
+        };
+    }
+
+    pub fn extensions() []const []const u8 {
+        return &[_][]const u8{".xml"};
+    }
+
+    pub fn unload(_: @This(), atlas: @import("../io/xml_atlas.zig").XmlAtlas) void {
+        var a = atlas;
+        a.deinit();
     }
 };

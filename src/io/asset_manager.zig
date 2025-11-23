@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const AssetLoader = @import("loader.zig").AssetLoader;
+const Loaders = @import("loader.zig").Loaders;
 
 /// Handle type for loaded assets
 pub const AssetHandle = usize;
@@ -98,28 +99,20 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
 
     return struct {
         allocator: std.mem.Allocator,
+        loaders: *Loaders,
         mutex: std.Thread.Mutex,
         assets: std.StringHashMap(AssetEntry),
         queue: std.ArrayList(LoadRequest),
         loader: LoaderType,
 
-        pub fn initEx(allocator: std.mem.Allocator, loader: LoaderType) error{OutOfMemory}!@This() {
+        pub fn init(allocator: std.mem.Allocator, loader: LoaderType, loaders: *Loaders) error{OutOfMemory}!@This() {
             return @This(){
                 .allocator = allocator,
+                .loaders = loaders,
                 .mutex = std.Thread.Mutex{},
                 .assets = std.StringHashMap(AssetEntry).init(allocator),
                 .queue = try std.ArrayList(LoadRequest).initCapacity(allocator, 0),
                 .loader = loader,
-            };
-        }
-
-        pub fn init(allocator: std.mem.Allocator) error{OutOfMemory}!@This() {
-            return @This(){
-                .allocator = allocator,
-                .mutex = std.Thread.Mutex{},
-                .assets = std.StringHashMap(AssetEntry).init(allocator),
-                .queue = try std.ArrayList(LoadRequest).initCapacity(allocator, 0),
-                .loader = LoaderType{},
             };
         }
 
@@ -222,6 +215,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
                     .base_dir = asset_dir,
                     .resolve_path = fileResolverResolvePath,
                     .path_exists = fileResolverPathExists,
+                    .loaders = self.loaders,
                 };
                 break :blk &resolver_storage;
             } else null;
@@ -291,13 +285,15 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
                 return error.InvalidPath;
             }
 
+            // Quick check with mutex if already loaded
             self.mutex.lock();
-            defer self.mutex.unlock();
-
-            // Check if already loaded using direct string comparison
             if (self.assets.get(file)) |entry| {
-                return entry.id;
+                const existing = entry.id;
+                self.mutex.unlock();
+                return existing;
             }
+            // We will perform the potentially expensive loader.load OUTSIDE the mutex
+            self.mutex.unlock();
 
             // Convert to absolute path
             const absolute_path = try resolveAbsolutePath(self.allocator, file);
@@ -312,6 +308,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
                     .base_dir = asset_dir,
                     .resolve_path = fileResolverResolvePath,
                     .path_exists = fileResolverPathExists,
+                    .loaders = self.loaders,
                 };
                 break :blk &resolver_storage;
             } else null;
@@ -326,9 +323,21 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
                 .asset = asset,
             };
 
-            // Create owned key for HashMap
+            // Ensure no other thread loaded the same asset in the meantime
+            self.mutex.lock();
+            if (self.assets.get(file)) |existing_entry| {
+                // Someone else loaded it while we were loading; drop our asset and return existing id
+                const existing_id = existing_entry.id;
+                self.mutex.unlock();
+                // Unload the asset we created since manager will own the duplicate
+                self.loader.unload(asset);
+                return existing_id;
+            }
+
+            // Create owned key for HashMap and store the asset
             const owned_key = try self.allocator.dupe(u8, file);
             try self.assets.put(owned_key, entry);
+            self.mutex.unlock();
 
             return id;
         }
@@ -360,8 +369,9 @@ test "AssetManager multiple assets" {
             _ = asset; // usize doesn't need cleanup
         }
     };
-
-    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator);
+    var loaders = try Loaders.init(std.testing.allocator);
+    defer loaders.deinit();
+    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator, TestLoader{}, &loaders);
     defer manager.deinit();
 
     // Test with different settings types
@@ -403,8 +413,9 @@ test "AssetManager loadAssetNow" {
             std.testing.allocator.free(asset);
         }
     };
-
-    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator);
+    var loaders = try Loaders.init(std.testing.allocator);
+    defer loaders.deinit();
+    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator, TestLoader{}, &loaders);
     defer manager.deinit();
 
     // Load immediately with proper settings type
@@ -438,8 +449,9 @@ test "AssetManager path validation" {
         }
         pub fn unload(_: @This(), _: TestAsset) void {}
     };
-
-    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator);
+    var loaders = try Loaders.init(std.testing.allocator);
+    defer loaders.deinit();
+    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator, TestLoader{}, &loaders);
     defer manager.deinit();
 
     // Test loadAssetNow with invalid paths

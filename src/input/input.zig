@@ -35,6 +35,7 @@ pub const bindings = @import("input_bindings.zig");
 const input_man = @import("input_manager.zig");
 const serialize = @import("serialization.zig");
 pub const params = @import("params.zig");
+pub const icons = @import("icons.zig");
 
 // Raylib function bindings
 pub const RaylibBindings = input_man.RaylibBindings;

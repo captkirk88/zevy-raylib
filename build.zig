@@ -1,11 +1,6 @@
 const std = @import("std");
+const embed = @import("src/builtin/embed.zig");
 
-// Although this function looks imperative, it does not perform the build
-// directly and instead it mutates the build graph (`b`) that will be then
-// executed by an external runner. The functions in `std.Build` implement a DSL
-// for defining build steps and express dependencies between them, allowing the
-// build runner to parallelize the build automatically (and the cache system to
-// know when a step doesn't need to be re-run).
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
 
@@ -15,6 +10,11 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     }) orelse return error.KnownFolders_DepNotFound;
+
+    const xml_dep = b.lazyDependency("xml", .{
+        .target = target,
+        .optimize = optimize,
+    }) orelse return error.XML_DepNotFound;
 
     const zevy_ecs_dep = b.lazyDependency("zevy_ecs", .{
         .target = target,
@@ -42,23 +42,16 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "raylib", .module = raylib_dep.module("raylib") },
             .{ .name = "raygui", .module = raylib_dep.module("raygui") },
             .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
+            .{ .name = "xml", .module = xml_dep.module("xml") },
         },
     });
 
-    const embed = @import("src/builtin/embed.zig");
     const embed_opts: embed.EmbedAssetsOptions = .{
         .assets_dir = "embedded_assets/",
     };
+
     const embed_assets_mod = embed.addEmbeddedAssetsModule(b, target, optimize, mod, embed_opts) catch |err| {
         std.debug.panic("Failed to add embedded assets module: {s}\n", .{@errorName(err)});
-    };
-
-    _ = embed.addEmbeddedAssetsModule(b, target, optimize, mod, .{
-        .assets_dir = "embedded_assets/",
-        .import_name = "test_embedded_assets",
-        .generated_file = "test_embedded_assets/generated.zig",
-    }) catch |err| {
-        std.debug.panic("Failed to add test embedded assets module: {s}\n", .{@errorName(err)});
     };
 
     // Example executable that showcases manual plugin integration
