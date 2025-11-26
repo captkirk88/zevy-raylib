@@ -233,10 +233,10 @@ pub const XmlDocumentLoader = struct {
     }
 };
 
-pub const XmlAtlasLoader = struct {
+pub const InputIconsLoader = struct {
     pub const LoadSettings = struct {};
 
-    pub fn load(_: @This(), absolute_path: []const u8, file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!@import("../io/xml_atlas.zig").XmlAtlas {
+    pub fn load(_: @This(), absolute_path: []const u8, file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!@import("../io/types.zig").IconAtlas {
         _ = _settings;
 
         const allocator = std.heap.page_allocator;
@@ -265,9 +265,9 @@ pub const XmlAtlasLoader = struct {
         tex = try resolver.loaders.loadNow(rl.Texture, image_path);
         owns_tex = false;
 
-        // Build XmlAtlas (owns the texture)
-        const XmlAtlas = @import("../io/xml_atlas.zig").XmlAtlas;
-        return XmlAtlas{
+        // Build IconAtlas (owns the texture)
+        const IconAtlas = @import("../io/types.zig").IconAtlas;
+        return IconAtlas{
             .texture = tex,
             .frames = frames,
             .allocator = allocator,
@@ -279,7 +279,7 @@ pub const XmlAtlasLoader = struct {
         return &[_][]const u8{".xml"};
     }
 
-    pub fn unload(_: @This(), atlas: @import("../io/xml_atlas.zig").XmlAtlas) void {
+    pub fn unload(_: @This(), atlas: @import("../io/types.zig").IconAtlas) void {
         var a = atlas;
         a.deinit();
     }

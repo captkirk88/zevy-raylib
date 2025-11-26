@@ -60,6 +60,21 @@ pub fn isRelativePath(path: []const u8) bool {
     return !isAbsolutePath(path);
 }
 
+/// Extract the directory portion of a URI or path.
+/// For URIs with schemes (e.g., "embedded://dir/file.xml"), returns "embedded://dir/"
+/// For regular paths, returns the empty string (caller should use std.fs.path.dirname)
+pub fn getDirectoryUri(path: []const u8) []const u8 {
+    if (std.mem.indexOf(u8, path, "://")) |scheme_end| {
+        var i: usize = path.len;
+        while (i > scheme_end + 3) : (i -= 1) {
+            if (path[i - 1] == '/') {
+                return path[0..i];
+            }
+        }
+    }
+    return "";
+}
+
 /// Check if a path points to a directory
 pub fn isDirectory(path: []const u8) !bool {
     if (path.len == 0) return false;

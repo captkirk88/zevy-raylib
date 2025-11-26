@@ -58,8 +58,8 @@ pub const Assets = struct {
         self.addLoader(rl.Shader, loaders.ShaderLoader{}) catch @panic("Failed to add default shader manager");
         // Register XmlDocument manager, so XML files can be loaded/owned by Assets
         self.addLoader(@import("../io/xml.zig").XmlDocument, loaders.XmlDocumentLoader{}) catch @panic("Failed to add default xml manager");
-        // Register XML-based texture atlas loader (XmlAtlas asset)
-        self.addLoader(@import("../io/xml_atlas.zig").XmlAtlas, loaders.XmlAtlasLoader{}) catch @panic("Failed to add default xml atlas manager");
+        // Register input icon atlas loader
+        self.addLoader(@import("../io/types.zig").IconAtlas, loaders.InputIconsLoader{}) catch @panic("Failed to add default input icons loader");
         return self;
     }
 

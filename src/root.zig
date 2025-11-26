@@ -74,6 +74,7 @@ test "zevy_raylib" {
 test {
     std.testing.refAllDeclsRecursive(@import("io/root.zig"));
     std.testing.refAllDecls(@import("input/tests.zig"));
+    std.testing.refAllDecls(@import("input/render_tests.zig"));
     std.testing.refAllDeclsRecursive(io);
     std.testing.refAllDeclsRecursive(input);
     std.testing.refAllDeclsRecursive(ui);

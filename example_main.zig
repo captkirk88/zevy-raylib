@@ -18,6 +18,7 @@ const RaylibPlugin = zevy_raylib.RaylibPlugin;
 const UIPlugin = zevy_raylib.UIPlugin;
 const AssetsPlugin = zevy_raylib.AssetsPlugin;
 const InputPlugin = zevy_raylib.InputPlugin;
+const ParamRegistry = zevy_raylib.ParamRegistry;
 
 const CIRCLE_COUNT = 10_000;
 
@@ -181,10 +182,10 @@ pub fn main() !void {
     try plugin_manager.add(AssetsPlugin, .{});
 
     std.log.info("Adding InputPlugin...", .{});
-    try plugin_manager.add(InputPlugin(zevy_ecs.DefaultParamRegistry), .{});
+    try plugin_manager.add(InputPlugin(ParamRegistry), .{});
 
     std.log.info("Adding RayGuiPlugin...", .{});
-    try plugin_manager.add(UIPlugin(zevy_ecs.DefaultParamRegistry), .{});
+    try plugin_manager.add(UIPlugin(ParamRegistry), .{});
 
     // Build all plugins (this calls their build() methods)
     std.log.info("Building plugins...", .{});

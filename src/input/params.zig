@@ -9,10 +9,10 @@ pub const InputBindingsParam = struct {
         const type_info = @typeInfo(T);
         if (type_info == .pointer) {
             const Child = type_info.pointer.child;
-            if (Child == Bindings) {
-                return Child;
-            }
             return analyze(Child);
+        }
+        if (T == Bindings) {
+            return T;
         }
         return null;
     }
@@ -21,15 +21,16 @@ pub const InputBindingsParam = struct {
         if (e.hasResource(Bindings) == false) {
             const rel_mgr = Bindings.init(e.allocator);
             return e.addResource(Bindings, rel_mgr) catch |err| {
-                std.debug.panic("Failed to create RelationManager resource: {s}", .{@errorName(err)});
+                std.debug.panic("Failed to create InputManager resource: {s}", .{@errorName(err)});
             };
         }
-        return e.getResource(Bindings) orelse unreachable;
+        return e.getResource(Bindings) orelse std.debug.panic("Failed to get InputManager resource", .{}); // panic should not happen
     }
 
     pub fn deinit(e: *zevy_ecs.Manager, ptr: *anyopaque, comptime T: type) void {
         _ = e;
         _ = ptr;
         _ = T;
+        // Nothing to do, InputManager is owned by ECS resources
     }
 };

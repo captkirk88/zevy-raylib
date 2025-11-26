@@ -10,6 +10,10 @@ pub const EmbedAssetsOptions = struct {
     import_name: []const u8 = "embedded_assets",
     /// Generated Zig file path (relative inside zig cache) containing lookup helpers.
     generated_file: []const u8 = "embedded_assets/generated.zig",
+    /// Optional list of additional file paths to include (relative to repository root).
+    additional_files: ?[]const []const u8 = null,
+    /// Optional regex pattern for files to ignore (e.g., ".*\\.tmp$").
+    ignore_regex: ?[]const u8 = null,
 };
 
 /// Add a build dependency and return it.
@@ -84,33 +88,19 @@ fn copyDirRecursive(dir: std.fs.Dir, dest_root: []const u8, allocator: std.mem.A
 }
 
 /// Add build steps and a module to embed assets from a specified directory into the binary.
-pub fn addEmbeddedAssetsOption(b: *std.Build, exe: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, assets_folder: []const u8) !void {
-    var options = b.addOptions();
+pub fn addEmbeddedAssetsOption(
+    b: *std.Build,
+    exe: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    assets_folder: []const u8,
+) !void {
+    const options = EmbedAssetsOptions{
+        .assets_dir = assets_folder,
+    };
 
-    var files = try std.ArrayList([]const u8).initCapacity(b.allocator, 16);
-    defer files.deinit(b.allocator);
-
-    var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const path = try std.fs.cwd().realpath(assets_folder, buf[0..]);
-
-    var dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
-    var it = dir.iterate();
-    while (try it.next()) |file| {
-        if (file.kind != .file) {
-            continue;
-        }
-        try files.append(b.allocator, b.dupe(file.name));
-    }
-    options.addOption([]const []const u8, "files", files.items);
-    exe.step.dependOn(&options.step);
-
-    const assets = b.addModule("assets", .{
-        .root_source_file = options.getOutput(),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    exe.root_module.addImport("embedded", assets);
+    const embedded_module = try addEmbeddedAssetsModule(b, target, optimize, &exe.root_module, options);
+    exe.root_module.addImport("embedded", embedded_module);
 }
 
 /// Add a module that embeds assets from a specified directory into the binary.
@@ -129,7 +119,7 @@ pub fn addEmbeddedAssetsModule(
         asset_paths.deinit(allocator);
     }
 
-    const assets_root_opt = try collectEmbeddedAssets(allocator, options.assets_dir, &asset_paths);
+    const assets_root_opt = try collectEmbeddedAssets(allocator, options, &asset_paths);
     defer if (assets_root_opt) |root| allocator.free(root);
 
     const generated_file = try writeEmbeddedModule(b, options, asset_paths.items, assets_root_opt);
@@ -147,22 +137,41 @@ pub fn addEmbeddedAssetsModule(
 
 fn collectEmbeddedAssets(
     allocator: std.mem.Allocator,
-    assets_dir_path: []const u8,
+    options: EmbedAssetsOptions,
     asset_paths: *std.ArrayListUnmanaged([]const u8),
 ) anyerror!?[]const u8 {
-    var dir = std.fs.cwd().openDir(assets_dir_path, .{ .iterate = true, .access_sub_paths = true }) catch |err| switch (err) {
-        error.FileNotFound => return null,
+    var dir = std.fs.cwd().openDir(options.assets_dir, .{ .iterate = true, .access_sub_paths = true }) catch |err| switch (err) {
+        error.FileNotFound => {
+            // If directory doesn't exist but we have additional files, that's still valid
+            if (options.additional_files != null and options.additional_files.?.len > 0) {
+                return null;
+            }
+            return err;
+        },
         else => return err,
     };
     defer dir.close();
 
-    const abs_dir = try std.fs.cwd().realpathAlloc(allocator, assets_dir_path);
+    const abs_dir = try std.fs.cwd().realpathAlloc(allocator, options.assets_dir);
     errdefer allocator.free(abs_dir);
 
     var path_buffer = std.ArrayListUnmanaged(u8){};
     defer path_buffer.deinit(allocator);
 
-    try walkEmbeddedAssets(allocator, &dir, &path_buffer, asset_paths);
+    try walkEmbeddedAssets(allocator, &dir, &path_buffer, asset_paths, options.ignore_regex);
+
+    // Add optional additional files
+    if (options.additional_files) |additional| {
+        for (additional) |file_path| {
+            // Check if file should be ignored
+            if (shouldIgnorePath(file_path, options.ignore_regex)) {
+                continue;
+            }
+            const duplicated = try allocator.dupe(u8, file_path);
+            errdefer allocator.free(duplicated);
+            try asset_paths.append(allocator, duplicated);
+        }
+    }
 
     if (asset_paths.items.len > 1) {
         std.sort.heap([]const u8, asset_paths.items, {}, struct {
@@ -180,6 +189,7 @@ fn walkEmbeddedAssets(
     dir: *std.fs.Dir,
     path_buffer: *std.ArrayListUnmanaged(u8),
     asset_paths: *std.ArrayListUnmanaged([]const u8),
+    ignore_regex: ?[]const u8,
 ) anyerror!void {
     var iterator = dir.iterate();
     while (try iterator.next()) |entry| {
@@ -190,13 +200,20 @@ fn walkEmbeddedAssets(
                 try path_buffer.appendSlice(allocator, entry.name);
                 var child = try dir.openDir(entry.name, .{ .iterate = true, .access_sub_paths = true });
                 defer child.close();
-                try walkEmbeddedAssets(allocator, &child, path_buffer, asset_paths);
+                try walkEmbeddedAssets(allocator, &child, path_buffer, asset_paths, ignore_regex);
                 path_buffer.shrinkRetainingCapacity(original_len);
             },
             .file => {
                 const original_len = path_buffer.items.len;
                 if (original_len != 0) try path_buffer.append(allocator, '/');
                 try path_buffer.appendSlice(allocator, entry.name);
+
+                // Check if file should be ignored
+                if (shouldIgnorePath(path_buffer.items, ignore_regex)) {
+                    path_buffer.shrinkRetainingCapacity(original_len);
+                    continue;
+                }
+
                 const relative_path = try allocator.dupe(u8, path_buffer.items);
                 errdefer allocator.free(relative_path);
                 try asset_paths.append(allocator, relative_path);
@@ -205,6 +222,41 @@ fn walkEmbeddedAssets(
             else => {},
         }
     }
+}
+
+/// Check if a file path should be ignored based on a glob-like pattern.
+/// Supports simple patterns: *.ext, prefix*, *suffix, dir/*, etc.
+fn shouldIgnorePath(path: []const u8, pattern_opt: ?[]const u8) bool {
+    if (pattern_opt == null) return false;
+    const pattern = pattern_opt.?;
+
+    // Empty pattern ignores nothing
+    if (pattern.len == 0) return false;
+
+    // Simple glob pattern matching
+    // Supports: *.txt, *.*, dir/*, **/pattern, etc.
+
+    // If pattern starts with *, match suffix
+    if (std.mem.startsWith(u8, pattern, "*")) {
+        const suffix = pattern[1..];
+        if (suffix.len == 0) return true; // * matches everything
+        if (std.mem.startsWith(u8, suffix, "*")) {
+            // Handle ** patterns (match any path component)
+            if (suffix.len == 1) return true;
+            // ** followed by something - simplified: check if path contains the pattern
+            return std.mem.containsAtLeast(u8, path, 1, suffix[1..]);
+        }
+        return std.mem.endsWith(u8, path, suffix);
+    }
+
+    // If pattern ends with *, match prefix
+    if (std.mem.endsWith(u8, pattern, "*")) {
+        const prefix = pattern[0 .. pattern.len - 1];
+        return std.mem.startsWith(u8, path, prefix);
+    }
+
+    // Exact match
+    return std.mem.eql(u8, path, pattern);
 }
 
 fn writeEmbeddedModule(

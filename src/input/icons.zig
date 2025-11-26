@@ -3,6 +3,7 @@ const rl = @import("raylib");
 
 const xml = @import("../io/xml.zig");
 const Assets = @import("../io/assets.zig").Assets;
+const io_util = @import("../io/util.zig");
 const atlas = @import("../graphics/texture_atlas.zig");
 const TextureAtlas = atlas.TextureAtlas;
 const FrameRect = atlas.FrameRect;
@@ -42,7 +43,7 @@ pub const PromptAtlas = struct {
 };
 
 fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
-    // If an Assets pointer is provided, resolve the xml_path using its registry
+    // Resolve and parse the XML file, handling both file paths and scheme URIs
     var use_allocator: std.mem.Allocator = allocator;
     var document = if (assets) |a| blk: {
         use_allocator = a.allocator;
@@ -50,13 +51,11 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
 
         switch (resolved) {
             .file_path => |path| {
-                // path is owned by assets.allocator; open the file and then free
                 const doc = try xml.XmlDocument.openReader(use_allocator, path, .{});
                 resolved.deinit(allocator);
                 break :blk doc;
             },
             .embedded_data => |data| {
-                // data is allocated by assets.allocator; give ownership to XmlDocument
                 const doc = try xml.XmlDocument.initFromSlice(use_allocator, data, .{});
                 break :blk doc;
             },
@@ -72,52 +71,12 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
     } else try xml.XmlDocument.openReader(allocator, xml_path, .{});
     defer document.deinit();
 
-    // If we're given an Assets pointer and there's a registered XmlAtlas
-    // manager, prefer to load the parsed atlas via the asset system so we don't
-    // duplicate parsing logic. We skip loader-based loading for embedded assets
-    // since they can't find supplemental image files in the embedded namespace.
-    if (assets) |a| {
-        const XmlAtlas = @import("../io/xml_atlas.zig").XmlAtlas;
-
-        // Only try loader-based loading for non-embedded assets
-        var check_resolved = try a.resolve(allocator, xml_path);
-        const is_embedded = switch (check_resolved) {
-            .embedded_data => true,
-            else => false,
-        };
-        check_resolved.deinit(allocator);
-
-        if (!is_embedded and a.hasLoader(XmlAtlas)) {
-            // Try to load via XmlAtlasLoader for non-embedded assets
-            if (a.loadAssetNow(XmlAtlas, xml_path, null)) |asset_atlas| {
-                // Copy the frames into an IconTextureAtlas owned by use_allocator.
-                var frames = try std.ArrayList(IconFrame).initCapacity(use_allocator, asset_atlas.frameCount());
-                errdefer frames.deinit(use_allocator);
-
-                for (asset_atlas.frames.items) |f| {
-                    const name_copy = try use_allocator.dupe(u8, f.name);
-                    try frames.append(use_allocator, .{ .name = name_copy, .frame = f.frame });
-                }
-
-                // Build PromptAtlas: we do NOT own the texture (Assets manages it)
-                return PromptAtlas{
-                    .atlas = .{
-                        .texture = asset_atlas.texture,
-                        .frames = frames,
-                        .allocator = use_allocator,
-                    },
-                    .owned = false,
-                };
-            } else |_| {
-                // If XmlAtlasLoader failed, fall through to manual parsing
-            }
-        }
-    } // Use the shared XmlDocument parsing helper which returns imagePath and
-    // an ArrayList of NamedFrame entries allocated with `use_allocator`.
+    // Parse the XML document to extract frame data and image path
     const parsed = try document.parseTextureAtlas(use_allocator);
     var frames = parsed.frames;
     const image_path_rel = parsed.image_path;
-    // ensure frames get freed if we return early
+
+    // Guard against freeing frames if we return early
     var frames_owned: bool = true;
     defer if (frames_owned) {
         freeFrameNames(use_allocator, frames.items);
@@ -129,24 +88,12 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
 
     var texture: rl.Texture = undefined;
     if (assets) |a| {
-        // Build a uri relative to xml_path when xml_path contains a scheme
-        const scheme_pos = std.mem.indexOf(u8, xml_path, "://");
-        const has_scheme = scheme_pos != null;
-        var base_uri: []const u8 = "";
-        if (has_scheme) {
-            // Find the last slash in xml_path, if present
-            var last: ?usize = null;
-            var i: usize = xml_path.len;
-            while (i > 0) : (i -= 1) {
-                if (xml_path[i - 1] == '/') {
-                    last = i - 1;
-                    break;
-                }
-            }
-            if (last) |idx| base_uri = xml_path[0 .. idx + 1];
-        }
-
-        const final_uri = if (base_uri.len > 0) try std.mem.concat(use_allocator, u8, &[_][]const u8{ base_uri, rel_path }) else try std.fs.path.join(use_allocator, &[_][]const u8{ parent_dir orelse ".", rel_path });
+        // Construct the final path/URI for the image by combining the directory of xml_path with the relative image path
+        const base_uri = io_util.getDirectoryUri(xml_path);
+        const final_uri = if (base_uri.len > 0)
+            try std.mem.concat(use_allocator, u8, &[_][]const u8{ base_uri, rel_path })
+        else
+            try std.fs.path.join(use_allocator, &[_][]const u8{ parent_dir orelse ".", rel_path });
         defer use_allocator.free(final_uri);
 
         texture = try a.loadAssetNow(rl.Texture, final_uri, null);
@@ -164,8 +111,8 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
             return ParseError.InvalidTexture;
         }
     }
-    // We've transferred ownership of frames to the returned PromptAtlas, so
-    // prevent the defer from freeing them.
+
+    // Transfer ownership of frames to returned PromptAtlas
     frames_owned = false;
 
     if (!rl.isTextureValid(texture)) {
