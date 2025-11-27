@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const rl = @import("raylib");
 const man = @import("asset_manager.zig");
 const AssetManager = man.AssetManager;
-const AssetHandle = man.AssetHandle;
+pub const AssetHandle = man.AssetHandle;
 const loader_mod = @import("loader.zig");
 const loaders = @import("loaders.zig");
 const io_utils = @import("util.zig");
@@ -499,11 +499,11 @@ pub const Assets = struct {
         return try self.loadAssetFromData(AssetType, original_path, data, settings);
     }
 
-    pub fn get(self: *Assets, comptime AssetType: type, handle: AssetHandle) ?AssetType {
+    pub fn get(self: *Assets, comptime AssetType: type, handle: AssetHandle) ?*const AssetType {
         const hash = comptime std.hash_map.hashString(@typeName(AssetType));
         if (self.loaders.map.get(hash)) |entry| {
             if (entry.get_fn(entry.ptr, handle)) |asset_ptr| {
-                return @as(*AssetType, @ptrCast(@alignCast(asset_ptr))).*;
+                return @constCast(@as(*AssetType, @ptrCast(@alignCast(asset_ptr))));
             }
         }
         return null;
@@ -674,7 +674,7 @@ test "Assets multi-file queued cleanup" {
     // Check asset is loaded
     const tex_ptr = assets.get(rl.Texture, handle);
     try testing.expect(tex_ptr != null);
-    if (tex_ptr) |tp| try testing.expect(rl.isTextureValid(tp));
+    if (tex_ptr) |tp| try testing.expect(rl.isTextureValid(tp.*));
 }
 
 test "Assets loadAssetNow with various error conditions" {
@@ -791,8 +791,8 @@ test "Assets type safety" {
     const sound_handle: AssetHandle = 2;
 
     // Getting wrong type should return null (type mismatch)
-    try testing.expectEqual(@as(?rl.Sound, null), assets.get(rl.Sound, texture_handle));
-    try testing.expectEqual(@as(?rl.Texture, null), assets.get(rl.Texture, sound_handle));
+    try testing.expectEqual(@as(?*const rl.Sound, null), assets.get(rl.Sound, texture_handle));
+    try testing.expectEqual(@as(?*const rl.Texture, null), assets.get(rl.Texture, sound_handle));
 }
 
 test "Assets edge case file paths" {
@@ -922,12 +922,12 @@ test "Assets boundary conditions" {
     // Test with maximum handle ID
     const max_handle: AssetHandle = std.math.maxInt(usize);
     const result = assets.get(rl.Texture, max_handle);
-    try testing.expectEqual(@as(?rl.Texture, null), result);
+    try testing.expectEqual(@as(?*const rl.Texture, null), result);
 
     // Test with zero handle ID
     const zero_handle: AssetHandle = 0;
     const zero_result = assets.get(rl.Texture, zero_handle);
-    try testing.expectEqual(@as(?rl.Texture, null), zero_result);
+    try testing.expectEqual(@as(?*const rl.Texture, null), zero_result);
 }
 
 test "Assets error propagation" {

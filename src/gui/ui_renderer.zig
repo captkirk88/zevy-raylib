@@ -1,8 +1,10 @@
 const std = @import("std");
 const rl = @import("raylib");
 const rg = @import("raygui");
+const input = @import("../input/input.zig");
 const components = @import("ui_components.zig");
 const layout = @import("ui_layout.zig");
+const style_mod = @import("style.zig");
 
 // Re-export components for convenience
 pub const UIRect = components.UIRect;
@@ -398,5 +400,89 @@ pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void 
 
     if (!tab_bar.enabled) {
         rg.enable();
+    }
+}
+
+/// Render input key icons/text for a UI element.
+pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.InputKey, atlas: ?*const @import("../io/types.zig").IconAtlas, style: ?*style_mod.UIStyle) anyerror!void {
+    const st = if (style) |s| s.input_icon else style_mod.UIInputIconStyle.init();
+
+    var x: f32 = bounds.x + 4.0;
+    const y: f32 = bounds.y + (bounds.height - st.size) / 2.0;
+
+    for (keys) |chord| {
+        // Build a combined label for the chord: e.g., "Ctrl+E"
+        var buf: [256]u8 = undefined;
+        var pos: usize = 0;
+        for (chord, 0..) |k, i| {
+            if (i > 0) {
+                if (pos < buf.len) {
+                    buf[pos] = '+';
+                } else {
+                    break;
+                }
+                pos += 1;
+            }
+
+            switch (k) {
+                .keyboard => |kc| {
+                    const s = kc.toString();
+                    if (pos + s.len <= buf.len) std.mem.copyForwards(u8, buf[pos .. pos + s.len], s);
+                    pos += s.len;
+                },
+                .mouse => |mb| {
+                    const s = mb.toString();
+                    if (pos + s.len <= buf.len) std.mem.copyForwards(u8, buf[pos .. pos + s.len], s);
+                    pos += s.len;
+                },
+                .gamepad => |gp| {
+                    const button_name = gp.button.toString();
+                    const s = try std.fmt.bufPrint(buf[pos..], "Gamepad{d}_{s}", .{ gp.gamepad_id, button_name });
+                    pos += s.len;
+                },
+                .touch => |t| {
+                    const tn = t.input.toString();
+                    const s = try std.fmt.bufPrint(buf[pos..], "Touch{d}_{s}", .{ t.touch_id, tn });
+                    pos += s.len;
+                },
+                .gesture => |g| {
+                    const s = g.toString();
+                    if (pos + s.len <= buf.len) std.mem.copyForwards(u8, buf[pos .. pos + s.len], s);
+                    pos += s.len;
+                },
+            }
+            if (pos > buf.len) pos = buf.len;
+        }
+
+        // Prepare null-terminated label
+        if (pos >= buf.len) pos = buf.len - 1;
+        buf[pos] = 0;
+
+        // Try atlas frame first (exact match on combined label)
+        var drawn = false;
+        if (atlas) |a| {
+            var i: usize = 0;
+            const label_slice = buf[0..pos];
+            while (i < a.frames.items.len) : (i += 1) {
+                const f = a.frames.items[i];
+                if (std.mem.eql(u8, f.name, label_slice)) {
+                    const src = rl.Rectangle{ .x = @floatFromInt(f.frame.x), .y = @floatFromInt(f.frame.y), .width = @floatFromInt(f.frame.w), .height = @floatFromInt(f.frame.h) };
+                    const dest = rl.Rectangle{ .x = x, .y = y, .width = st.size, .height = st.size };
+                    rl.drawTexturePro(a.texture, src, dest, rl.Vector2.zero(), 0, st.tint);
+                    drawn = true;
+                    break;
+                }
+            }
+        }
+
+        if (!drawn) {
+            // Fallback: draw a small background box and the label via raygui
+            const label_rect = rl.Rectangle{ .x = x, .y = y, .width = st.size * 2.5, .height = st.size };
+            rl.drawRectangleRec(label_rect, st.tint);
+            const label_nt: [:0]const u8 = buf[0 .. pos + 1 :0];
+            _ = rg.label(label_rect, label_nt);
+        }
+
+        x += st.size * 2.5 + st.spacing;
     }
 }

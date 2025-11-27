@@ -17,7 +17,7 @@ pub const UIRect = struct {
         return .{ .x = x, .y = y, .width = width, .height = height };
     }
 
-    pub fn toRectangle(self: UIRect) rl.Rectangle {
+    pub fn toRectangle(self: *const UIRect) rl.Rectangle {
         return .{ .x = self.x, .y = self.y, .width = self.width, .height = self.height };
     }
 
@@ -25,12 +25,12 @@ pub const UIRect = struct {
         return .{ .x = rect.x, .y = rect.y, .width = rect.width, .height = rect.height };
     }
 
-    pub fn contains(self: UIRect, px: f32, py: f32) bool {
+    pub fn contains(self: *const UIRect, px: f32, py: f32) bool {
         return px >= self.x and px <= self.x + self.width and
             py >= self.y and py <= self.y + self.height;
     }
 
-    pub fn center(self: UIRect) struct { x: f32, y: f32 } {
+    pub fn center(self: *const UIRect) struct { x: f32, y: f32 } {
         return .{
             .x = self.x + self.width / 2.0,
             .y = self.y + self.height / 2.0,
@@ -441,5 +441,35 @@ pub const UILayer = struct {
 
     pub fn init(layer: i32) UILayer {
         return .{ .layer = layer };
+    }
+};
+
+const input = @import("../input/input.zig");
+
+/// Component representing a single input key or a small key chord associated with a UI element.
+/// Stores up to 4 keys inline to avoid allocator ownership in components.
+pub const UIInputKey = struct {
+    keys: [4]input.InputKey,
+    len: u8,
+
+    pub fn initSingle(key: input.InputKey) UIInputKey {
+        var k: [4]input.InputKey = undefined;
+        k[0] = key;
+        return UIInputKey{ .keys = k, .len = 1 };
+    }
+
+    pub fn initFromSlice(keys_slice: []const input.InputKey) UIInputKey {
+        var k: [4]input.InputKey = undefined;
+        var i: usize = 0;
+        while (i < keys_slice.len and i < k.len) : (i += 1) {
+            k[i] = keys_slice[i];
+        }
+        var count = keys_slice.len;
+        if (count > k.len) count = k.len;
+        return UIInputKey{ .keys = k, .len = @as(u8, @intCast(count)) };
+    }
+
+    pub fn asSlice(self: *const UIInputKey) []const input.InputKey {
+        return self.keys[0..@as(usize, self.len)];
     }
 };

@@ -9,63 +9,69 @@ const assets_plugin = @import("assets.plugin.zig");
 
 pub const ExitAppEvent = struct {};
 
-pub const RaylibPlugin = struct {
-    const Self = @This();
+pub fn RaylibPlugin(comptime ParamRegistry: type) type {
+    return struct {
+        const Self = @This();
 
-    title: [:0]const u8,
-    width: i32,
-    height: i32,
-    target_fps: i32 = 60,
-    log_level: rl.TraceLogLevel = .warning,
+        title: [:0]const u8,
+        width: i32,
+        height: i32,
+        target_fps: i32 = 60,
+        log_level: rl.TraceLogLevel = .warning,
 
-    pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
-        const log = std.log.scoped(.zevy_raylib);
-        const sch = try e.getOrAddResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator));
+        pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
+            const log = std.log.scoped(.zevy_raylib);
+            const sch = try e.getOrAddResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator));
 
-        try sch.registerEvent(e, ExitAppEvent);
+            try sch.registerEvent(
+                e,
+                ExitAppEvent,
+                ParamRegistry,
+            );
 
-        rl.setTraceLogLevel(self.log_level);
-        rl.initWindow(self.width, self.height, self.title);
-        log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
-        rl.initAudioDevice();
-        log.info("Audio device: {s}", .{if (rl.isAudioDeviceReady()) "Ready" else "Not Ready"});
+            rl.setTraceLogLevel(self.log_level);
+            rl.initWindow(self.width, self.height, self.title);
+            log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
+            rl.initAudioDevice();
+            log.info("Audio device: {s}", .{if (rl.isAudioDeviceReady()) "Ready" else "Not Ready"});
 
-        if (self.target_fps < 30) self.target_fps = 30;
-        rl.setTargetFPS(self.target_fps);
-    }
+            if (self.target_fps < 30) self.target_fps = 30;
+            rl.setTargetFPS(self.target_fps);
+        }
 
-    pub fn deinit(self: *Self, ecs: *zevy_ecs.Manager) void {
-        const log = std.log.scoped(.zevy_raylib);
-        _ = self;
-        _ = ecs;
-        rl.closeAudioDevice();
-        if (!rl.isAudioDeviceReady()) log.info("Audio device closed", .{}) else log.err("Audio device failed to close", .{});
-        rl.closeWindow();
-        if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
-    }
+        pub fn deinit(self: *Self, ecs: *zevy_ecs.Manager) void {
+            const log = std.log.scoped(.zevy_raylib);
+            _ = self;
+            _ = ecs;
+            rl.closeAudioDevice();
+            if (!rl.isAudioDeviceReady()) log.info("Audio device closed", .{}) else log.err("Audio device failed to close", .{});
+            rl.closeWindow();
+            if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
+        }
 
-    pub fn setWidth(self: *Self, width: i32) void {
-        self.width = width;
-        rl.setWindowSize(self.width, self.height);
-    }
+        pub fn setWidth(self: *Self, width: i32) void {
+            self.width = width;
+            rl.setWindowSize(self.width, self.height);
+        }
 
-    pub fn setHeight(self: *Self, height: i32) void {
-        self.height = height;
-        rl.setWindowSize(self.width, self.height);
-    }
+        pub fn setHeight(self: *Self, height: i32) void {
+            self.height = height;
+            rl.setWindowSize(self.width, self.height);
+        }
 
-    pub fn setTargetFPS(self: *Self, fps: i32) void {
-        self.target_fps = fps;
-        rl.setTargetFPS(self.target_fps);
-    }
+        pub fn setTargetFPS(self: *Self, fps: i32) void {
+            self.target_fps = fps;
+            rl.setTargetFPS(self.target_fps);
+        }
 
-    pub fn setLevel(self: *Self, level: rl.TraceLogLevel) void {
-        self.log_level = level;
-        rl.setTraceLogLevel(self.log_level);
-    }
+        pub fn setLevel(self: *Self, level: rl.TraceLogLevel) void {
+            self.log_level = level;
+            rl.setTraceLogLevel(self.log_level);
+        }
 
-    pub fn setTitle(self: *Self, title: [:0]const u8) void {
-        self.title = title;
-        rl.setWindowTitle(self.title);
-    }
-};
+        pub fn setTitle(self: *Self, title: [:0]const u8) void {
+            self.title = title;
+            rl.setWindowTitle(self.title);
+        }
+    };
+}

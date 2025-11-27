@@ -17,14 +17,12 @@ pub const InputBindingsParam = struct {
         return null;
     }
 
-    pub fn apply(e: *zevy_ecs.Manager, comptime _: type) *Bindings {
+    pub fn apply(e: *zevy_ecs.Manager, comptime _: type) anyerror!*Bindings {
         if (e.hasResource(Bindings) == false) {
             const rel_mgr = Bindings.init(e.allocator);
-            return e.addResource(Bindings, rel_mgr) catch |err| {
-                std.debug.panic("Failed to create InputManager resource: {s}", .{@errorName(err)});
-            };
+            return try e.addResource(Bindings, rel_mgr);
         }
-        return e.getResource(Bindings) orelse std.debug.panic("Failed to get InputManager resource", .{}); // panic should not happen
+        return e.getResource(Bindings) orelse return error.MissingInputManager;
     }
 
     pub fn deinit(e: *zevy_ecs.Manager, ptr: *anyopaque, comptime T: type) void {

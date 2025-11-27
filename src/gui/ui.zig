@@ -36,12 +36,12 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
                 try zevy_ecs.Scheduler.init(e.allocator),
             );
 
-            try scheduler.registerEvent(e, input.UIClickEvent);
-            try scheduler.registerEvent(e, input.UIHoverEvent);
-            try scheduler.registerEvent(e, input.UIValueChangedEvent);
-            try scheduler.registerEvent(e, input.UIToggleEvent);
-            try scheduler.registerEvent(e, input.UIFocusEvent);
-            try scheduler.registerEvent(e, input.UISelectionChangedEvent);
+            try scheduler.registerEvent(e, input.UIClickEvent, ParamRegistry);
+            try scheduler.registerEvent(e, input.UIHoverEvent, ParamRegistry);
+            try scheduler.registerEvent(e, input.UIValueChangedEvent, ParamRegistry);
+            try scheduler.registerEvent(e, input.UIToggleEvent, ParamRegistry);
+            try scheduler.registerEvent(e, input.UIFocusEvent, ParamRegistry);
+            try scheduler.registerEvent(e, input.UISelectionChangedEvent, ParamRegistry);
 
             scheduler.addSystem(
                 e,

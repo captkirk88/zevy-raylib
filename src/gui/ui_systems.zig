@@ -3,17 +3,26 @@ const rl = @import("raylib");
 const rg = @import("raygui");
 const zevy_ecs = @import("zevy_ecs");
 const input = @import("../input/input.zig");
+const io_types = @import("../io/types.zig");
 const components = @import("ui_components.zig");
 const layout = @import("ui_layout.zig");
 const renderer = @import("ui_renderer.zig");
+const icons = @import("../input/icons.zig");
+const Assets = @import("../io/assets.zig").Assets;
+const ui_resources = @import("resources.zig");
 
 pub fn startupUiSystem(
     manager: *zevy_ecs.Manager,
 ) !void {
-    _ = manager;
     rg.loadStyleDefault();
     const default_font = try rl.getFontDefault();
     rg.setFont(default_font);
+    // Register a default UIStyle resource so renderers can read styling values
+    const UIStyle = @import("style.zig").UIStyle;
+    // Populate the default style with the default font and register it. Ignore if already present.
+    var style = UIStyle.init();
+    style.font = default_font;
+    _ = manager.addResource(UIStyle, style) catch {};
 }
 
 const ChildInfo = struct {
@@ -354,15 +363,16 @@ fn positionChildren(
 /// );
 /// ```
 pub fn uiRenderSystem(
-    _: *zevy_ecs.Manager,
+    manager: *zevy_ecs.Manager,
     // Query for text labels
     text_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         text: components.UIText,
         visible: ?components.UIVisible,
     }, .{}),
-    // Query for buttons
+    // Query for buttons (include the entity so we can resolve relations)
     button_query: zevy_ecs.Query(struct {
+        entity: zevy_ecs.Entity,
         rect: components.UIRect,
         button: components.UIButton,
         visible: ?components.UIVisible,
@@ -445,7 +455,8 @@ pub fn uiRenderSystem(
         tab_bar: components.UITabBar,
         visible: ?components.UIVisible,
     }, .{}),
-) void {
+    rel: *zevy_ecs.Relations,
+) anyerror!void {
     // Render panels first (backgrounds)
     var panel_count: usize = 0;
     while (panel_query.next()) |q| {
@@ -478,10 +489,44 @@ pub fn uiRenderSystem(
         renderer.renderProgressBar(q.rect.*, q.progress.*, vis);
     }
 
-    // Render buttons
+    // Render buttons and their related input-key child entities
     while (button_query.next()) |q| {
+        const rect: *components.UIRect = q.rect;
         const vis = if (q.visible) |v| v.* else null;
         renderer.renderButton(q.rect.*, q.button, vis);
+
+        // Get all children related to this button. Child relation is indexed.
+        const children = rel.getChildren(q.entity, zevy_ecs.relations.Child);
+        if (children.len == 0) continue;
+
+        // Collect per-child chords into small stack buffers and build slice list
+        var chord_storage: [16][4]input.InputKey = undefined;
+        var chord_lens: [16]usize = undefined;
+        var chord_slices: [16][]const input.InputKey = undefined;
+        var chord_count: usize = 0;
+        for (children) |child| {
+            if (chord_count >= chord_storage.len) break;
+            if (try manager.getComponent(child, components.UIInputKey)) |ik| {
+                const s = ik.asSlice();
+                const copy_len = @min(s.len, chord_storage[chord_count].len);
+                for (s[0..copy_len], 0..) |k, i| chord_storage[chord_count][i] = k;
+                chord_lens[chord_count] = copy_len;
+                chord_slices[chord_count] = chord_storage[chord_count][0..copy_len];
+                chord_count += 1;
+            }
+        }
+        if (chord_count > 0) {
+            const atlas_handle_res = manager.getResource(ui_resources.UIIconAtlasHandle);
+            const assets_res = manager.getResource(Assets);
+            var atlas_ptr: ?*const io_types.IconAtlas = null;
+            if (atlas_handle_res) |h| {
+                if (assets_res) |a| {
+                    atlas_ptr = a.get(io_types.IconAtlas, h.handle).?;
+                }
+            }
+            const style_res = manager.getResource(@import("style.zig").UIStyle);
+            try renderer.renderInputKeysAt(rect.toRectangle(), chord_slices[0..chord_count], atlas_ptr, style_res);
+        }
     }
 
     // Render toggles
@@ -537,6 +582,15 @@ pub fn uiRenderSystem(
         const vis = if (q.visible) |v| v.* else null;
         renderer.renderMessageBox(q.rect.*, q.message_box, vis);
     }
+}
+
+/// Helper: load an IconAtlas via `Assets` and register it as an ECS resource.
+pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, path: []const u8) anyerror!void {
+    const IconAtlas = @import("../io/types.zig").IconAtlas;
+    const handle = try assets.loadAsset(IconAtlas, path, null);
+    // Register the handle as an ECS resource so systems can look it up via Assets.getAsset
+    const handle_res = try manager.addResource(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle));
+    _ = handle_res;
 }
 
 /// Layout calculation system for flex layouts

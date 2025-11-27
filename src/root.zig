@@ -31,7 +31,7 @@ pub const ParamRegistry = zevy_ecs.MergedSystemParamRegistry(&[_]type{
 pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) anyerror!void {
     _ = allocator;
     _ = ecs;
-    try plugs.add(RaylibPlugin, .{
+    try plugs.add(RaylibPlugin(ParamRegistry), .{
         .title = "Zevy Raylib App",
         .width = 1280,
         .height = 720,
@@ -46,10 +46,10 @@ test "zevy_raylib" {
         pub fn build(self: *@This(), e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
             _ = self;
             _ = e;
-            try std.testing.expect(plugin_manager.has(RaylibPlugin));
+            try std.testing.expect(plugin_manager.has(RaylibPlugin(ParamRegistry)));
             try std.testing.expect(plugin_manager.has(AssetsPlugin));
 
-            if (plugin_manager.get(RaylibPlugin)) |raylib_plug| {
+            if (plugin_manager.get(RaylibPlugin(ParamRegistry))) |raylib_plug| {
                 try std.testing.expect(std.mem.eql(u8, raylib_plug.title, "Zevy Raylib App"));
             } else {
                 try std.testing.expect(false);
@@ -65,7 +65,7 @@ test "zevy_raylib" {
     try plug(allocator, &plugs, &ecs);
     try plugs.add(TestPlugin, .{});
 
-    try std.testing.expect(plugs.get(RaylibPlugin) != null);
+    try std.testing.expect(plugs.get(RaylibPlugin(ParamRegistry)) != null);
     try std.testing.expect(plugs.get(AssetsPlugin) != null);
 
     try plugs.build(&ecs);

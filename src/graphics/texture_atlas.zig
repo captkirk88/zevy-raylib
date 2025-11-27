@@ -51,6 +51,11 @@ pub fn TextureAtlas(comptime FrameDataType: type) type {
         }
 
         const Self = @This();
+        /// Draw a frame by index into a destination rectangle with tint.
+        pub fn drawFrame(self: Self, frame_index: usize, dest: rl.Rectangle, tint: rl.Color) void {
+            const src = self.getFrameRect(frame_index) orelse return;
+            rl.drawTexturePro(self.texture, src, dest, rl.Vector2.zero(), 0, tint);
+        }
     };
 }
 

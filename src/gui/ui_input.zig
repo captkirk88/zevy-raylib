@@ -32,6 +32,13 @@ const zevy_ecs = @import("zevy_ecs");
 const input = @import("../input/input.zig");
 const components = @import("ui_components.zig");
 
+const PrevPressed = struct {
+    keys: [64]input.InputKey = undefined,
+    len: usize = 0,
+};
+
+// Module-level `last_hovered_entity` removed in favor of Local system params.
+
 // =============================================================================
 // UI INTERACTION EVENTS
 // =============================================================================
@@ -136,7 +143,7 @@ pub fn setupUIInputBindings(input_mgr: *input.InputManager, allocator: std.mem.A
     var gamepad_confirm = input.InputChord.init(allocator);
     try gamepad_confirm.add(allocator, input.InputKey{ .gamepad = .{
         .gamepad_id = 0,
-        .button = .left_face_down,
+        .button = .right_face_down,
     } });
     try input_mgr.addBinding(.{
         .chord = gamepad_confirm,
@@ -148,7 +155,7 @@ pub fn setupUIInputBindings(input_mgr: *input.InputManager, allocator: std.mem.A
     var gamepad_cancel = input.InputChord.init(allocator);
     try gamepad_cancel.add(allocator, input.InputKey{ .gamepad = .{
         .gamepad_id = 0,
-        .button = .left_face_right,
+        .button = .right_face_right,
     } });
     try input_mgr.addBinding(.{
         .chord = gamepad_cancel,
@@ -182,6 +189,14 @@ pub fn setupUIInputBindings(input_mgr: *input.InputManager, allocator: std.mem.A
         .action = try input.InputAction.init(allocator, "ui_cancel", "UI cancel/back"),
         .enabled = true,
     });
+
+    var back_cancel = input.InputChord.init(allocator);
+    try back_cancel.add(allocator, input.InputKey{ .keyboard = .key_backspace });
+    try input_mgr.addBinding(.{
+        .chord = back_cancel,
+        .action = try input.InputAction.init(allocator, "ui_cancel", "UI cancel/back"),
+        .enabled = true,
+    });
 }
 
 // =============================================================================
@@ -196,8 +211,12 @@ pub fn uiInteractionDetectionSystem(
     input_mgr: zevy_ecs.Res(input.InputManager),
     click_writer: zevy_ecs.EventWriter(UIClickEvent),
     hover_writer: zevy_ecs.EventWriter(UIHoverEvent),
+    // Local persistent storage: last hovered entity and previous pressed keys
+    last_hover: *zevy_ecs.Local(zevy_ecs.Entity),
+    prev_pressed: *zevy_ecs.Local(PrevPressed),
 
     // Query for buttons
+    rel: *zevy_ecs.Relations,
     button_query: zevy_ecs.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -205,14 +224,49 @@ pub fn uiInteractionDetectionSystem(
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
-    _ = manager;
 
     // Get input position (handles mouse/touch automatically)
     const cursor_pos = input.getMousePosition() orelse return;
 
-    // Check if click action was triggered this frame
-    const click_triggered = input_mgr.ptr.wasActionTriggered("ui_click") or
-        input_mgr.ptr.wasActionTriggered("ui_confirm");
+    // Check if click action was triggered this frame. Separate mouse/touch
+    // ('ui_click') from confirm (keyboard/gamepad, 'ui_confirm') so we can
+    // avoid double-toggling when raygui already handles mouse toggles during
+    // rendering.
+    const click_triggered_click = input_mgr.ptr.wasActionTriggered("ui_click");
+    const click_triggered_confirm = input_mgr.ptr.wasActionTriggered("ui_confirm");
+
+    // Temporary debug: if a confirm action was detected, log cursor and action.
+    if (click_triggered_confirm) {
+        std.log.info("ui_confirm triggered", .{});
+    }
+
+    // Local params are provided as pointers; use them directly
+    var last_hover_mut = last_hover;
+    var prev_pressed_mut = prev_pressed;
+
+    // Build a small list of newly-pressed keys compared to the previous frame
+    const current_keys = input_mgr.ptr.getCurrentState().getPressed();
+    var newly_pressed: [64]input.InputKey = undefined;
+    var newly_len: usize = 0;
+
+    var prev_slice: []const input.InputKey = current_keys[0..0];
+    if (prev_pressed_mut.value()) |pp| {
+        prev_slice = pp.keys[0..pp.len];
+    }
+
+    for (current_keys) |ck| {
+        var found = false;
+        for (prev_slice) |pk| {
+            if (pk.eql(ck)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            newly_pressed[newly_len] = ck;
+            newly_len += 1;
+        }
+    }
 
     // Process buttons
     while (button_query.next()) |item| {
@@ -229,8 +283,9 @@ pub fn uiInteractionDetectionSystem(
         const was_hovered = item.button.hovered;
         item.button.*.hovered = is_hovered;
 
-        // Emit hover events on state change
+        // Emit hover events on state change and remember last hovered
         if (is_hovered and !was_hovered) {
+            last_hover_mut.set(item.entity);
             hover_writer.write(.{
                 .entity = item.entity,
                 .position = cursor_pos,
@@ -245,25 +300,105 @@ pub fn uiInteractionDetectionSystem(
         }
 
         // Handle clicks
-        if (is_hovered and click_triggered and item.button.enabled) {
-            // For toggle buttons, toggle the pressed state on click
-            if (item.button.style == .toggle) {
-                item.button.*.pressed = !item.button.*.pressed;
-            } else {
-                // For default and flat buttons, just set pressed for this frame
-                item.button.*.pressed = true;
+        // Handle clicks. We distinguish mouse/touch ('ui_click') from
+        // confirm (keyboard/gamepad, 'ui_confirm'). For keyboard/gamepad
+        // confirms we allow acting on the last hovered button (so Enter
+        // works even if the mouse moved away). For toggle-styled UIButtons
+        // we avoid toggling on mouse clicks because `rg.toggle` performs
+        // mouse-driven toggling during rendering; we only toggle on
+        // confirm actions.
+        // hovered state and last-hover tracking are updated above; we do not
+        // require hovered_effective for confirm activation anymore.
+
+        if (item.button.enabled) {
+            // Activated by mouse/touch click
+            const activated_by_mouse = is_hovered and click_triggered_click;
+            // Activated by keyboard/gamepad confirm (don't require hover;
+            // we'll only activate if the entity has a matching UIInputKey child)
+            const activated_by_confirm = click_triggered_confirm;
+
+            // Activated by a direct InputKey press that matches a child's UIInputKey
+            var activated_by_keypress: bool = false;
+            if (newly_len > 0) {
+                const children = rel.getChildren(item.entity, zevy_ecs.relations.Child);
+                for (children) |child| {
+                    if (activated_by_keypress) break;
+                    if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
+                        const slice = ik.asSlice();
+                        for (slice) |k| {
+                            var j: usize = 0;
+                            while (j < newly_len) : (j += 1) {
+                                if (k.eql(newly_pressed[j])) {
+                                    activated_by_keypress = true;
+                                    break;
+                                }
+                            }
+                            if (activated_by_keypress) break;
+                        }
+                    }
+                }
             }
-            click_writer.write(.{
-                .entity = item.entity,
-                .input_device = .mouse, // TODO: Detect actual device from InputManager
-                .position = cursor_pos,
-                .button = .left,
-            });
-        } else if (item.button.style != .toggle) {
-            // Only reset pressed state for non-toggle buttons when not clicking
-            item.button.*.pressed = false;
+
+            // If confirm was triggered but we didn't detect the key in newly_pressed
+            // (e.g., held keys or matching via action), also consider current
+            // pressed keys as a fallback so entities that declare the input
+            // are activated even without hover.
+            if (!activated_by_keypress and click_triggered_confirm) {
+                const children2 = rel.getChildren(item.entity, zevy_ecs.relations.Child);
+                for (children2) |child| {
+                    if (activated_by_keypress) break;
+                    if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
+                        const slice = ik.asSlice();
+                        for (slice) |k| {
+                            for (current_keys) |ck| {
+                                if (k.eql(ck)) {
+                                    activated_by_keypress = true;
+                                    break;
+                                }
+                            }
+                            if (activated_by_keypress) break;
+                        }
+                    }
+                }
+            }
+
+            if (activated_by_mouse) {
+                if (item.button.style != .toggle) {
+                    item.button.*.pressed = true;
+                }
+                click_writer.write(.{
+                    .entity = item.entity,
+                    .input_device = .mouse,
+                    .position = cursor_pos,
+                    .button = .left,
+                });
+            } else if (activated_by_confirm or activated_by_keypress) {
+                if (item.button.style == .toggle) {
+                    item.button.*.pressed = !item.button.*.pressed;
+                } else {
+                    item.button.*.pressed = true;
+                }
+                click_writer.write(.{
+                    .entity = item.entity,
+                    .input_device = .mouse,
+                    .position = cursor_pos,
+                    .button = .left,
+                });
+            } else if (item.button.style != .toggle) {
+                // Only reset pressed state for non-toggle buttons when not clicking
+                item.button.*.pressed = false;
+            }
         }
     }
+
+    // Update Local prev_pressed with current keys snapshot for next frame
+    var newprev: PrevPressed = PrevPressed{};
+    var idx: usize = 0;
+    while (idx < current_keys.len and idx < newprev.keys.len) : (idx += 1) {
+        newprev.keys[idx] = current_keys[idx];
+    }
+    newprev.len = @min(current_keys.len, newprev.keys.len);
+    prev_pressed_mut.set(newprev);
 }
 
 /// Slider interaction detection system

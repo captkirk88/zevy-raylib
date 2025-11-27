@@ -11,15 +11,31 @@ const SKIP_IN_DEBUG = true;
 const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
+// Small helper system used only in tests to ensure InputManager.update() is called
+fn testInputUpdateSystem(manager: *zevy_ecs.Manager, input_mgr: zevy_ecs.Res(input.InputManager)) !void {
+    _ = manager;
+    try input_mgr.ptr.update();
+}
+
 fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     const allocator = std.testing.allocator;
 
     rl.initWindow(800, 600, name);
 
     var ecs = try zevy_ecs.Manager.init(allocator);
-    _ = try ecs.addResource(input.InputManager, .init(allocator));
+    const input_mgr_res = try ecs.addResource(input.InputManager, .init(allocator));
+    // Register default UI input bindings for tests (Enter/Space/Gamepad A/etc.)
+    ui.input.setupUIInputBindings(input_mgr_res, allocator) catch |err| {
+        std.log.err("Failed to setup UI input bindings in test: {s}", .{@errorName(err)});
+        return err;
+    };
     var sch = try ecs.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(ecs.allocator));
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
+
+    // Ensure the InputManager is updated each frame before UI interaction detection
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), testInputUpdateSystem, zevy_ecs.DefaultParamRegistry);
+
+    // UI interaction detection relies on InputManager having been updated
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), ui.input.uiInteractionDetectionSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.anchorLayoutSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
@@ -96,12 +112,18 @@ test "Render Button flat" {
         deinitTest(&ecs);
     }
 
-    _ = ecs.create(.{
+    const btn = ecs.create(.{
         comps.UIRect.init(350, 250, 100, 50),
         comps.UIButton.init("Click Me").withStyle(.flat),
-        //comps.UIVisible.init(true),
-        //comps.UILayer.init(1),
     });
+
+    // Attach an input-key child so the renderer/system can show the prompt
+    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const icon_child = ecs.create(.{
+        comps.UIRect.init(0, 0, 16, 16),
+        comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
+    });
+    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.Manager) void {
@@ -121,12 +143,18 @@ test "Render Button toggle" {
         deinitTest(&ecs);
     }
 
-    _ = ecs.create(.{
+    const btn = ecs.create(.{
         comps.UIRect.init(350, 250, 100, 50),
         comps.UIButton.init("Click Me").withStyle(.toggle),
-        //comps.UIVisible.init(true),
-        //comps.UILayer.init(1),
     });
+
+    // Attach an input-key child so the renderer/system can show the prompt
+    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const icon_child = ecs.create(.{
+        comps.UIRect.init(0, 0, 16, 16),
+        comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
+    });
+    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.Manager) void {
@@ -304,6 +332,46 @@ test "Render Dock Layout" {
         fn run(e: *zevy_ecs.Manager) void {
             _ = e;
             // No per-frame logic required for this test
+        }
+    }.run);
+}
+
+test "Render Two Buttons Same Input" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
+    var ecs = try initTest("Render Two Buttons Same Input");
+    defer deinitTest(&ecs);
+
+    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+
+    const btn_a = ecs.create(.{
+        comps.UIRect.init(200, 200, 140, 50),
+        comps.UIButton.init("Button A").withStyle(.toggle),
+    });
+
+    const btn_b = ecs.create(.{
+        comps.UIRect.init(360, 200, 140, 50),
+        comps.UIButton.init("Button B").withStyle(.toggle),
+    });
+
+    // Attach identical input-key children (Enter) to both buttons
+    const icon_a = ecs.create(.{
+        comps.UIRect.init(0, 0, 16, 16),
+        comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
+    });
+    try rel.add(&ecs, icon_a, btn_a, zevy_ecs.relations.Child);
+
+    const icon_b = ecs.create(.{
+        comps.UIRect.init(0, 0, 16, 16),
+        comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
+    });
+    try rel.add(&ecs, icon_b, btn_b, zevy_ecs.relations.Child);
+
+    try testLoop(&ecs, struct {
+        fn run(e: *zevy_ecs.Manager) void {
+            _ = e;
         }
     }.run);
 }

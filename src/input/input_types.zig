@@ -371,7 +371,7 @@ pub const GamepadButton = enum(c_int) {
     left_face_left = @intFromEnum(rl.GamepadButton.left_face_left),
     /// Cross/Y/Bottom button
     right_face_up = @intFromEnum(rl.GamepadButton.right_face_up),
-    // Circle/B/Right button
+    /// Circle/B/Right button
     right_face_right = @intFromEnum(rl.GamepadButton.right_face_right),
     /// Square/X/Left button
     right_face_down = @intFromEnum(rl.GamepadButton.right_face_down),
