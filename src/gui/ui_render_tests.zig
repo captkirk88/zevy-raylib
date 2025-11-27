@@ -5,6 +5,7 @@ const ui = @import("ui.zig");
 const layouts = ui.layout;
 const comps = ui.components;
 const input = @import("../input/input.zig");
+const style = @import("style.zig");
 
 const SKIP_IN_DEBUG = true;
 
@@ -12,8 +13,13 @@ const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
 // Small helper system used only in tests to ensure InputManager.update() is called
-fn testInputUpdateSystem(manager: *zevy_ecs.Manager, input_mgr: zevy_ecs.Res(input.InputManager)) !void {
+fn testInputUpdateSystem(
+    manager: *zevy_ecs.Manager,
+    input_mgr: zevy_ecs.Res(input.InputManager),
+    style_res: zevy_ecs.Res(style.UIStyle),
+) !void {
     _ = manager;
+    _ = style_res;
     try input_mgr.ptr.update();
 }
 
@@ -25,19 +31,32 @@ fn focusDebugDrawSystem(
         rect: comps.UIRect,
         focus: comps.UIFocus,
         visible: ?comps.UIVisible,
+        enabled: ?comps.UIEnabled,
     }, .{}),
+    style_res: zevy_ecs.Res(style.UIStyle),
 ) void {
     _ = manager;
+    _ = style_res;
     while (query.next()) |item| {
-        if (item.visible) |v| {
+        const rect: *comps.UIRect = item.rect;
+        const visible: ?*comps.UIVisible = item.visible;
+        const enabled: ?*comps.UIEnabled = item.enabled;
+        if (visible) |v| {
             if (!v.visible) continue;
         }
-        const b = item.rect.toRectangle();
+
+        if (enabled) |en| {
+            if (en.state == comps.UIEnabled.UIState.disabled) continue;
+        }
+
+        const b = rect.toRectangle();
         rl.drawRectangleLinesEx(b, 2, rl.Color.magenta);
     }
 }
 
 fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
+    if (should_skip) return error.SkipZigTest;
+
     const allocator = std.testing.allocator;
 
     rl.initWindow(800, 600, name);
@@ -78,7 +97,8 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
     try scheduler.runStage(ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup));
 
     const start = std.time.milliTimestamp();
-    const max_duration_ms = 10 * std.time.ms_per_s; // Run for 10 seconds
+
+    const max_duration_ms = 2 * std.time.ms_per_s; // Run for 2 seconds
     while (!rl.windowShouldClose()) {
         const now = std.time.milliTimestamp();
         if (now - start >= max_duration_ms) break;
@@ -98,10 +118,6 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
 }
 
 test "Render Button default" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Button default");
     defer {
         deinitTest(&ecs);
@@ -123,10 +139,6 @@ test "Render Button default" {
 }
 
 test "Render Button flat" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Button flat");
     defer {
         deinitTest(&ecs);
@@ -154,10 +166,6 @@ test "Render Button flat" {
 }
 
 test "Render Button toggle" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Button toggle");
     defer {
         deinitTest(&ecs);
@@ -185,10 +193,6 @@ test "Render Button toggle" {
 }
 
 test "Render Flex Layout" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Flex Layout");
     defer {
         deinitTest(&ecs);
@@ -221,10 +225,6 @@ test "Render Flex Layout" {
 }
 
 test "Render Grid Layout" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Grid Layout");
     defer {
         deinitTest(&ecs);
@@ -255,10 +255,6 @@ test "Render Grid Layout" {
 }
 
 test "Render Anchor Layout" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Anchor Layout");
     defer {
         deinitTest(&ecs);
@@ -288,10 +284,6 @@ test "Render Anchor Layout" {
 }
 
 test "Render Dock Layout" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Dock Layout");
     defer {
         deinitTest(&ecs);
@@ -357,10 +349,6 @@ test "Render Dock Layout" {
 }
 
 test "Render Two Buttons Same Input" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("Render Two Buttons Same Input");
     defer deinitTest(&ecs);
 
@@ -397,10 +385,6 @@ test "Render Two Buttons Same Input" {
 }
 
 test "UI Focus Navigation Demo" {
-    if (should_skip) {
-        return error.SkipZigTest;
-    }
-
     var ecs = try initTest("UI Focus Navigation Demo");
     defer deinitTest(&ecs);
 
@@ -410,24 +394,24 @@ test "UI Focus Navigation Demo" {
     const btn1 = ecs.create(.{
         comps.UIRect.init(160, 240, 160, 48),
         comps.UIButton.init("First"),
-        comps.UIFocusable.init(),
+        comps.UIFocusable{},
     });
 
     const btn2 = ecs.create(.{
         comps.UIRect.init(340, 240, 160, 48),
         comps.UIButton.init("Second"),
-        comps.UIFocusable.init(),
+        comps.UIFocusable{},
     });
 
     const btn3 = ecs.create(.{
         comps.UIRect.init(520, 240, 160, 48),
         comps.UIButton.init("Third"),
-        comps.UIFocusable.init(),
+        comps.UIFocusable{},
     });
 
     // Give initial focus to the first button so navigation has a starting point
     // Add initial UIFocus
-    try ecs.addComponent(btn1, comps.UIFocus, comps.UIFocus{});
+    try ecs.addComponent(btn1, comps.UIFocus, .{});
     // Silence unused-variable warnings for the other entities
     _ = btn2;
     _ = btn3;

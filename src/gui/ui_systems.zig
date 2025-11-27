@@ -10,6 +10,7 @@ const renderer = @import("ui_renderer.zig");
 const icons = @import("../input/icons.zig");
 const Assets = @import("../io/assets.zig").Assets;
 const ui_resources = @import("resources.zig");
+const ui_style = @import("style.zig");
 
 pub fn startupUiSystem(
     manager: *zevy_ecs.Manager,
@@ -17,12 +18,10 @@ pub fn startupUiSystem(
     rg.loadStyleDefault();
     const default_font = try rl.getFontDefault();
     rg.setFont(default_font);
-    // Register a default UIStyle resource so renderers can read styling values
-    const UIStyle = @import("style.zig").UIStyle;
     // Populate the default style with the default font and register it. Ignore if already present.
-    var style = UIStyle.init();
+    var style = ui_style.UIStyle.init();
     style.font = default_font;
-    _ = manager.addResource(UIStyle, style) catch {};
+    _ = manager.addResource(ui_style.UIStyle, style) catch {};
 }
 
 const ChildInfo = struct {
@@ -376,84 +375,98 @@ pub fn uiRenderSystem(
         rect: components.UIRect,
         button: components.UIButton,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for toggles
     toggle_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         toggle: components.UIToggle,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for sliders
     slider_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         slider: components.UISlider,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for progress bars
     progress_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         progress: components.UIProgressBar,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for text boxes
     textbox_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         textbox: components.UITextBox,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for panels
     panel_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         panel: components.UIPanel,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for scroll panels
     scroll_panel_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         scroll_panel: components.UIScrollPanel,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for dropdowns
     dropdown_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         dropdown: components.UIDropdown,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for images
     image_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         image: components.UIImage,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for spinners
     spinner_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         spinner: components.UISpinner,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for color pickers
     color_picker_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         picker: components.UIColorPicker,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for list views
     list_view_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         list_view: components.UIListView,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for message boxes
     message_box_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         message_box: components.UIMessageBox,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     // Query for tab bars
     tab_bar_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
         tab_bar: components.UITabBar,
         visible: ?components.UIVisible,
+        enabled: ?components.UIEnabled,
     }, .{}),
     rel: *zevy_ecs.Relations,
 ) anyerror!void {
@@ -468,8 +481,10 @@ pub fn uiRenderSystem(
     // Render scroll panels
     while (scroll_panel_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderScrollPanel(q.rect.*, q.scroll_panel, vis);
     }
+    rg.setState(@intFromEnum(rg.State.normal));
 
     // Render images
     while (image_query.next()) |q| {
@@ -493,7 +508,9 @@ pub fn uiRenderSystem(
     while (button_query.next()) |q| {
         const rect: *components.UIRect = q.rect;
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderButton(q.rect.*, q.button, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
 
         // Get all children related to this button. Child relation is indexed.
         const children = rel.getChildren(q.entity, zevy_ecs.relations.Child);
@@ -524,70 +541,96 @@ pub fn uiRenderSystem(
                     atlas_ptr = a.get(io_types.IconAtlas, h.handle).?;
                 }
             }
-            const style_res = manager.getResource(@import("style.zig").UIStyle);
-            try renderer.renderInputKeysAt(rect.toRectangle(), chord_slices[0..chord_count], atlas_ptr, style_res);
+            const style_res = manager.getResource(ui_style.UIStyle);
+            var style_ptr: *ui_style.UIStyle = undefined;
+            if (style_res) |s| {
+                style_ptr = s;
+            } else {
+                // UIStyle should have been registered at startup; fall back to a temporary default.
+                var tmp_style = ui_style.UIStyle.init();
+                style_ptr = &tmp_style;
+            }
+            try renderer.renderInputKeysAt(rect.toRectangle(), chord_slices[0..chord_count], atlas_ptr, style_ptr);
         }
     }
 
     // Render toggles
     while (toggle_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderToggle(q.rect.*, q.toggle, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render sliders
     while (slider_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderSlider(q.rect.*, q.slider, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render text boxes
     while (textbox_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderTextBox(q.rect.*, q.textbox, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render dropdowns
     while (dropdown_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderDropdown(q.rect.*, q.dropdown, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render spinners
     while (spinner_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderSpinner(q.rect.*, q.spinner, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render color pickers
     while (color_picker_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderColorPicker(q.rect.*, q.picker, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render list views
     while (list_view_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderListView(q.rect.*, q.list_view, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render tab bars
     while (tab_bar_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
         renderer.renderTabBar(q.rect.*, q.tab_bar, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render message boxes last (modal overlays)
     while (message_box_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
+        if (q.enabled) |en| rg.setState(@intFromEnum(en.state)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderMessageBox(q.rect.*, q.message_box, vis);
+        rg.setState(@intFromEnum(rg.State.normal));
     }
 }
 
 /// Helper: load an IconAtlas via `Assets` and register it as an ECS resource.
-pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, path: []const u8) anyerror!void {
+pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, path: []const u8, settings: anytype) anyerror!void {
     const IconAtlas = @import("../io/types.zig").IconAtlas;
-    const handle = try assets.loadAsset(IconAtlas, path, null);
+    const handle = try assets.loadAsset(IconAtlas, path, settings);
     // Register the handle as an ECS resource so systems can look it up via Assets.getAsset
     const handle_res = try manager.addResource(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle));
     _ = handle_res;

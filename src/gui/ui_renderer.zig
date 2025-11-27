@@ -65,10 +65,6 @@ pub fn renderButton(rect: UIRect, button: *UIButton, visible: ?UIVisible) void {
 
     const bounds = rect.toRectangle();
 
-    if (!button.enabled) {
-        rg.disable();
-    }
-
     button.pressed = switch (button.style) {
         .default => rg.button(bounds, button.text),
         .toggle => blk: {
@@ -79,10 +75,6 @@ pub fn renderButton(rect: UIRect, button: *UIButton, visible: ?UIVisible) void {
     };
 
     button.hovered = rl.checkCollisionPointRec(rl.getMousePosition(), bounds);
-
-    if (!button.enabled) {
-        rg.enable();
-    }
 }
 
 /// Render a UI toggle/checkbox component
@@ -93,15 +85,8 @@ pub fn renderToggle(rect: UIRect, toggle: *UIToggle, visible: ?UIVisible) void {
 
     const bounds = rect.toRectangle();
 
-    if (!toggle.enabled) {
-        rg.disable();
-    }
-
     _ = rg.checkBox(bounds, toggle.text, &toggle.checked);
-
-    if (!toggle.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI slider component
@@ -112,10 +97,6 @@ pub fn renderSlider(rect: UIRect, slider: *UISlider, visible: ?UIVisible) void {
 
     const bounds = rect.toRectangle();
 
-    if (!slider.enabled) {
-        rg.disable();
-    }
-
     _ = rg.slider(
         bounds,
         slider.text_left,
@@ -125,9 +106,7 @@ pub fn renderSlider(rect: UIRect, slider: *UISlider, visible: ?UIVisible) void {
         slider.max_value,
     );
 
-    if (!slider.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI progress bar component
@@ -156,10 +135,6 @@ pub fn renderTextBox(rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) voi
 
     const bounds = rect.toRectangle();
 
-    if (!textbox.enabled) {
-        rg.disable();
-    }
-
     // Ensure buffer is null-terminated
     if (textbox.text_len < textbox.buffer.len) {
         textbox.buffer[textbox.text_len] = 0;
@@ -175,9 +150,7 @@ pub fn renderTextBox(rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) voi
     // Update text length
     textbox.text_len = std.mem.indexOf(u8, textbox.buffer, &[_]u8{0}) orelse textbox.buffer.len;
 
-    if (!textbox.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI panel component
@@ -226,9 +199,7 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
 
     const bounds = rect.toRectangle();
 
-    if (!dropdown.enabled) {
-        return;
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 
     // Join items with semicolons for raygui
     var buffer: [1024]u8 = undefined;
@@ -249,9 +220,7 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
         &dropdown.active,
     );
 
-    if (!dropdown.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI image component
@@ -286,10 +255,6 @@ pub fn renderSpinner(rect: UIRect, spinner: *UISpinner, visible: ?UIVisible) voi
 
     const bounds = rect.toRectangle();
 
-    if (!spinner.enabled) {
-        rg.disable();
-    }
-
     _ = rg.spinner(
         bounds,
         "",
@@ -299,9 +264,7 @@ pub fn renderSpinner(rect: UIRect, spinner: *UISpinner, visible: ?UIVisible) voi
         spinner.edit_mode,
     );
 
-    if (!spinner.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI color picker component
@@ -312,15 +275,8 @@ pub fn renderColorPicker(rect: UIRect, picker: *UIColorPicker, visible: ?UIVisib
 
     const bounds = rect.toRectangle();
 
-    if (!picker.enabled) {
-        rg.disable();
-    }
-
     _ = rg.colorPicker(bounds, "", &picker.color);
-
-    if (!picker.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI list view component
@@ -330,10 +286,6 @@ pub fn renderListView(rect: UIRect, list_view: *UIListView, visible: ?UIVisible)
     }
 
     const bounds = rect.toRectangle();
-
-    if (!list_view.enabled) {
-        rg.disable();
-    }
 
     // Join items with semicolons for raygui
     var buffer: [2048]u8 = undefined;
@@ -355,9 +307,7 @@ pub fn renderListView(rect: UIRect, list_view: *UIListView, visible: ?UIVisible)
         &list_view.active,
     );
 
-    if (!list_view.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI message box component
@@ -385,10 +335,6 @@ pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void 
 
     const bounds = rect.toRectangle();
 
-    if (!tab_bar.enabled) {
-        rg.disable();
-    }
-
     // Convert string slices to null-terminated pointers for raygui
     var tab_ptrs: [32][*:0]const u8 = undefined;
     const tab_count = @min(tab_bar.tabs.len, 32);
@@ -398,14 +344,12 @@ pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void 
 
     _ = rg.tabBar(bounds, tab_ptrs[0..tab_count], &tab_bar.active);
 
-    if (!tab_bar.enabled) {
-        rg.enable();
-    }
+    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render input key icons/text for a UI element.
-pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.InputKey, atlas: ?*const @import("../io/types.zig").IconAtlas, style: ?*style_mod.UIStyle) anyerror!void {
-    const st = if (style) |s| s.input_icon else style_mod.UIInputIconStyle.init();
+pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.InputKey, atlas: ?*const @import("../io/types.zig").IconAtlas, style: *style_mod.UIStyle) anyerror!void {
+    const st = style.input_icon;
 
     var x: f32 = bounds.x + 4.0;
     const y: f32 = bounds.y + (bounds.height - st.size) / 2.0;
@@ -427,12 +371,12 @@ pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.Input
             switch (k) {
                 .keyboard => |kc| {
                     const s = kc.toString();
-                    if (pos + s.len <= buf.len) std.mem.copyForwards(u8, buf[pos .. pos + s.len], s);
+                    if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
                     pos += s.len;
                 },
                 .mouse => |mb| {
                     const s = mb.toString();
-                    if (pos + s.len <= buf.len) std.mem.copyForwards(u8, buf[pos .. pos + s.len], s);
+                    if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
                     pos += s.len;
                 },
                 .gamepad => |gp| {
@@ -447,7 +391,7 @@ pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.Input
                 },
                 .gesture => |g| {
                     const s = g.toString();
-                    if (pos + s.len <= buf.len) std.mem.copyForwards(u8, buf[pos .. pos + s.len], s);
+                    if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
                     pos += s.len;
                 },
             }

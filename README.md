@@ -193,11 +193,10 @@ Registers the `InputManager` resource and attaches an input `update` system that
 
 ## Examples & Tests
 
-- `src/gui/examples.zig` — GUI usage examples
 - `src/input/tests.zig` — Input unit tests
-- `src/io/*_tests.zig` — IO tests for asset managers and loaders
+- `*_tests.zig` — IO tests for asset managers and loaders
 
-To run tests for the package use the workspace-level `zig build test` or per-package tests using `zig build test` inside the package directory.
+Some tests are ommitted on Debug builds. To test all use -Doptimize=Release(Safe/Small/Fast).
 
 ---
 
@@ -205,4 +204,4 @@ To run tests for the package use the workspace-level `zig build test` or per-pac
 
 - Follow existing Zig patterns
 - Register new plugins in `src/root.zig` by adding them to `plug()`
-- Add unit tests beside features in the `src/*` directory
+- Add unit tests beside features in the `src/*` directory. Prefer tests to be named `*_tests.zig`.

@@ -238,6 +238,7 @@ pub fn uiInteractionDetectionSystem(
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         button: components.UIButton,
+        enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
     }, .{}),
     // Query yielding currently-focused entities so we can clear focus on click
@@ -256,11 +257,6 @@ pub fn uiInteractionDetectionSystem(
     // rendering.
     const click_triggered_click = input_mgr.ptr.wasActionTriggered("ui_click");
     const click_triggered_confirm = input_mgr.ptr.wasActionTriggered("ui_confirm");
-
-    // Temporary debug: if a confirm action was detected, log cursor and action.
-    if (click_triggered_confirm) {
-        std.log.info("ui_confirm triggered", .{});
-    }
 
     // Local params are provided as pointers; use them directly
     var last_hover_mut = last_hover;
@@ -321,100 +317,102 @@ pub fn uiInteractionDetectionSystem(
             });
         }
 
-        if (item.button.enabled) {
-            // Activated by mouse/touch click
-            const activated_by_mouse = is_hovered and click_triggered_click;
-            // Activated by keyboard/gamepad confirm (don't require hover;
-            // we'll only activate if the entity has a matching UIInputKey child)
-            const activated_by_confirm = click_triggered_confirm;
+        // Skip if explicitly disabled via UIEnabled component
+        if (item.enabled) |en| {
+            if (en.state == .disabled) continue;
+        }
+        // Activated by mouse/touch click
+        const activated_by_mouse = is_hovered and click_triggered_click;
+        // Activated by keyboard/gamepad confirm (don't require hover;
+        // we'll only activate if the entity has a matching UIInputKey child)
+        const activated_by_confirm = click_triggered_confirm;
 
-            // Activated by a direct InputKey press that matches a child's UIInputKey
-            var activated_by_keypress: bool = false;
-            if (newly_len > 0) {
-                const children = rel.getChildren(item.entity, zevy_ecs.relations.Child);
-                for (children) |child| {
-                    if (activated_by_keypress) break;
-                    if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
-                        const slice = ik.asSlice();
-                        for (slice) |k| {
-                            var j: usize = 0;
-                            while (j < newly_len) : (j += 1) {
-                                if (k.eql(newly_pressed[j])) {
-                                    activated_by_keypress = true;
-                                    break;
-                                }
+        // Activated by a direct InputKey press that matches a child's UIInputKey
+        var activated_by_keypress: bool = false;
+        if (newly_len > 0) {
+            const children = rel.getChildren(item.entity, zevy_ecs.relations.Child);
+            for (children) |child| {
+                if (activated_by_keypress) break;
+                if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
+                    const slice = ik.asSlice();
+                    for (slice) |k| {
+                        var j: usize = 0;
+                        while (j < newly_len) : (j += 1) {
+                            if (k.eql(newly_pressed[j])) {
+                                activated_by_keypress = true;
+                                break;
                             }
-                            if (activated_by_keypress) break;
                         }
+                        if (activated_by_keypress) break;
                     }
                 }
             }
+        }
 
-            // If confirm was triggered but we didn't detect the key in newly_pressed
-            // (e.g., held keys or matching via action), also consider current
-            // pressed keys as a fallback so entities that declare the input
-            // are activated even without hover.
-            if (!activated_by_keypress and click_triggered_confirm) {
-                const children2 = rel.getChildren(item.entity, zevy_ecs.relations.Child);
-                for (children2) |child| {
-                    if (activated_by_keypress) break;
-                    if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
-                        const slice = ik.asSlice();
-                        for (slice) |k| {
-                            for (current_keys) |ck| {
-                                if (k.eql(ck)) {
-                                    activated_by_keypress = true;
-                                    break;
-                                }
+        // If confirm was triggered but we didn't detect the key in newly_pressed
+        // (e.g., held keys or matching via action), also consider current
+        // pressed keys as a fallback so entities that declare the input
+        // are activated even without hover.
+        if (!activated_by_keypress and click_triggered_confirm) {
+            const children2 = rel.getChildren(item.entity, zevy_ecs.relations.Child);
+            for (children2) |child| {
+                if (activated_by_keypress) break;
+                if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
+                    const slice = ik.asSlice();
+                    for (slice) |k| {
+                        for (current_keys) |ck| {
+                            if (k.eql(ck)) {
+                                activated_by_keypress = true;
+                                break;
                             }
-                            if (activated_by_keypress) break;
                         }
+                        if (activated_by_keypress) break;
                     }
                 }
             }
+        }
 
-            if (activated_by_mouse) {
-                if (item.button.style != .toggle) {
-                    item.button.*.pressed = true;
-                }
-                click_writer.write(.{
-                    .entity = item.entity,
-                    .input_device = .mouse,
-                    .position = cursor_pos,
-                    .button = .left,
-                });
+        if (activated_by_mouse) {
+            if (item.button.style != .toggle) {
+                item.button.*.pressed = true;
+            }
+            click_writer.write(.{
+                .entity = item.entity,
+                .input_device = .mouse,
+                .position = cursor_pos,
+                .button = .left,
+            });
 
-                // Change focus to the clicked element: remove UIFocus from any other
-                while (focus_query.next()) |fitem| {
-                    _ = manager.removeComponent(fitem.entity, components.UIFocus) catch null;
-                }
-                // Add UIFocus to this entity (if focusable)
-                if (manager.getComponent(item.entity, components.UIFocusable) catch null) |ff| {
-                    _ = ff;
+            // Change focus to the clicked element: remove UIFocus from any other
+            while (focus_query.next()) |fitem| {
+                _ = manager.removeComponent(fitem.entity, components.UIFocus) catch null;
+            }
+            // Add UIFocus to this entity (if focusable)
+            if (manager.getComponent(item.entity, components.UIFocusable) catch null) |ff| {
+                _ = ff;
+                _ = manager.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
+            } else {
+                // Consider common interactive components focusable by default
+                if (manager.getComponent(item.entity, components.UIButton) catch null) |b| {
+                    _ = b;
                     _ = manager.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
-                } else {
-                    // Consider common interactive components focusable by default
-                    if (manager.getComponent(item.entity, components.UIButton) catch null) |b| {
-                        _ = b;
-                        _ = manager.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
-                    }
                 }
-            } else if (activated_by_confirm or activated_by_keypress) {
-                if (item.button.style == .toggle) {
-                    item.button.*.pressed = !item.button.*.pressed;
-                } else {
-                    item.button.*.pressed = true;
-                }
-                click_writer.write(.{
-                    .entity = item.entity,
-                    .input_device = .mouse,
-                    .position = cursor_pos,
-                    .button = .left,
-                });
-            } else if (item.button.style != .toggle) {
-                // Only reset pressed state for non-toggle buttons when not clicking
-                item.button.*.pressed = false;
             }
+        } else if (activated_by_confirm or activated_by_keypress) {
+            if (item.button.style == .toggle) {
+                item.button.*.pressed = !item.button.*.pressed;
+            } else {
+                item.button.*.pressed = true;
+            }
+            click_writer.write(.{
+                .entity = item.entity,
+                .input_device = .mouse,
+                .position = cursor_pos,
+                .button = .left,
+            });
+        } else if (item.button.style != .toggle) {
+            // Only reset pressed state for non-toggle buttons when not clicking
+            item.button.*.pressed = false;
         }
     }
 
@@ -436,11 +434,14 @@ pub fn uiFocusNavigationSystem(
     input_mgr: zevy_ecs.Res(input.InputManager),
     rel: *zevy_ecs.Relations,
     last_hover: *zevy_ecs.Local(zevy_ecs.Entity),
+    focus_writer: zevy_ecs.EventWriter(UIFocusEvent),
     focus_query: zevy_ecs.Query(struct {
         entity: zevy_ecs.Entity,
         focusable: components.UIFocusable,
+        enabled: ?components.UIEnabled,
+        visible: ?components.UIVisible,
     }, .{}),
-) void {
+) !void {
     // manager is used below; no discard needed
 
     // If no focus action was pressed, nothing to do
@@ -451,7 +452,7 @@ pub fn uiFocusNavigationSystem(
     // (helper moved to top-level) use `isFocusable(manager, e)` below
 
     // Build ordered list of focusable entities (children of parent first)
-    var candidates = std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64) catch return;
+    var candidates = try std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64);
     defer candidates.deinit(manager.allocator);
 
     // If there's a currently focused entity, prefer siblings (children of its parent)
@@ -459,11 +460,19 @@ pub fn uiFocusNavigationSystem(
     // Find current focused entity
     var current_focused: ?zevy_ecs.Entity = null;
     // Consume the focus_query once and collect all focusable entities.
-    var all_focusables = std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64) catch return;
+    var all_focusables = try std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64);
     defer all_focusables.deinit(manager.allocator);
     while (focus_query.next()) |item| {
-        _ = all_focusables.append(manager.allocator, item.entity) catch continue;
-        if (manager.getComponent(item.entity, components.UIFocus) catch null) |f| {
+        // Skip invisible or explicitly disabled focusable entities
+        if (item.visible) |v| {
+            if (!v.visible) continue;
+        }
+        if (item.enabled) |en| {
+            if (en.state == .disabled) continue;
+        }
+
+        try all_focusables.append(manager.allocator, item.entity);
+        if (try manager.getComponent(item.entity, components.UIFocus)) |f| {
             _ = f;
             current_focused = item.entity;
         }
@@ -485,9 +494,9 @@ pub fn uiFocusNavigationSystem(
     if (focused_parent) |parent| {
         const children = rel.getChildren(parent, zevy_ecs.relations.Child);
         for (children) |child| {
-            if (manager.getComponent(child, components.UIFocusable) catch null) |f| {
+            if (try manager.getComponent(child, components.UIFocusable)) |f| {
                 _ = f;
-                _ = candidates.append(manager.allocator, child) catch continue;
+                try candidates.append(manager.allocator, child);
             }
         }
     }
@@ -503,7 +512,7 @@ pub fn uiFocusNavigationSystem(
             }
         }
         if (exists) continue;
-        _ = candidates.append(manager.allocator, e) catch continue;
+        try candidates.append(manager.allocator, e);
     }
 
     if (candidates.items.len == 0) return;
@@ -530,7 +539,7 @@ pub fn uiFocusNavigationSystem(
     // Find current focused entity index
     var current_index: ?usize = null;
     for (candidates.items, 0..) |ent, i| {
-        if (manager.getComponent(ent, components.UIFocus) catch null) |f| {
+        if (try manager.getComponent(ent, components.UIFocus)) |f| {
             _ = f;
             current_index = i;
             break;
@@ -540,16 +549,24 @@ pub fn uiFocusNavigationSystem(
     const next_index = if (current_index) |ci| (ci + 1) % candidates.items.len else 0;
     const prev_index = if (current_index) |ci| ((ci + candidates.items.len - 1) % candidates.items.len) else (candidates.items.len - 1);
 
-    // Remove focus from previous
+    // Remove focus from previous and emit event
     if (current_index) |ci| {
-        const prev_ent = candidates.items[ci];
-        _ = manager.removeComponent(prev_ent, components.UIFocus) catch null;
+        if (ci >= candidates.items.len) {
+            // defensive: current index no longer valid
+        } else {
+            const prev_ent = candidates.items[ci];
+            try manager.removeComponent(prev_ent, components.UIFocus);
+            focus_writer.write(.{ .entity = prev_ent, .gained = false });
+        }
     }
 
-    const new_ent = if (prev_pressed) prev_index else next_index;
-    const new_ent_ent = candidates.items[new_ent];
-    // Add focus to new entity
-    _ = manager.addComponent(new_ent_ent, components.UIFocus, .{}) catch null;
+    const chosen_index = if (prev_pressed) prev_index else next_index;
+    // defensive bounds check before accessing chosen entity
+    if (chosen_index >= candidates.items.len) return;
+    const chosen_ent_checked = candidates.items[chosen_index];
+    // Add focus to new entity and emit event
+    try manager.addComponent(chosen_ent_checked, components.UIFocus, components.UIFocus{});
+    focus_writer.write(.{ .entity = chosen_ent_checked, .gained = true });
 }
 
 /// Slider interaction detection system
@@ -562,6 +579,7 @@ pub fn sliderInteractionSystem(
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         slider: components.UISlider,
+        enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
@@ -581,7 +599,9 @@ pub fn sliderInteractionSystem(
         if (item.visible) |v| {
             if (!v.visible) continue;
         }
-        if (!item.slider.*.enabled) continue;
+        if (item.enabled) |en| {
+            if (en.state == .disabled) continue;
+        }
 
         const bounds = item.rect.toRectangle();
         const is_hovered = rl.checkCollisionPointRec(cursor_pos, bounds);
@@ -623,6 +643,7 @@ pub fn toggleInteractionSystem(
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         toggle: components.UIToggle,
+        enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
@@ -636,7 +657,9 @@ pub fn toggleInteractionSystem(
         if (item.visible) |v| {
             if (!v.visible) continue;
         }
-        if (!item.toggle.*.enabled) continue;
+        if (item.enabled) |en| {
+            if (en.state == .disabled) continue;
+        }
 
         const bounds = item.rect.toRectangle();
         const is_hovered = rl.checkCollisionPointRec(cursor_pos, bounds);
@@ -671,6 +694,7 @@ pub fn spinnerInteractionSystem(
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         spinner: components.UISpinner,
+        enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
@@ -683,7 +707,9 @@ pub fn spinnerInteractionSystem(
         if (item.visible) |v| {
             if (!v.visible) continue;
         }
-        if (!item.spinner.*.enabled) continue;
+        if (item.enabled) |en| {
+            if (en.state == .disabled) continue;
+        }
 
         const bounds = item.rect.toRectangle();
         const is_hovered = rl.checkCollisionPointRec(cursor_pos, bounds);
@@ -752,6 +778,7 @@ pub fn textBoxFocusSystem(
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         textbox: components.UITextBox,
+        enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
@@ -771,14 +798,27 @@ pub fn textBoxFocusSystem(
         const was_editing = item.textbox.*.edit_mode;
 
         if (click_triggered) {
-            if (is_hovered and item.textbox.*.enabled) {
-                item.textbox.*.edit_mode = true;
-
-                if (!was_editing) {
-                    focus_writer.write(.{
-                        .entity = item.entity,
-                        .gained = true,
-                    });
+            if (is_hovered) {
+                if (item.enabled) |en| {
+                    if (en.state == .disabled) {
+                        // disabled: don't enter edit mode
+                    } else {
+                        item.textbox.*.edit_mode = true;
+                        if (!was_editing) {
+                            focus_writer.write(.{
+                                .entity = item.entity,
+                                .gained = true,
+                            });
+                        }
+                    }
+                } else {
+                    item.textbox.*.edit_mode = true;
+                    if (!was_editing) {
+                        focus_writer.write(.{
+                            .entity = item.entity,
+                            .gained = true,
+                        });
+                    }
                 }
             } else if (was_editing) {
                 item.textbox.*.edit_mode = false;

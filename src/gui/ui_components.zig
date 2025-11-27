@@ -1,6 +1,5 @@
 const std = @import("std");
 const rl = @import("raylib");
-const rg = @import("raygui");
 
 // =============================================================================
 // UI COMPONENT TYPES
@@ -78,7 +77,6 @@ pub const UIText = struct {
 /// Button component with state tracking
 pub const UIButton = struct {
     text: [:0]const u8 = "",
-    enabled: bool = true,
     pressed: bool = false,
     hovered: bool = false,
     style: ButtonStyle = .default,
@@ -99,12 +97,8 @@ pub const UIButton = struct {
         return result;
     }
 
-    pub fn setEnabled(self: *UIButton, enabled: bool) void {
-        self.enabled = enabled;
-    }
-
     pub fn isPressed(self: UIButton) bool {
-        return self.pressed and self.enabled;
+        return self.pressed;
     }
 };
 
@@ -112,16 +106,14 @@ pub const UIButton = struct {
 pub const UIToggle = struct {
     checked: bool = false,
     text: [:0]const u8 = "",
-    enabled: bool = true,
+    // enabled removed; use `UIEnabled` component to control state
 
     pub fn init(text: [:0]const u8, checked: bool) UIToggle {
         return .{ .text = text, .checked = checked };
     }
 
     pub fn toggle(self: *UIToggle) void {
-        if (self.enabled) {
-            self.checked = !self.checked;
-        }
+        self.checked = !self.checked;
     }
 };
 
@@ -132,9 +124,7 @@ pub const UIFocus = struct {
 
 /// Marker/flag that an entity can receive focus. If present, the focus
 /// navigation system will include the entity when cycling focusable elements.
-pub const UIFocusable = struct {
-    pub fn init() UIFocusable { return UIFocusable{}; }
-};
+pub const UIFocusable = struct {};
 
 /// Slider component for numeric values
 pub const UISlider = struct {
@@ -144,7 +134,6 @@ pub const UISlider = struct {
     text_left: [:0]const u8 = "",
     text_right: [:0]const u8 = "",
     show_value: bool = true,
-    enabled: bool = true,
 
     pub fn init(value: f32, min_value: f32, max_value: f32) UISlider {
         return .{
@@ -192,7 +181,6 @@ pub const UITextBox = struct {
     buffer: []u8,
     text_len: usize = 0,
     edit_mode: bool = false,
-    enabled: bool = true,
     placeholder: [:0]const u8 = "",
 
     pub fn init(buffer: []u8) UITextBox {
@@ -271,7 +259,6 @@ pub const UIDropdown = struct {
     items: []const [:0]const u8,
     active: i32 = 0,
     edit_mode: bool = false,
-    enabled: bool = true,
 
     pub fn init(items: []const [:0]const u8) UIDropdown {
         return .{ .items = items };
@@ -320,7 +307,6 @@ pub const UISpinner = struct {
     min_value: i32,
     max_value: i32,
     edit_mode: bool = false,
-    enabled: bool = true,
 
     pub fn init(value: i32, min_value: i32, max_value: i32) UISpinner {
         return .{
@@ -346,7 +332,6 @@ pub const UISpinner = struct {
 /// Color picker component
 pub const UIColorPicker = struct {
     color: rl.Color,
-    enabled: bool = true,
 
     pub fn init(color: rl.Color) UIColorPicker {
         return .{ .color = color };
@@ -362,7 +347,6 @@ pub const UIListView = struct {
     items: []const [:0]const u8,
     scroll_index: i32 = 0,
     active: i32 = 0,
-    enabled: bool = true,
 
     pub fn init(items: []const [:0]const u8) UIListView {
         return .{ .items = items };
@@ -405,7 +389,6 @@ pub const UIMessageBox = struct {
 pub const UITabBar = struct {
     tabs: []const [:0]const u8,
     active: i32 = 0,
-    enabled: bool = true,
 
     pub fn init(tabs: []const [:0]const u8) UITabBar {
         return .{ .tabs = tabs };
@@ -453,6 +436,28 @@ pub const UILayer = struct {
     pub fn init(layer: i32) UILayer {
         return .{ .layer = layer };
     }
+};
+
+/// Optional component to explicitly set GUI control state during rendering.
+pub const UIEnabled = struct {
+    // Use a local enum to avoid importing raygui in this module.
+    pub const UIState = enum {
+        normal,
+        focused,
+        pressed,
+        disabled,
+
+        pub fn toRayGui(self: UIState) i32 {
+            return switch (self) {
+                .normal => 0,
+                .focused => 1,
+                .pressed => 2,
+                .disabled => 3,
+            };
+        }
+    };
+
+    state: UIState = UIState.normal,
 };
 
 const input = @import("../input/input.zig");
