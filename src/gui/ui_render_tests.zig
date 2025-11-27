@@ -17,6 +17,26 @@ fn testInputUpdateSystem(manager: *zevy_ecs.Manager, input_mgr: zevy_ecs.Res(inp
     try input_mgr.ptr.update();
 }
 
+// Debug draw system used only in these tests: draw a rectangle around focused elements
+fn focusDebugDrawSystem(
+    manager: *zevy_ecs.Manager,
+    query: zevy_ecs.Query(struct {
+        entity: zevy_ecs.Entity,
+        rect: comps.UIRect,
+        focus: comps.UIFocus,
+        visible: ?comps.UIVisible,
+    }, .{}),
+) void {
+    _ = manager;
+    while (query.next()) |item| {
+        if (item.visible) |v| {
+            if (!v.visible) continue;
+        }
+        const b = item.rect.toRectangle();
+        rl.drawRectangleLinesEx(b, 2, rl.Color.magenta);
+    }
+}
+
 fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     const allocator = std.testing.allocator;
 
@@ -368,6 +388,54 @@ test "Render Two Buttons Same Input" {
         comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
     try rel.add(&ecs, icon_b, btn_b, zevy_ecs.relations.Child);
+
+    try testLoop(&ecs, struct {
+        fn run(e: *zevy_ecs.Manager) void {
+            _ = e;
+        }
+    }.run);
+}
+
+test "UI Focus Navigation Demo" {
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
+
+    var ecs = try initTest("UI Focus Navigation Demo");
+    defer deinitTest(&ecs);
+
+    const sch = ecs.getResource(zevy_ecs.Scheduler).?;
+
+    // Create three focusable buttons laid out horizontally
+    const btn1 = ecs.create(.{
+        comps.UIRect.init(160, 240, 160, 48),
+        comps.UIButton.init("First"),
+        comps.UIFocusable.init(),
+    });
+
+    const btn2 = ecs.create(.{
+        comps.UIRect.init(340, 240, 160, 48),
+        comps.UIButton.init("Second"),
+        comps.UIFocusable.init(),
+    });
+
+    const btn3 = ecs.create(.{
+        comps.UIRect.init(520, 240, 160, 48),
+        comps.UIButton.init("Third"),
+        comps.UIFocusable.init(),
+    });
+
+    // Give initial focus to the first button so navigation has a starting point
+    // Add initial UIFocus
+    try ecs.addComponent(btn1, comps.UIFocus, comps.UIFocus{});
+    // Silence unused-variable warnings for the other entities
+    _ = btn2;
+    _ = btn3;
+
+    // Register the focus navigation system for this test so Tab will cycle focus
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
+    // Add our debug draw system so focused element is outlined
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.Manager) void {

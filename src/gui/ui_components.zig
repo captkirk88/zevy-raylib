@@ -125,6 +125,17 @@ pub const UIToggle = struct {
     }
 };
 
+/// Marker component that indicates an entity currently has keyboard/gamepad focus
+pub const UIFocus = struct {
+    // Empty marker
+};
+
+/// Marker/flag that an entity can receive focus. If present, the focus
+/// navigation system will include the entity when cycling focusable elements.
+pub const UIFocusable = struct {
+    pub fn init() UIFocusable { return UIFocusable{}; }
+};
+
 /// Slider component for numeric values
 pub const UISlider = struct {
     value: f32,

@@ -37,8 +37,6 @@ const PrevPressed = struct {
     len: usize = 0,
 };
 
-// Module-level `last_hovered_entity` removed in favor of Local system params.
-
 // =============================================================================
 // UI INTERACTION EVENTS
 // =============================================================================
@@ -181,6 +179,25 @@ pub fn setupUIInputBindings(input_mgr: *input.InputManager, allocator: std.mem.A
         .enabled = true,
     });
 
+    // Tab key -> focus next
+    var tab_focus = input.InputChord.init(allocator);
+    try tab_focus.add(allocator, input.InputKey{ .keyboard = .key_tab });
+    try input_mgr.addBinding(.{
+        .chord = tab_focus,
+        .action = try input.InputAction.init(allocator, "ui_focus_next", "UI focus next"),
+        .enabled = true,
+    });
+
+    // Shift+Tab -> focus previous
+    var shift_tab = input.InputChord.init(allocator);
+    try shift_tab.add(allocator, input.InputKey{ .keyboard = .key_left_shift });
+    try shift_tab.add(allocator, input.InputKey{ .keyboard = .key_tab });
+    try input_mgr.addBinding(.{
+        .chord = shift_tab,
+        .action = try input.InputAction.init(allocator, "ui_focus_prev", "UI focus previous"),
+        .enabled = true,
+    });
+
     // Escape key (cancel)
     var escape_cancel = input.InputChord.init(allocator);
     try escape_cancel.add(allocator, input.InputKey{ .keyboard = .key_escape });
@@ -222,6 +239,11 @@ pub fn uiInteractionDetectionSystem(
         rect: components.UIRect,
         button: components.UIButton,
         visible: ?components.UIVisible,
+    }, .{}),
+    // Query yielding currently-focused entities so we can clear focus on click
+    focus_query: zevy_ecs.Query(struct {
+        entity: zevy_ecs.Entity,
+        focus: components.UIFocus,
     }, .{}),
 ) void {
 
@@ -299,17 +321,6 @@ pub fn uiInteractionDetectionSystem(
             });
         }
 
-        // Handle clicks
-        // Handle clicks. We distinguish mouse/touch ('ui_click') from
-        // confirm (keyboard/gamepad, 'ui_confirm'). For keyboard/gamepad
-        // confirms we allow acting on the last hovered button (so Enter
-        // works even if the mouse moved away). For toggle-styled UIButtons
-        // we avoid toggling on mouse clicks because `rg.toggle` performs
-        // mouse-driven toggling during rendering; we only toggle on
-        // confirm actions.
-        // hovered state and last-hover tracking are updated above; we do not
-        // require hovered_effective for confirm activation anymore.
-
         if (item.button.enabled) {
             // Activated by mouse/touch click
             const activated_by_mouse = is_hovered and click_triggered_click;
@@ -372,6 +383,22 @@ pub fn uiInteractionDetectionSystem(
                     .position = cursor_pos,
                     .button = .left,
                 });
+
+                // Change focus to the clicked element: remove UIFocus from any other
+                while (focus_query.next()) |fitem| {
+                    _ = manager.removeComponent(fitem.entity, components.UIFocus) catch null;
+                }
+                // Add UIFocus to this entity (if focusable)
+                if (manager.getComponent(item.entity, components.UIFocusable) catch null) |ff| {
+                    _ = ff;
+                    _ = manager.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
+                } else {
+                    // Consider common interactive components focusable by default
+                    if (manager.getComponent(item.entity, components.UIButton) catch null) |b| {
+                        _ = b;
+                        _ = manager.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
+                    }
+                }
             } else if (activated_by_confirm or activated_by_keypress) {
                 if (item.button.style == .toggle) {
                     item.button.*.pressed = !item.button.*.pressed;
@@ -399,6 +426,130 @@ pub fn uiInteractionDetectionSystem(
     }
     newprev.len = @min(current_keys.len, newprev.keys.len);
     prev_pressed_mut.set(newprev);
+}
+
+/// Focus navigation system: cycles focusable UI elements when the
+/// `ui_focus_next` action is triggered. Focus is represented by adding
+/// or removing the `UIFocus` component on entities.
+pub fn uiFocusNavigationSystem(
+    manager: *zevy_ecs.Manager,
+    input_mgr: zevy_ecs.Res(input.InputManager),
+    rel: *zevy_ecs.Relations,
+    last_hover: *zevy_ecs.Local(zevy_ecs.Entity),
+    focus_query: zevy_ecs.Query(struct {
+        entity: zevy_ecs.Entity,
+        focusable: components.UIFocusable,
+    }, .{}),
+) void {
+    // manager is used below; no discard needed
+
+    // If no focus action was pressed, nothing to do
+    const next_pressed = input_mgr.ptr.wasActionTriggered("ui_focus_next");
+    const prev_pressed = input_mgr.ptr.wasActionTriggered("ui_focus_prev");
+    if (!next_pressed and !prev_pressed) return;
+
+    // (helper moved to top-level) use `isFocusable(manager, e)` below
+
+    // Build ordered list of focusable entities (children of parent first)
+    var candidates = std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64) catch return;
+    defer candidates.deinit(manager.allocator);
+
+    // If there's a currently focused entity, prefer siblings (children of its parent)
+    var focused_parent: ?zevy_ecs.Entity = null;
+    // Find current focused entity
+    var current_focused: ?zevy_ecs.Entity = null;
+    // Consume the focus_query once and collect all focusable entities.
+    var all_focusables = std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64) catch return;
+    defer all_focusables.deinit(manager.allocator);
+    while (focus_query.next()) |item| {
+        _ = all_focusables.append(manager.allocator, item.entity) catch continue;
+        if (manager.getComponent(item.entity, components.UIFocus) catch null) |f| {
+            _ = f;
+            current_focused = item.entity;
+        }
+    }
+
+    if (current_focused) |cf| {
+        if (rel.getParent(manager, cf, zevy_ecs.relations.Child) catch null) |p| {
+            focused_parent = p;
+        }
+    } else {
+        // No focused entity — prefer the parent of the last-hovered entity
+        if (last_hover.value()) |lh| {
+            if (rel.getParent(manager, lh, zevy_ecs.relations.Child) catch null) |p2| {
+                focused_parent = p2;
+            }
+        }
+    }
+
+    if (focused_parent) |parent| {
+        const children = rel.getChildren(parent, zevy_ecs.relations.Child);
+        for (children) |child| {
+            if (manager.getComponent(child, components.UIFocusable) catch null) |f| {
+                _ = f;
+                _ = candidates.append(manager.allocator, child) catch continue;
+            }
+        }
+    }
+
+    // After siblings, append all other focusable entities (skip duplicates)
+    for (all_focusables.items) |e| {
+        // Skip if already in candidates
+        var exists = false;
+        for (candidates.items) |c| {
+            if (c.eql(e)) {
+                exists = true;
+                break;
+            }
+        }
+        if (exists) continue;
+        _ = candidates.append(manager.allocator, e) catch continue;
+    }
+
+    if (candidates.items.len == 0) return;
+
+    // Sort candidates by their rect.x (left-to-right) for predictable navigation order
+    var si: usize = 1;
+    while (si < candidates.items.len) : (si += 1) {
+        var sj = si;
+        while (sj > 0) : (sj -= 1) {
+            const a = candidates.items[sj - 1];
+            const b = candidates.items[sj];
+            var ax: f32 = 0.0;
+            var bx: f32 = 0.0;
+            if (manager.getComponent(a, components.UIRect) catch null) |r| ax = r.x;
+            if (manager.getComponent(b, components.UIRect) catch null) |r2| bx = r2.x;
+            if (ax <= bx) break;
+            const tmp = candidates.items[sj - 1];
+            candidates.items[sj - 1] = candidates.items[sj];
+            candidates.items[sj] = tmp;
+            if (sj == 0) break;
+        }
+    }
+
+    // Find current focused entity index
+    var current_index: ?usize = null;
+    for (candidates.items, 0..) |ent, i| {
+        if (manager.getComponent(ent, components.UIFocus) catch null) |f| {
+            _ = f;
+            current_index = i;
+            break;
+        }
+    }
+
+    const next_index = if (current_index) |ci| (ci + 1) % candidates.items.len else 0;
+    const prev_index = if (current_index) |ci| ((ci + candidates.items.len - 1) % candidates.items.len) else (candidates.items.len - 1);
+
+    // Remove focus from previous
+    if (current_index) |ci| {
+        const prev_ent = candidates.items[ci];
+        _ = manager.removeComponent(prev_ent, components.UIFocus) catch null;
+    }
+
+    const new_ent = if (prev_pressed) prev_index else next_index;
+    const new_ent_ent = candidates.items[new_ent];
+    // Add focus to new entity
+    _ = manager.addComponent(new_ent_ent, components.UIFocus, .{}) catch null;
 }
 
 /// Slider interaction detection system

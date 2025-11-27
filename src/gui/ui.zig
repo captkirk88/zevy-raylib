@@ -50,14 +50,6 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
                 ParamRegistry,
             );
 
-            // Input handling
-            scheduler.addSystem(
-                e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
-                input.uiInteractionDetectionSystem,
-                ParamRegistry,
-            );
-
             scheduler.addSystem(
                 e,
                 zevy_ecs.Stage(zevy_ecs.Stages.Update),
@@ -95,6 +87,14 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
                 e,
                 zevy_ecs.Stage(zevy_ecs.Stages.Update),
                 systems.dockLayoutSystem,
+                ParamRegistry,
+            );
+
+            // Input handling
+            scheduler.addSystem(
+                e,
+                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                input.uiInteractionDetectionSystem,
                 ParamRegistry,
             );
 
