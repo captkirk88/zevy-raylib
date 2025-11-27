@@ -481,7 +481,7 @@ pub fn uiRenderSystem(
     // Render scroll panels
     while (scroll_panel_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderScrollPanel(q.rect.*, q.scroll_panel, vis);
     }
     rg.setState(@intFromEnum(rg.State.normal));
@@ -508,7 +508,7 @@ pub fn uiRenderSystem(
     while (button_query.next()) |q| {
         const rect: *components.UIRect = q.rect;
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderButton(q.rect.*, q.button, vis);
         rg.setState(@intFromEnum(rg.State.normal));
 
@@ -557,7 +557,7 @@ pub fn uiRenderSystem(
     // Render toggles
     while (toggle_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderToggle(q.rect.*, q.toggle, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -565,7 +565,7 @@ pub fn uiRenderSystem(
     // Render sliders
     while (slider_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderSlider(q.rect.*, q.slider, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -573,7 +573,7 @@ pub fn uiRenderSystem(
     // Render text boxes
     while (textbox_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderTextBox(q.rect.*, q.textbox, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -581,7 +581,7 @@ pub fn uiRenderSystem(
     // Render dropdowns
     while (dropdown_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderDropdown(q.rect.*, q.dropdown, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -589,7 +589,7 @@ pub fn uiRenderSystem(
     // Render spinners
     while (spinner_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderSpinner(q.rect.*, q.spinner, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -597,7 +597,7 @@ pub fn uiRenderSystem(
     // Render color pickers
     while (color_picker_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderColorPicker(q.rect.*, q.picker, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -605,7 +605,7 @@ pub fn uiRenderSystem(
     // Render list views
     while (list_view_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderListView(q.rect.*, q.list_view, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -613,7 +613,7 @@ pub fn uiRenderSystem(
     // Render tab bars
     while (tab_bar_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(components.UIEnabled.UIState.toRayGui(en.state)) else rg.setState(components.UIEnabled.UIState.toRayGui(components.UIEnabled.UIState.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderTabBar(q.rect.*, q.tab_bar, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
@@ -621,7 +621,7 @@ pub fn uiRenderSystem(
     // Render message boxes last (modal overlays)
     while (message_box_query.next()) |q| {
         const vis = if (q.visible) |v| v.* else null;
-        if (q.enabled) |en| rg.setState(@intFromEnum(en.state)) else rg.setState(@intFromEnum(rg.State.normal));
+        if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderMessageBox(q.rect.*, q.message_box, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }

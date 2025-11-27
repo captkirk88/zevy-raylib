@@ -319,7 +319,7 @@ pub fn uiInteractionDetectionSystem(
 
         // Skip if explicitly disabled via UIEnabled component
         if (item.enabled) |en| {
-            if (en.state == .disabled) continue;
+            if (en.state == false) continue;
         }
         // Activated by mouse/touch click
         const activated_by_mouse = is_hovered and click_triggered_click;
@@ -468,7 +468,7 @@ pub fn uiFocusNavigationSystem(
             if (!v.visible) continue;
         }
         if (item.enabled) |en| {
-            if (en.state == .disabled) continue;
+            if (en.state == false) continue;
         }
 
         try all_focusables.append(manager.allocator, item.entity);
@@ -600,7 +600,7 @@ pub fn sliderInteractionSystem(
             if (!v.visible) continue;
         }
         if (item.enabled) |en| {
-            if (en.state == .disabled) continue;
+            if (en.state == false) continue;
         }
 
         const bounds = item.rect.toRectangle();
@@ -658,7 +658,7 @@ pub fn toggleInteractionSystem(
             if (!v.visible) continue;
         }
         if (item.enabled) |en| {
-            if (en.state == .disabled) continue;
+            if (en.state == false) continue;
         }
 
         const bounds = item.rect.toRectangle();
@@ -708,7 +708,7 @@ pub fn spinnerInteractionSystem(
             if (!v.visible) continue;
         }
         if (item.enabled) |en| {
-            if (en.state == .disabled) continue;
+            if (en.state == false) continue;
         }
 
         const bounds = item.rect.toRectangle();
@@ -800,7 +800,7 @@ pub fn textBoxFocusSystem(
         if (click_triggered) {
             if (is_hovered) {
                 if (item.enabled) |en| {
-                    if (en.state == .disabled) {
+                    if (en.state == false) {
                         // disabled: don't enter edit mode
                     } else {
                         item.textbox.*.edit_mode = true;

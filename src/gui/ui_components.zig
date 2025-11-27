@@ -440,24 +440,7 @@ pub const UILayer = struct {
 
 /// Optional component to explicitly set GUI control state during rendering.
 pub const UIEnabled = struct {
-    // Use a local enum to avoid importing raygui in this module.
-    pub const UIState = enum {
-        normal,
-        focused,
-        pressed,
-        disabled,
-
-        pub fn toRayGui(self: UIState) i32 {
-            return switch (self) {
-                .normal => 0,
-                .focused => 1,
-                .pressed => 2,
-                .disabled => 3,
-            };
-        }
-    };
-
-    state: UIState = UIState.normal,
+    state: bool = true,
 };
 
 const input = @import("../input/input.zig");

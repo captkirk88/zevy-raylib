@@ -12,6 +12,8 @@ const SKIP_IN_DEBUG = true;
 const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
+const TEST_SKIP_TIMEOUT_SECS = 10;
+
 // Small helper system used only in tests to ensure InputManager.update() is called
 fn testInputUpdateSystem(
     manager: *zevy_ecs.Manager,
@@ -46,7 +48,7 @@ fn focusDebugDrawSystem(
         }
 
         if (enabled) |en| {
-            if (en.state == comps.UIEnabled.UIState.disabled) continue;
+            if (en.state == false) continue;
         }
 
         const b = rect.toRectangle();
@@ -98,7 +100,7 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
 
     const start = std.time.milliTimestamp();
 
-    const max_duration_ms = 2 * std.time.ms_per_s; // Run for 2 seconds
+    const max_duration_ms = TEST_SKIP_TIMEOUT_SECS * std.time.ms_per_s; // Run for 2 seconds
     while (!rl.windowShouldClose()) {
         const now = std.time.milliTimestamp();
         if (now - start >= max_duration_ms) break;
