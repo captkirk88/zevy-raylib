@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const str_utils = @import("../utils/strings.zig");
 
 /// Represents different types of input devices
 pub const InputDevice = enum {
@@ -53,10 +54,16 @@ pub const KeyCode = enum(c_int) {
     key_f12 = @intFromEnum(rl.KeyboardKey.f12),
 
     // Arrow keys
+    /// Right arrow key
     key_right = @intFromEnum(rl.KeyboardKey.right),
+    /// Left arrow key
     key_left = @intFromEnum(rl.KeyboardKey.left),
+    /// Down arrow key
     key_down = @intFromEnum(rl.KeyboardKey.down),
+    /// Up arrow key
     key_up = @intFromEnum(rl.KeyboardKey.up),
+    /// All arrow keys combined
+    key_arrows_all = @intFromEnum(rl.KeyboardKey.right) + @intFromEnum(rl.KeyboardKey.left) + @intFromEnum(rl.KeyboardKey.down) + @intFromEnum(rl.KeyboardKey.up),
 
     // Special keys
     key_space = @intFromEnum(rl.KeyboardKey.space),
@@ -85,6 +92,9 @@ pub const KeyCode = enum(c_int) {
     key_right_control = @intFromEnum(rl.KeyboardKey.right_control),
     key_right_alt = @intFromEnum(rl.KeyboardKey.right_alt),
     key_right_super = @intFromEnum(rl.KeyboardKey.right_super),
+    key_shift = @intFromEnum(rl.KeyboardKey.left_shift) + @intFromEnum(rl.KeyboardKey.right_shift),
+    key_control = @intFromEnum(rl.KeyboardKey.left_control) + @intFromEnum(rl.KeyboardKey.right_control),
+    key_alt = @intFromEnum(rl.KeyboardKey.left_alt) + @intFromEnum(rl.KeyboardKey.right_alt),
 
     // Numeric keypad
     key_kp_0 = @intFromEnum(rl.KeyboardKey.kp_0),
@@ -132,6 +142,29 @@ pub const KeyCode = enum(c_int) {
 
     // Additional special keys
     key_menu = @intFromEnum(rl.KeyboardKey.kb_menu), // Menu key (Windows/Context Menu)
+
+    any = -1,
+
+    pub fn isShiftModifier(self: KeyCode) bool {
+        return switch (self) {
+            .key_left_shift, .key_right_shift, .key_shift => true,
+            else => false,
+        };
+    }
+
+    pub fn isControlModifier(self: KeyCode) bool {
+        return switch (self) {
+            .key_left_control, .key_right_control, .key_control => true,
+            else => false,
+        };
+    }
+
+    pub fn isAltModifier(self: KeyCode) bool {
+        return switch (self) {
+            .key_left_alt, .key_right_alt, .key_alt => true,
+            else => false,
+        };
+    }
 
     pub fn toString(self: KeyCode) []const u8 {
         return switch (self) {
@@ -194,6 +227,7 @@ pub const KeyCode = enum(c_int) {
             .key_left => "Left",
             .key_down => "Down",
             .key_up => "Up",
+            .key_arrows_all => "ArrowsAll",
             .key_page_up => "PageUp",
             .key_page_down => "PageDown",
             .key_home => "Home",
@@ -211,6 +245,9 @@ pub const KeyCode = enum(c_int) {
             .key_right_control => "RightCtrl",
             .key_right_alt => "RightAlt",
             .key_right_super => "RightSuper",
+            .key_shift => "Shift",
+            .key_control => "Control",
+            .key_alt => "Alt",
             .key_apostrophe => "'",
             .key_comma => ",",
             .key_minus => "-",
@@ -223,6 +260,7 @@ pub const KeyCode = enum(c_int) {
             .key_right_bracket => "]",
             .key_grave => "`",
             .key_menu => "Menu",
+            .any => "Any",
             else => "Unknown",
         };
     }
@@ -288,6 +326,7 @@ pub const KeyCode = enum(c_int) {
             .{ "Left", .key_left },
             .{ "Down", .key_down },
             .{ "Up", .key_up },
+            .{ "ArrowsAll", .key_arrows_all },
             .{ "PageUp", .key_page_up },
             .{ "PageDown", .key_page_down },
             .{ "Home", .key_home },
@@ -305,6 +344,9 @@ pub const KeyCode = enum(c_int) {
             .{ "RightCtrl", .key_right_control },
             .{ "RightAlt", .key_right_alt },
             .{ "RightSuper", .key_right_super },
+            .{ "Shift", .key_shift },
+            .{ "Control", .key_control },
+            .{ "Alt", .key_alt },
             .{ "'", .key_apostrophe },
             .{ ",", .key_comma },
             .{ "-", .key_minus },
@@ -317,6 +359,7 @@ pub const KeyCode = enum(c_int) {
             .{ "]", .key_right_bracket },
             .{ "`", .key_grave },
             .{ "Menu", .key_menu },
+            .{ "Any", .any },
         });
         return string_map.get(str);
     }
@@ -390,6 +433,8 @@ pub const GamepadButton = enum(c_int) {
     left_thumb = @intFromEnum(rl.GamepadButton.left_thumb),
     right_thumb = @intFromEnum(rl.GamepadButton.right_thumb),
 
+    any = -1,
+
     pub fn toString(self: GamepadButton) []const u8 {
         return switch (self) {
             .unknown => "GamepadUnknown",
@@ -410,6 +455,7 @@ pub const GamepadButton = enum(c_int) {
             .start => "GamepadStart",
             .left_thumb => "GamepadLeftThumb",
             .right_thumb => "GamepadRightThumb",
+            .any => "GamepadAny",
         };
     }
 
@@ -433,13 +479,14 @@ pub const GamepadButton = enum(c_int) {
             .{ "GamepadStart", .start },
             .{ "GamepadLeftThumb", .left_thumb },
             .{ "GamepadRightThumb", .right_thumb },
+            .{ "GamepadAny", .any },
         });
         return string_map.get(str);
     }
 };
 
 /// Touch input types
-pub const TouchInput = enum(u32) {
+pub const TouchInput = enum(i32) {
     touch_tap = 0,
     touch_press = 1,
     touch_release = 2,
@@ -449,7 +496,9 @@ pub const TouchInput = enum(u32) {
     multi_touch_release = 6,
     multi_touch_move = 7,
     multi_touch_two_finger = 8,
-    unrecognized = std.math.maxInt(u32),
+    unrecognized = std.math.maxInt(i32),
+
+    any = -1,
 
     pub fn toString(self: TouchInput) []const u8 {
         return switch (self) {
@@ -462,6 +511,7 @@ pub const TouchInput = enum(u32) {
             .multi_touch_release => "MultiTouchRelease",
             .multi_touch_move => "MultiTouchMove",
             .multi_touch_two_finger => "MultiTouchTwoFinger",
+            .any => "TouchAny",
             else => "Unrecognized",
         };
     }
@@ -477,13 +527,14 @@ pub const TouchInput = enum(u32) {
             .{ "MultiTouchRelease", .multi_touch_release },
             .{ "MultiTouchMove", .multi_touch_move },
             .{ "MultiTouchTwoFinger", .multi_touch_two_finger },
+            .{ "TouchAny", .any },
         });
         return string_map.get(str);
     }
 };
 
 /// Gesture input types
-pub const GestureInput = enum(u32) {
+pub const GestureInput = enum(i32) {
     unknown = 0,
     gesture_tap = 1,
     gesture_doubletap = 2,
@@ -495,6 +546,8 @@ pub const GestureInput = enum(u32) {
     gesture_swipe_down = 8,
     gesture_pinch_in = 9,
     gesture_pinch_out = 10,
+
+    any = -1,
 
     pub fn toString(self: GestureInput) []const u8 {
         return switch (self) {
@@ -508,6 +561,7 @@ pub const GestureInput = enum(u32) {
             .gesture_swipe_down => "GestureSwipeDown",
             .gesture_pinch_in => "GesturePinchIn",
             .gesture_pinch_out => "GesturePinchOut",
+            .any => "GestureAny",
             else => "Unknown",
         };
     }
@@ -524,6 +578,7 @@ pub const GestureInput = enum(u32) {
             .{ "GestureSwipeDown", .gesture_swipe_down },
             .{ "GesturePinchIn", .gesture_pinch_in },
             .{ "GesturePinchOut", .gesture_pinch_out },
+            .{ "GestureAny", .any },
         });
         return string_map.get(str);
     }
@@ -567,7 +622,7 @@ pub const InputKey = union(enum) {
         }
 
         // Try gamepad (format: Gamepad0_GamepadLeftFaceUp)
-        if (std.mem.startsWith(u8, str, "Gamepad")) {
+        if (str_utils.contains(str, "gamepad", str_utils.CompareOptions.ordinalIgnoreCase)) {
             if (std.mem.indexOf(u8, str, "_")) |underscore_pos| {
                 const gamepad_id_str = str[7..underscore_pos];
                 const button_str = str[underscore_pos + 1 ..];
@@ -580,7 +635,7 @@ pub const InputKey = union(enum) {
         }
 
         // Try touch (format: Touch0_TouchTap)
-        if (std.mem.startsWith(u8, str, "Touch")) {
+        if (str_utils.contains(str, "touch", str_utils.CompareOptions.invariantIgnoreCase)) {
             if (std.mem.indexOf(u8, str, "_")) |underscore_pos| {
                 const touch_id_str = str[5..underscore_pos];
                 const input_str = str[underscore_pos + 1 ..];

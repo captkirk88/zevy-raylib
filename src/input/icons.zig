@@ -7,6 +7,8 @@ const io_util = @import("../io/util.zig");
 const atlas = @import("../graphics/texture_atlas.zig");
 const TextureAtlas = atlas.TextureAtlas;
 const FrameRect = atlas.FrameRect;
+const io_types = @import("../io/types.zig");
+const input = @import("../input/input.zig");
 
 const ParseError = error{ MissingImagePath, InvalidTexture, UnsupportedScheme };
 const IconFrame = @import("../graphics/texture_atlas.zig").NamedFrame;
@@ -20,27 +22,7 @@ pub const PromptType = enum {
     nintendoswitch,
     steamdeck,
 };
-
-pub const PromptAtlas = struct {
-    atlas: IconTextureAtlas,
-    // When the atlas is produced from a named asset manager, the texture
-    // will be owned by the Assets system. In that case we must not unload
-    // the texture when deinitializing this PromptAtlas. Set `owned` to
-    // true when Xml parsing returns an atlas we created/own.
-    owned: bool,
-
-    pub fn deinit(self: *PromptAtlas) void {
-        // Free the duplicated frame name strings owned by atlas.allocator
-        freeFrameNames(self.atlas.allocator, self.atlas.frames.items);
-        // Always free the frames array itself
-        self.atlas.frames.deinit(self.atlas.allocator);
-
-        // Only unload the texture if we own it
-        if (self.owned) {
-            rl.unloadTexture(self.atlas.texture);
-        }
-    }
-};
+pub const PromptAtlas = io_types.IconAtlas;
 
 fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
     // Resolve and parse the XML file, handling both file paths and scheme URIs
@@ -120,13 +102,23 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
         return ParseError.InvalidTexture;
     }
 
+    // Build parsed_keys parallel array
+    var parsed_keys = try std.ArrayList(?input.InputKey).initCapacity(use_allocator, frames.items.len);
+    for (frames.items) |f| {
+        if (input.InputKey.fromString(f.name, use_allocator)) |k| {
+            const opt: ?input.InputKey = k;
+            try parsed_keys.append(use_allocator, opt);
+        } else {
+            try parsed_keys.append(use_allocator, null);
+        }
+    }
+
     return PromptAtlas{
-        .atlas = .{
-            .texture = texture,
-            .frames = frames,
-            .allocator = use_allocator,
-        },
-        .owned = true,
+        .texture = texture,
+        .frames = frames,
+        .allocator = use_allocator,
+        .owns_texture = (assets == null),
+        .parsed_keys = parsed_keys,
     };
 }
 
@@ -166,8 +158,8 @@ test "parse keyboardmouse texture atlas" {
     var pa = try parseKeyboardMouse(allocator, xml_path, null);
     defer pa.deinit();
 
-    try testing.expect(pa.atlas.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.atlas.texture));
+    try testing.expect(pa.frameCount() > 0);
+    try testing.expect(rl.isTextureValid(pa.texture));
 }
 
 test "parse xbox texture atlas" {
@@ -181,8 +173,8 @@ test "parse xbox texture atlas" {
     var pa = try parseXbox(allocator, xml_path, null);
     defer pa.deinit();
 
-    try testing.expect(pa.atlas.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.atlas.texture));
+    try testing.expect(pa.frameCount() > 0);
+    try testing.expect(rl.isTextureValid(pa.texture));
 }
 
 test "missing imagePath attribute returns error" {
@@ -218,8 +210,8 @@ test "parse keyboardmouse via Assets resolver (embedded://)" {
     var pa = try parseKeyboardMouse(assets.allocator, uri, &assets);
     defer pa.deinit();
 
-    try testing.expect(pa.atlas.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.atlas.texture));
+    try testing.expect(pa.frameCount() > 0);
+    try testing.expect(rl.isTextureValid(pa.texture));
 }
 
 test "parse playstation via Assets resolver (embedded://)" {
@@ -236,6 +228,6 @@ test "parse playstation via Assets resolver (embedded://)" {
     var pa = try parsePlaystation(assets.allocator, uri, &assets);
     defer pa.deinit();
 
-    try testing.expect(pa.atlas.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.atlas.texture));
+    try testing.expect(pa.frameCount() > 0);
+    try testing.expect(rl.isTextureValid(pa.texture));
 }

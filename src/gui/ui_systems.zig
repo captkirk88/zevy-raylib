@@ -632,8 +632,7 @@ pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, 
     const IconAtlas = @import("../io/types.zig").IconAtlas;
     const handle = try assets.loadAsset(IconAtlas, path, settings);
     // Register the handle as an ECS resource so systems can look it up via Assets.getAsset
-    const handle_res = try manager.addResource(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle));
-    _ = handle_res;
+    _ = try manager.addResource(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle));
 }
 
 /// Layout calculation system for flex layouts

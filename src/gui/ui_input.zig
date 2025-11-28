@@ -264,7 +264,7 @@ pub fn uiInteractionDetectionSystem(
 
     // Build a small list of newly-pressed keys compared to the previous frame
     const current_keys = input_mgr.ptr.getCurrentState().getPressed();
-    var newly_pressed: [64]input.InputKey = undefined;
+    var newly_pressed: [12]input.InputKey = undefined;
     var newly_len: usize = 0;
 
     var prev_slice: []const input.InputKey = current_keys[0..0];

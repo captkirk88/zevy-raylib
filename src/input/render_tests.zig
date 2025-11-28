@@ -54,10 +54,10 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.PromptAtlas, title: [:0]const
         // Draw UI (not affected by camera)
         rl.drawText(title, 20, 20, 24, rl.Color.white);
 
-        const frame_text = std.fmt.bufPrintZ(&frame_text_buffer, "Frames: {d}", .{prompt_atlas.atlas.frameCount()}) catch "Error";
+        const frame_text = std.fmt.bufPrintZ(&frame_text_buffer, "Frames: {d}", .{prompt_atlas.frameCount()}) catch "Error";
         rl.drawText(frame_text, 20, 50, 20, rl.Color.white);
 
-        const texture_info = std.fmt.bufPrintZ(&debug_buffer, "Texture: {d}x{d}", .{ prompt_atlas.atlas.texture.width, prompt_atlas.atlas.texture.height }) catch "N/A";
+        const texture_info = std.fmt.bufPrintZ(&debug_buffer, "Texture: {d}x{d}", .{ prompt_atlas.texture.width, prompt_atlas.texture.height }) catch "N/A";
         rl.drawText(texture_info, 20, 75, 16, rl.Color.white);
 
         rl.drawFPS(1200 - 100, 20);
@@ -72,9 +72,9 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.PromptAtlas, title: [:0]const
         const frame_size = 48;
         const padding = 2;
 
-        for (prompt_atlas.atlas.frames.items) |frame| {
+        for (prompt_atlas.frames.items) |frame| {
             rl.drawTextureRec(
-                prompt_atlas.atlas.texture,
+                prompt_atlas.texture,
                 .{
                     .x = @floatFromInt(@as(i32, @intCast(frame.frame.x))),
                     .y = @floatFromInt(@as(i32, @intCast(frame.frame.y))),

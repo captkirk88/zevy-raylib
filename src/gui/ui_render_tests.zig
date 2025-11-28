@@ -6,6 +6,7 @@ const layouts = ui.layout;
 const comps = ui.components;
 const input = @import("../input/input.zig");
 const style = @import("style.zig");
+const Assets = @import("../io/assets.zig").Assets;
 
 const SKIP_IN_DEBUG = true;
 
@@ -70,6 +71,16 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
         std.log.err("Failed to setup UI input bindings in test: {s}", .{@errorName(err)});
         return err;
     };
+
+    // Setup Assets for loading the icon atlas
+    const assets = try ecs.addResource(Assets, Assets.init(allocator));
+
+    // Load the icon atlas
+    ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{}) catch |err| {
+        std.log.err("Failed to load icon atlas in test: {s}", .{@errorName(err)});
+        // Continue without atlas
+    };
+
     var sch = try ecs.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(ecs.allocator));
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
 

@@ -1,10 +1,12 @@
 const std = @import("std");
 const rl = @import("raylib");
 const rg = @import("raygui");
+const io_types = @import("../io/types.zig");
 const input = @import("../input/input.zig");
 const components = @import("ui_components.zig");
 const layout = @import("ui_layout.zig");
 const style_mod = @import("style.zig");
+const str_util = @import("../utils/strings.zig");
 
 // Re-export components for convenience
 pub const UIRect = components.UIRect;
@@ -24,6 +26,7 @@ pub const UIListView = components.UIListView;
 pub const UIMessageBox = components.UIMessageBox;
 pub const UITabBar = components.UITabBar;
 pub const UIVisible = components.UIVisible;
+pub const UIEnabled = components.UIEnabled;
 pub const UILayer = components.UILayer;
 
 // Re-export layout for convenience
@@ -348,7 +351,7 @@ pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void 
 }
 
 /// Render input key icons/text for a UI element.
-pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.InputKey, atlas: ?*const @import("../io/types.zig").IconAtlas, style: *style_mod.UIStyle) anyerror!void {
+pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.InputKey, atlas: ?*const io_types.IconAtlas, style: *style_mod.UIStyle) anyerror!void {
     const st = style.input_icon;
 
     var x: f32 = bounds.x + 4.0;
@@ -402,19 +405,50 @@ pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.Input
         if (pos >= buf.len) pos = buf.len - 1;
         buf[pos] = 0;
 
-        // Try atlas frame first (exact match on combined label)
+        // Try atlas frame first (exact match on combined label). If that
+        // fails, use the pre-parsed per-frame InputKey mapping as a
+        // single-key fallback. This avoids repeated nested `if (atlas)`
+        // checks and simplifies the control flow.
         var drawn = false;
         if (atlas) |a| {
-            var i: usize = 0;
             const label_slice = buf[0..pos];
-            while (i < a.frames.items.len) : (i += 1) {
-                const f = a.frames.items[i];
-                if (std.mem.eql(u8, f.name, label_slice)) {
+
+            // Exact combined-label match (compare the combined label to the frame name)
+            for (a.frames.items) |f| {
+                if (str_util.equals(label_slice, f.name, .invariantIgnoreCase)) {
                     const src = rl.Rectangle{ .x = @floatFromInt(f.frame.x), .y = @floatFromInt(f.frame.y), .width = @floatFromInt(f.frame.w), .height = @floatFromInt(f.frame.h) };
                     const dest = rl.Rectangle{ .x = x, .y = y, .width = st.size, .height = st.size };
                     rl.drawTexturePro(a.texture, src, dest, rl.Vector2.zero(), 0, st.tint);
                     drawn = true;
                     break;
+                }
+            }
+
+            // If no exact match, try matching any single key in the chord to a
+            // parsed per-frame InputKey (populated at load time).
+            if (!drawn) {
+                const parsed = a.parsed_keys.items;
+                const frames = a.frames.items;
+                const count = frames.len;
+                for (0..count) |i| {
+                    const maybe_key = parsed[i];
+                    if (maybe_key) |fk| {
+                        var matched = false;
+                        for (chord) |k| {
+                            if (fk.eql(k)) {
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (matched) {
+                            const f = frames[i];
+                            const src = rl.Rectangle{ .x = @floatFromInt(f.frame.x), .y = @floatFromInt(f.frame.y), .width = @floatFromInt(f.frame.w), .height = @floatFromInt(f.frame.h) };
+                            const dest = rl.Rectangle{ .x = x, .y = y, .width = st.size, .height = st.size };
+                            rl.drawTexturePro(a.texture, src, dest, rl.Vector2.zero(), 0, st.tint);
+                            drawn = true;
+                            break;
+                        }
+                    }
                 }
             }
         }

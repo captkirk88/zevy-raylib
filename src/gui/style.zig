@@ -5,7 +5,7 @@ const rl = @import("raylib");
 pub const InputIconStyle = struct {
     size: f32 = 16.0,
     spacing: f32 = 4.0,
-    tint: rl.Color = rl.Color.white,
+    tint: rl.Color = rl.Color.blank,
 
     pub fn init() InputIconStyle {
         return InputIconStyle{};

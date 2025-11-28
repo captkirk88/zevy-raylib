@@ -98,15 +98,15 @@ pub const InputChord = struct {
                 .keyboard => |k| @as(u32, @intCast(@intFromEnum(k))),
                 .mouse => |m| @as(u32, @intCast(@intFromEnum(m))) + 1000000,
                 .gamepad => |g| @as(u32, @intCast(@intFromEnum(g.button))) + 2000000 + (@as(u32, g.gamepad_id) * 100),
-                .touch => |t| @intFromEnum(t.input) + 3000000 + (@as(u32, t.touch_id) * 100),
-                .gesture => |gest| @intFromEnum(gest) + 4000000,
+                .touch => |t| @as(u32, @intCast(@intFromEnum(t.input))) + 3000000 + (@as(u32, t.touch_id) * 100),
+                .gesture => |gest| @as(u32, @intCast(@intFromEnum(gest))) + 4000000,
             };
             const other_key_val = switch (other.keys.items[i]) {
                 .keyboard => |k| @as(u32, @intCast(@intFromEnum(k))),
                 .mouse => |m| @as(u32, @intCast(@intFromEnum(m))) + 1000000,
                 .gamepad => |g| @as(u32, @intCast(@intFromEnum(g.button))) + 2000000 + (@as(u32, g.gamepad_id) * 100),
-                .touch => |t| @intFromEnum(t.input) + 3000000 + (@as(u32, t.touch_id) * 100),
-                .gesture => |gest| @intFromEnum(gest) + 4000000,
+                .touch => |t| @as(u32, @intCast(@intFromEnum(t.input))) + 3000000 + (@as(u32, t.touch_id) * 100),
+                .gesture => |gest| @as(u32, @intCast(@intFromEnum(gest))) + 4000000,
             };
 
             if (self_key_val < other_key_val) {

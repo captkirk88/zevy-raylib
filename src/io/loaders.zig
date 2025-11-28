@@ -1,6 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
 const io_util = @import("../io/util.zig");
+const types = @import("types.zig");
+const input = @import("../input/input.zig");
 const loaders = @import("loader.zig");
 const known_folders = @import("known_folders");
 
@@ -8,7 +10,7 @@ pub const TextureLoader = struct {
     pub const LoadSettings = struct {
         // Example: add fields as needed, e.g. filtering, mipmaps, etc.
     };
-    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Texture {
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const loaders.FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Texture {
         _ = _settings; // Suppress unused parameter warning
         _ = _file_resolver; // Simple loader doesn't need file resolver
 
@@ -35,7 +37,7 @@ pub const ImageLoader = struct {
     pub const LoadSettings = struct {
         // Example: add fields as needed
     };
-    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Image {
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const loaders.FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Image {
         _ = _settings; // Suppress unused parameter warning
         _ = _file_resolver; // Simple loader doesn't need file resolver
 
@@ -62,7 +64,7 @@ pub const SoundLoader = struct {
     pub const LoadSettings = struct {
         // Example: add fields as needed, e.g. streaming, format hints, etc.
     };
-    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Sound {
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const loaders.FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Sound {
         _ = _settings; // Suppress unused parameter warning
         _ = _file_resolver; // Simple loader doesn't need file resolver
 
@@ -104,7 +106,7 @@ pub const MusicLoader = struct {
     pub const LoadSettings = struct {
         // Example: add fields as needed
     };
-    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Music {
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const loaders.FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Music {
         _ = _settings; // Suppress unused parameter warning
         _ = _file_resolver; // Simple loader doesn't need file resolver
 
@@ -131,7 +133,7 @@ pub const FontLoader = struct {
     pub const LoadSettings = struct {
         // Example: add fields as needed
     };
-    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Font {
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const loaders.FileResolver, _settings: ?*const LoadSettings) anyerror!rl.Font {
         _ = _settings; // Suppress unused parameter warning
         _ = _file_resolver; // Simple loader doesn't need file resolver
 
@@ -162,7 +164,7 @@ pub const ShaderLoader = struct {
         frag: ?[]const u8 = null,
     };
 
-    pub fn load(_: @This(), absolute_path: []const u8, file_resolver: ?*const @import("loader.zig").FileResolver, settings: ?*const LoadSettings) anyerror!rl.Shader {
+    pub fn load(_: @This(), absolute_path: []const u8, file_resolver: ?*const loaders.FileResolver, settings: ?*const LoadSettings) anyerror!rl.Shader {
         // Vertex shader is the main file
         const vertex_path = absolute_path;
 
@@ -211,7 +213,7 @@ pub const ShaderLoader = struct {
 pub const XmlDocumentLoader = struct {
     pub const LoadSettings = struct {};
 
-    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!@import("../io/xml.zig").XmlDocument {
+    pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const loaders.FileResolver, _settings: ?*const LoadSettings) anyerror!@import("../io/xml.zig").XmlDocument {
         _ = _settings;
         _ = _file_resolver;
         const allocator = std.heap.page_allocator;
@@ -236,7 +238,7 @@ pub const XmlDocumentLoader = struct {
 pub const InputIconsLoader = struct {
     pub const LoadSettings = struct {};
 
-    pub fn load(_: @This(), absolute_path: []const u8, file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!@import("../io/types.zig").IconAtlas {
+    pub fn load(_: @This(), absolute_path: []const u8, file_resolver: ?*const loaders.FileResolver, _settings: ?*const LoadSettings) anyerror!types.IconAtlas {
         _ = _settings;
 
         const allocator = std.heap.page_allocator;
@@ -266,12 +268,25 @@ pub const InputIconsLoader = struct {
         owns_tex = false;
 
         // Build IconAtlas (owns the texture)
-        const IconAtlas = @import("../io/types.zig").IconAtlas;
+        const IconAtlas = types.IconAtlas;
+        // Build parsed_keys parallel array
+        var parsed_keys = try std.ArrayList(?input.InputKey).initCapacity(allocator, frames.items.len);
+        // Attempt to parse each frame.name into an InputKey
+        for (frames.items) |f| {
+            if (input.InputKey.fromString(f.name, allocator)) |k| {
+                const opt: ?input.InputKey = k;
+                try parsed_keys.append(allocator, opt);
+            } else {
+                try parsed_keys.append(allocator, null);
+            }
+        }
+
         return IconAtlas{
             .texture = tex,
             .frames = frames,
             .allocator = allocator,
             .owns_texture = owns_tex,
+            .parsed_keys = parsed_keys,
         };
     }
 
@@ -279,7 +294,7 @@ pub const InputIconsLoader = struct {
         return &[_][]const u8{".xml"};
     }
 
-    pub fn unload(_: @This(), atlas: @import("../io/types.zig").IconAtlas) void {
+    pub fn unload(_: @This(), atlas: types.IconAtlas) void {
         var a = atlas;
         a.deinit();
     }
