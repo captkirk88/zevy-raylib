@@ -5,6 +5,8 @@ const types = @import("types.zig");
 const input = @import("../input/input.zig");
 const loaders = @import("loader.zig");
 const known_folders = @import("known_folders");
+const xml = @import("xml");
+const xml_mod = @import("xml.zig");
 
 pub const TextureLoader = struct {
     pub const LoadSettings = struct {
@@ -250,7 +252,7 @@ pub const InputIconsLoader = struct {
         const data = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10 MB limit
 
         // Parse XML using XmlDocument and the reusable helper
-        const XmlDocument = @import("../io/xml.zig").XmlDocument;
+        const XmlDocument = xml_mod.XmlDocument;
         var doc = try XmlDocument.initFromSlice(allocator, data, .{});
         defer doc.deinit();
 
@@ -258,36 +260,27 @@ pub const InputIconsLoader = struct {
         const rel = parsed.image_path orelse return error.InvalidFile;
         const frames = parsed.frames;
 
-        var tex: rl.Texture = undefined;
         var owns_tex: bool = true;
 
-        const base_dir = resolver.base_dir;
-        const image_path = try std.fs.path.join(allocator, &[_][]const u8{ base_dir, rel });
-        defer allocator.free(image_path);
-        tex = try resolver.loaders.loadNow(rl.Texture, image_path);
+        // Resolve the image path relative to the XML file's base directory using the provided FileResolver.
+        const image_path_resolved = try resolver.resolve_path(resolver, std.heap.page_allocator, rel);
+
+        // Ensure we free the temporary resolved path after use
+        defer std.heap.page_allocator.free(image_path_resolved);
+
+        // Load the texture using the resolved absolute path to avoid relying on CWD
+        const tex = try resolver.loaders.loadNow(rl.Texture, image_path_resolved);
         owns_tex = false;
 
         // Build IconAtlas (owns the texture)
         const IconAtlas = types.IconAtlas;
-        // Build parsed_keys parallel array
-        var parsed_keys = try std.ArrayList(?input.InputKey).initCapacity(allocator, frames.items.len);
-        // Attempt to parse each frame.name into an InputKey
-        for (frames.items) |f| {
-            if (input.InputKey.fromString(f.name, allocator)) |k| {
-                const opt: ?input.InputKey = k;
-                try parsed_keys.append(allocator, opt);
-            } else {
-                try parsed_keys.append(allocator, null);
-            }
-        }
 
-        return IconAtlas{
-            .texture = tex,
-            .frames = frames,
-            .allocator = allocator,
-            .owns_texture = owns_tex,
-            .parsed_keys = parsed_keys,
-        };
+        return IconAtlas.init(
+            allocator,
+            tex,
+            frames,
+            owns_tex,
+        );
     }
 
     pub fn extensions() []const []const u8 {

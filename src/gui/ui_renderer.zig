@@ -350,117 +350,70 @@ pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void 
     // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
-/// Render input key icons/text for a UI element.
-pub fn renderInputKeysAt(bounds: rl.Rectangle, keys: []const []const input.InputKey, atlas: ?*const io_types.IconAtlas, style: *style_mod.UIStyle) anyerror!void {
+/// Render input key icon/text for a UI element.
+pub fn renderInputKeyAt(bounds: rl.Rectangle, key: input.InputKey, atlas: ?*const io_types.IconAtlas, style: *style_mod.UIStyle) void {
     const st = style.input_icon;
 
-    var x: f32 = bounds.x + 4.0;
+    const x: f32 = bounds.x + 4.0;
     const y: f32 = bounds.y + (bounds.height - st.size) / 2.0;
 
-    for (keys) |chord| {
-        // Build a combined label for the chord: e.g., "Ctrl+E"
-        var buf: [256]u8 = undefined;
-        var pos: usize = 0;
-        for (chord, 0..) |k, i| {
-            if (i > 0) {
-                if (pos < buf.len) {
-                    buf[pos] = '+';
-                } else {
-                    break;
-                }
-                pos += 1;
-            }
+    // Build label for the key
+    var buf: [256]u8 = undefined;
+    var pos: usize = 0;
 
-            switch (k) {
-                .keyboard => |kc| {
-                    const s = kc.toString();
-                    if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
-                    pos += s.len;
-                },
-                .mouse => |mb| {
-                    const s = mb.toString();
-                    if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
-                    pos += s.len;
-                },
-                .gamepad => |gp| {
-                    const button_name = gp.button.toString();
-                    const s = try std.fmt.bufPrint(buf[pos..], "Gamepad{d}_{s}", .{ gp.gamepad_id, button_name });
-                    pos += s.len;
-                },
-                .touch => |t| {
-                    const tn = t.input.toString();
-                    const s = try std.fmt.bufPrint(buf[pos..], "Touch{d}_{s}", .{ t.touch_id, tn });
-                    pos += s.len;
-                },
-                .gesture => |g| {
-                    const s = g.toString();
-                    if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
-                    pos += s.len;
-                },
-            }
-            if (pos > buf.len) pos = buf.len;
-        }
+    switch (key) {
+        .keyboard => |kc| {
+            const s = kc.toString();
+            if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
+            pos += s.len;
+        },
+        .mouse => |mb| {
+            const s = mb.toString();
+            if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
+            pos += s.len;
+        },
+        .gamepad => |gp| {
+            const s = std.fmt.bufPrint(buf[pos..], "{d}_{d}", .{ gp.gamepad_id, @intFromEnum(gp.button) }) catch "";
+            pos += s.len;
+        },
+        .touch => |t| {
+            const s = std.fmt.bufPrint(buf[pos..], "{d}_{d}", .{ t.touch_id, @intFromEnum(t.input) }) catch "";
+            pos += s.len;
+        },
+        .gesture => |g| {
+            const s = g.toString();
+            if (pos + s.len <= buf.len) @memmove(buf[pos .. pos + s.len], s);
+            pos += s.len;
+        },
+    }
+    if (pos > buf.len) pos = buf.len;
 
-        // Prepare null-terminated label
-        if (pos >= buf.len) pos = buf.len - 1;
-        buf[pos] = 0;
+    // Prepare null-terminated label
+    if (pos >= buf.len) pos = buf.len - 1;
+    buf[pos] = 0;
 
-        // Try atlas frame first (exact match on combined label). If that
-        // fails, use the pre-parsed per-frame InputKey mapping as a
-        // single-key fallback. This avoids repeated nested `if (atlas)`
-        // checks and simplifies the control flow.
-        var drawn = false;
-        if (atlas) |a| {
-            const label_slice = buf[0..pos];
+    // Try atlas frame (exact match on label)
+    var drawn = false;
+    if (atlas) |a| {
+        const label_slice = buf[0..pos];
 
-            // Exact combined-label match (compare the combined label to the frame name)
-            for (a.frames.items) |f| {
-                if (str_util.equals(label_slice, f.name, .invariantIgnoreCase)) {
-                    const src = rl.Rectangle{ .x = @floatFromInt(f.frame.x), .y = @floatFromInt(f.frame.y), .width = @floatFromInt(f.frame.w), .height = @floatFromInt(f.frame.h) };
-                    const dest = rl.Rectangle{ .x = x, .y = y, .width = st.size, .height = st.size };
-                    rl.drawTexturePro(a.texture, src, dest, rl.Vector2.zero(), 0, st.tint);
-                    drawn = true;
-                    break;
-                }
-            }
-
-            // If no exact match, try matching any single key in the chord to a
-            // parsed per-frame InputKey (populated at load time).
-            if (!drawn) {
-                const parsed = a.parsed_keys.items;
-                const frames = a.frames.items;
-                const count = frames.len;
-                for (0..count) |i| {
-                    const maybe_key = parsed[i];
-                    if (maybe_key) |fk| {
-                        var matched = false;
-                        for (chord) |k| {
-                            if (fk.eql(k)) {
-                                matched = true;
-                                break;
-                            }
-                        }
-                        if (matched) {
-                            const f = frames[i];
-                            const src = rl.Rectangle{ .x = @floatFromInt(f.frame.x), .y = @floatFromInt(f.frame.y), .width = @floatFromInt(f.frame.w), .height = @floatFromInt(f.frame.h) };
-                            const dest = rl.Rectangle{ .x = x, .y = y, .width = st.size, .height = st.size };
-                            rl.drawTexturePro(a.texture, src, dest, rl.Vector2.zero(), 0, st.tint);
-                            drawn = true;
-                            break;
-                        }
-                    }
-                }
+        // Exact label match (compare the label to the frame name)
+        for (a.frames.items) |f| {
+            if (std.ascii.startsWithIgnoreCase(f.name, label_slice)) {
+                const src = f.frame.toRectangle();
+                const dest = rl.Rectangle{ .x = x, .y = y, .width = st.size, .height = st.size };
+                a.texture.drawPro(src, dest, rl.Vector2{ .x = 0, .y = 0 }, 0, st.tint);
+                drawn = true;
+                break;
             }
         }
+    }
 
-        if (!drawn) {
-            // Fallback: draw a small background box and the label via raygui
-            const label_rect = rl.Rectangle{ .x = x, .y = y, .width = st.size * 2.5, .height = st.size };
-            rl.drawRectangleRec(label_rect, st.tint);
-            const label_nt: [:0]const u8 = buf[0 .. pos + 1 :0];
-            _ = rg.label(label_rect, label_nt);
-        }
-
-        x += st.size * 2.5 + st.spacing;
+    if (!drawn) {
+        // Fallback: draw a small background box and the label via raygui
+        const label_rect = rl.Rectangle{ .x = x, .y = y, .width = st.size * 2.5, .height = st.size };
+        rl.drawRectangleRec(label_rect, st.tint);
+        const label_nt: [:0]const u8 = buf[0 .. pos + 1 :0];
+        _ = rg.label(label_rect, label_nt);
     }
 }

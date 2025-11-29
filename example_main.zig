@@ -11,6 +11,7 @@ const plugins = @import("plugins");
 const zevy_raylib = @import("zevy_raylib");
 const ui = zevy_raylib.ui;
 const layout = zevy_raylib.ui.layout;
+const input = zevy_raylib.input;
 const rl = @import("raylib");
 
 // Import the plugins we need
@@ -191,6 +192,10 @@ pub fn main() !void {
     std.log.info("Building plugins...", .{});
     try plugin_manager.build(&ecs);
 
+    // Load the icon atlas
+    const assets = ecs.getResource(zevy_raylib.Assets) orelse return error.MissingAssets;
+    zevy_raylib.ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
+
     // Get the scheduler that was created by the plugins
     var scheduler = ecs.getResource(zevy_ecs.Scheduler) orelse return error.MissingScheduler;
 
@@ -252,6 +257,13 @@ pub fn main() !void {
 
     const relations = ecs.getResource(zevy_ecs.Relations).?;
     try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.Child);
+
+    // Add input key icon to the button
+    const icon_child = ecs.create(.{
+        ui.components.UIRect.init(70, 10, 16, 16),
+        ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
+    });
+    try relations.add(&ecs, icon_child, close_button, zevy_ecs.relations.Child);
 
     std.log.info("Starting game loop...", .{});
 

@@ -106,7 +106,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
         loader: LoaderType,
 
         pub fn init(allocator: std.mem.Allocator, loader: LoaderType, loaders: *Loaders) error{OutOfMemory}!@This() {
-            return @This(){
+            const self = @This(){
                 .allocator = allocator,
                 .loaders = loaders,
                 .mutex = std.Thread.Mutex{},
@@ -114,6 +114,8 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
                 .queue = try std.ArrayList(LoadRequest).initCapacity(allocator, 0),
                 .loader = loader,
             };
+
+            return self;
         }
 
         pub fn deinit(self: *@This()) void {

@@ -96,10 +96,10 @@ const EventHandlerInfo = struct {
 /// Wrapper for raylib function callbacks; groups platform-specific
 /// function pointers so callers can set them in one place.
 pub const RaylibBindings = struct {
-    is_key_down: ?*const fn (key: rl.KeyboardKey) bool,
-    is_mouse_button_down: ?*const fn (button: rl.MouseButton) bool,
-    is_gamepad_available: ?*const fn (gamepad: i32) bool,
-    is_gamepad_button_down: ?*const fn (gamepad: i32, button: rl.GamepadButton) bool,
+    is_key_down: ?*const fn (c_int) bool,
+    is_mouse_button_down: ?*const fn (c_int) bool,
+    is_gamepad_available: ?*const fn (i32) bool,
+    is_gamepad_button_down: ?*const fn (i32, c_int) bool,
     get_touch_point_count: ?*const fn () i32,
     get_touch_position: ?*const fn (index: i32) rl.Vector2,
     get_gesture_detected: ?*const fn () rl.Gesture,
@@ -107,10 +107,10 @@ pub const RaylibBindings = struct {
 
     pub fn default() RaylibBindings {
         return RaylibBindings{
-            .is_key_down = rl.isKeyDown,
-            .is_mouse_button_down = rl.isMouseButtonDown,
+            .is_key_down = @ptrCast(&rl.isKeyDown),
+            .is_mouse_button_down = @ptrCast(&rl.isMouseButtonDown),
             .is_gamepad_available = rl.isGamepadAvailable,
-            .is_gamepad_button_down = rl.isGamepadButtonDown,
+            .is_gamepad_button_down = @ptrCast(&rl.isGamepadButtonDown),
             .get_touch_point_count = rl.getTouchPointCount,
             .get_touch_position = rl.getTouchPosition,
             .get_gesture_detected = rl.getGestureDetected,
@@ -207,7 +207,7 @@ pub const InputManager = struct {
             const keys_to_check = std.enums.values(input_types.KeyCode);
 
             for (keys_to_check) |key| {
-                if (is_key_down_fn(@enumFromInt(@intFromEnum(key)))) {
+                if (is_key_down_fn(@intFromEnum(key))) {
                     try self.current_state.add(InputKey{ .keyboard = key });
                 }
             }
@@ -218,7 +218,7 @@ pub const InputManager = struct {
             const buttons_to_check = std.enums.values(input_types.MouseButton);
 
             for (buttons_to_check) |button| {
-                if (is_mouse_button_down_fn(@enumFromInt(@intFromEnum(button)))) {
+                if (is_mouse_button_down_fn(@intFromEnum(button))) {
                     try self.current_state.add(InputKey{ .mouse = button });
                 }
             }
@@ -232,7 +232,7 @@ pub const InputManager = struct {
                         const buttons_to_check = std.enums.values(input_types.GamepadButton);
 
                         for (buttons_to_check) |button| {
-                            if (self.raylib.is_gamepad_button_down.?(@intCast(gamepad_id), @enumFromInt(@intFromEnum(button)))) {
+                            if (self.raylib.is_gamepad_button_down.?(@intCast(gamepad_id), @intFromEnum(button))) {
                                 try self.current_state.add(InputKey{ .gamepad = .{
                                     .gamepad_id = @intCast(gamepad_id),
                                     .button = button,

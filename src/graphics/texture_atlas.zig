@@ -6,12 +6,30 @@ pub const FrameRect = struct {
     y: i32,
     w: i32,
     h: i32,
+
+    pub fn toRectangle(self: FrameRect) rl.Rectangle {
+        return rl.Rectangle{
+            .x = @floatFromInt(self.x),
+            .y = @floatFromInt(self.y),
+            .width = @floatFromInt(self.w),
+            .height = @floatFromInt(self.h),
+        };
+    }
+
+    pub fn toRectangleWithOffset(self: FrameRect, offset_x: f32, offset_y: f32) rl.Rectangle {
+        return rl.Rectangle{
+            .x = @as(f32, @floatFromInt(self.x)) + offset_x,
+            .y = @as(f32, @floatFromInt(self.y)) + offset_y,
+            .width = @floatFromInt(self.w),
+            .height = @floatFromInt(self.h),
+        };
+    }
 };
 
 pub fn TextureAtlas(comptime FrameDataType: type) type {
     if (@hasField(FrameDataType, "frame") == false) {
         @compileError(std.fmt.comptimePrint(
-            "type {s} must have field 'frame' of type FrameRect",
+            "Type '{s}' must have field 'frame' of type FrameRect",
             .{@typeName(FrameDataType)},
         ));
     }

@@ -369,9 +369,8 @@ pub fn uiRenderSystem(
         text: components.UIText,
         visible: ?components.UIVisible,
     }, .{}),
-    // Query for buttons (include the entity so we can resolve relations)
+    // Query for buttons
     button_query: zevy_ecs.Query(struct {
-        entity: zevy_ecs.Entity,
         rect: components.UIRect,
         button: components.UIButton,
         visible: ?components.UIVisible,
@@ -468,8 +467,8 @@ pub fn uiRenderSystem(
         visible: ?components.UIVisible,
         enabled: ?components.UIEnabled,
     }, .{}),
-    rel: *zevy_ecs.Relations,
 ) anyerror!void {
+    _ = manager;
     // Render panels first (backgrounds)
     var panel_count: usize = 0;
     while (panel_query.next()) |q| {
@@ -504,54 +503,12 @@ pub fn uiRenderSystem(
         renderer.renderProgressBar(q.rect.*, q.progress.*, vis);
     }
 
-    // Render buttons and their related input-key child entities
+    // Render buttons
     while (button_query.next()) |q| {
-        const rect: *components.UIRect = q.rect;
         const vis = if (q.visible) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
         renderer.renderButton(q.rect.*, q.button, vis);
         rg.setState(@intFromEnum(rg.State.normal));
-
-        // Get all children related to this button. Child relation is indexed.
-        const children = rel.getChildren(q.entity, zevy_ecs.relations.Child);
-        if (children.len == 0) continue;
-
-        // Collect per-child chords into small stack buffers and build slice list
-        var chord_storage: [16][4]input.InputKey = undefined;
-        var chord_lens: [16]usize = undefined;
-        var chord_slices: [16][]const input.InputKey = undefined;
-        var chord_count: usize = 0;
-        for (children) |child| {
-            if (chord_count >= chord_storage.len) break;
-            if (try manager.getComponent(child, components.UIInputKey)) |ik| {
-                const s = ik.asSlice();
-                const copy_len = @min(s.len, chord_storage[chord_count].len);
-                for (s[0..copy_len], 0..) |k, i| chord_storage[chord_count][i] = k;
-                chord_lens[chord_count] = copy_len;
-                chord_slices[chord_count] = chord_storage[chord_count][0..copy_len];
-                chord_count += 1;
-            }
-        }
-        if (chord_count > 0) {
-            const atlas_handle_res = manager.getResource(ui_resources.UIIconAtlasHandle);
-            const assets_res = manager.getResource(Assets);
-            var atlas_ptr: ?*const io_types.IconAtlas = null;
-            if (atlas_handle_res) |h| {
-                if (assets_res) |a| {
-                    atlas_ptr = a.get(io_types.IconAtlas, h.handle).?;
-                }
-            }
-            const style_res = manager.getResource(ui_style.UIStyle);
-            var style_ptr: *ui_style.UIStyle = undefined;
-            if (style_res) |s| {
-                style_ptr = s;
-            } else {
-                // UIStyle should have been registered at startup; fall back to a temporary default.
-                var tmp_style = ui_style.UIStyle.init();
-                style_ptr = &tmp_style;
-            }
-            try renderer.renderInputKeysAt(rect.toRectangle(), chord_slices[0..chord_count], atlas_ptr, style_ptr);
-        }
     }
 
     // Render toggles
@@ -627,12 +584,51 @@ pub fn uiRenderSystem(
     }
 }
 
+/// UI Input Key Render System
+/// Renders input key icons/text for UIInputKey components that are children of other UI elements
+/// This system should be called after uiRenderSystem during the render stage
+///
+/// Example usage with zevy_ecs:
+/// ```zig
+/// scheduler.addSystem(
+///     zevy_ecs.Stage(zevy_ecs.Stages.Render),
+///     uiInputKeyRenderSystem,
+///     zevy_ecs.DefaultParamRegistry,
+/// );
+/// ```
+pub fn uiInputKeyRenderSystem(
+    manager: *zevy_ecs.Manager,
+    // Query for input keys that are children
+    input_key_query: zevy_ecs.Query(struct {
+        entity: zevy_ecs.Entity,
+        input_key: components.UIInputKey,
+        children: zevy_ecs.Relation(zevy_ecs.relations.Child),
+    }, .{}),
+    style: zevy_ecs.Res(@import("style.zig").UIStyle),
+) anyerror!void {
+    while (input_key_query.next()) |q| {
+        const ui_key: *components.UIInputKey = q.input_key;
+        const parent: zevy_ecs.Entity = q.children.target;
+        const parent_rect_opt = manager.getComponent(parent, components.UIRect) catch continue;
+        const parent_rect = parent_rect_opt orelse continue;
+        const atlas_opt = manager.getResource(ui_resources.UIIconAtlasHandle);
+        const atlas_ptr = if (atlas_opt) |h| h.atlas else null;
+        renderer.renderInputKeyAt(parent_rect.toRectangle(), ui_key.asSlice()[0], atlas_ptr, style.ptr);
+    }
+}
+
 /// Helper: load an IconAtlas via `Assets` and register it as an ECS resource.
-pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, path: []const u8, settings: anytype) anyerror!void {
+pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, path: []const u8, settings: anytype) void {
     const IconAtlas = @import("../io/types.zig").IconAtlas;
-    const handle = try assets.loadAsset(IconAtlas, path, settings);
+
     // Register the handle as an ECS resource so systems can look it up via Assets.getAsset
-    _ = try manager.addResource(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle));
+    const handle = assets.loadAssetNow(IconAtlas, path, settings) catch |err| {
+        std.log.err("Failed to load icon atlas from '{s}': {}", .{ path, err });
+        return;
+    };
+    _ = manager.addResource(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle)) catch |err| {
+        std.log.err("Failed to register icon atlas resource: {}", .{err});
+    };
 }
 
 /// Layout calculation system for flex layouts

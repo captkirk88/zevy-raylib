@@ -221,6 +221,11 @@ pub const XmlDocument = struct {
                             const maybe_path = try self.attributeValue("imagePath");
                             if (maybe_path) |path_slice| {
                                 image_path_rel = try allocator.dupe(u8, path_slice);
+                                if (image_path_rel) |p| {
+                                    const unescaped = try unescapeXmlEntities(allocator, p);
+                                    allocator.free(p);
+                                    image_path_rel = unescaped;
+                                }
                             }
                         }
                     } else if (std.mem.eql(u8, element_name, "SubTexture")) {
@@ -253,3 +258,31 @@ pub const XmlDocument = struct {
         return result;
     }
 };
+
+pub fn unescapeXmlEntities(allocator: std.mem.Allocator, in: []const u8) ![]u8 {
+    var result = try std.ArrayList(u8).initCapacity(allocator, in.len);
+    defer result.deinit(allocator);
+    var i: usize = 0;
+    while (i < in.len) {
+        if (std.mem.startsWith(u8, in[i..], "&amp;")) {
+            try result.append(allocator, '&');
+            i += 5;
+        } else if (std.mem.startsWith(u8, in[i..], "&lt;")) {
+            try result.append(allocator, '<');
+            i += 4;
+        } else if (std.mem.startsWith(u8, in[i..], "&gt;")) {
+            try result.append(allocator, '>');
+            i += 4;
+        } else if (std.mem.startsWith(u8, in[i..], "&quot;")) {
+            try result.append(allocator, '"');
+            i += 6;
+        } else if (std.mem.startsWith(u8, in[i..], "&apos;")) {
+            try result.append(allocator, '\'');
+            i += 6;
+        } else {
+            try result.append(allocator, in[i]);
+            i += 1;
+        }
+    }
+    return result.toOwnedSlice(allocator);
+}

@@ -1,6 +1,7 @@
 const std = @import("std");
 const rlb = @import("raylib-backend");
 const rl = @import("raylib-backend").c;
+const reflect = @import("zevy_ecs").reflect;
 
 /// File resolver for complex loaders that need to load multiple related files
 pub const FileResolver = struct {
@@ -39,12 +40,12 @@ pub fn AssetLoader(comptime AssetType: type) type {
             // Compile-time validation
             comptime {
                 if (!@hasDecl(LoaderType, "LoadSettings")) {
-                    @compileError("Loader must have a LoadSettings declaration: " ++ @typeName(LoaderType));
+                    @compileError("Loader must have a LoadSettings pub struct declaration: " ++ @typeName(LoaderType));
                 }
-                if (!@hasDecl(LoaderType, "load")) {
+                if (!reflect.hasFuncWithArgs(LoaderType, "load", &[_]type{ []const u8, ?*const FileResolver, ?*const LoaderType.LoadSettings }) == false) {
                     @compileError("Loader must have a load method: " ++ @typeName(LoaderType));
                 }
-                if (!@hasDecl(LoaderType, "extensions")) {
+                if (!reflect.hasFunc(LoaderType, "extensions")) {
                     @compileError("Loader must have an extensions method: " ++ @typeName(LoaderType));
                 }
             }
@@ -163,11 +164,11 @@ pub const Loaders = struct {
         return error.NoManagerForType;
     }
 
-    pub fn loadNow(self: *Loaders, comptime AssetType: type, path: []const u8) anyerror!AssetType {
+    pub fn loadNow(self: *Loaders, comptime AssetType: type, path: []const u8) anyerror!*AssetType {
         const hash = std.hash_map.hashString(@typeName(AssetType));
         if (self.map.get(hash)) |view| {
             const res = try view.load_asset_now_fn(view.ptr, path, null);
-            return @as(*AssetType, @ptrCast(@alignCast(res))).*;
+            return @as(*AssetType, @ptrCast(@alignCast(res)));
         }
         return error.NoManagerForType;
     }

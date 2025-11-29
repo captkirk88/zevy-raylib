@@ -7,6 +7,7 @@ const comps = ui.components;
 const input = @import("../input/input.zig");
 const style = @import("style.zig");
 const Assets = @import("../io/assets.zig").Assets;
+const ui_resources = @import("resources.zig");
 
 const SKIP_IN_DEBUG = true;
 
@@ -68,7 +69,7 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     const input_mgr_res = try ecs.addResource(input.InputManager, .init(allocator));
     // Register default UI input bindings for tests (Enter/Space/Gamepad A/etc.)
     ui.input.setupUIInputBindings(input_mgr_res, allocator) catch |err| {
-        std.log.err("Failed to setup UI input bindings in test: {s}", .{@errorName(err)});
+        std.debug.print("Failed to setup UI input bindings in test: {s}\n", .{@errorName(err)});
         return err;
     };
 
@@ -76,10 +77,7 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     const assets = try ecs.addResource(Assets, Assets.init(allocator));
 
     // Load the icon atlas
-    ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{}) catch |err| {
-        std.log.err("Failed to load icon atlas in test: {s}", .{@errorName(err)});
-        // Continue without atlas
-    };
+    ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
 
     var sch = try ecs.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(ecs.allocator));
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
@@ -94,6 +92,7 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.gridLayoutSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.dockLayoutSystem, zevy_ecs.DefaultParamRegistry);
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiRenderSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiInputKeyRenderSystem, zevy_ecs.DefaultParamRegistry);
 
     return ecs;
 }
@@ -111,8 +110,9 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
 
     const start = std.time.milliTimestamp();
 
-    const max_duration_ms = TEST_SKIP_TIMEOUT_SECS * std.time.ms_per_s; // Run for 2 seconds
+    const max_duration_ms = TEST_SKIP_TIMEOUT_SECS * std.time.ms_per_s; // Run for 10 seconds
     while (!rl.windowShouldClose()) {
+        if (!rl.isWindowReady()) break;
         const now = std.time.milliTimestamp();
         if (now - start >= max_duration_ms) break;
 
@@ -282,10 +282,18 @@ test "Render Anchor Layout" {
     });
 
     const rel = ecs.getResource(zevy_ecs.RelationManager).?;
-    const top_left = ecs.create(.{ comps.UIRect.init(0, 0, 100, 50), comps.UIPanel.init("Top Left"), layouts.AnchorLayout.init(.top_left) });
+    const top_left = ecs.create(.{
+        comps.UIRect.init(0, 0, 100, 50),
+        comps.UIPanel.init("Top Left"),
+        layouts.AnchorLayout.init(.top_left),
+    });
     try rel.add(&ecs, top_left, anchor_container, zevy_ecs.relations.Child);
 
-    const bottom_right = ecs.create(.{ comps.UIRect.init(0, 0, 100, 50), comps.UIPanel.init("Bottom Right"), layouts.AnchorLayout.init(.bottom_right) });
+    const bottom_right = ecs.create(.{
+        comps.UIRect.init(0, 0, 100, 50),
+        comps.UIPanel.init("Bottom Right"),
+        layouts.AnchorLayout.init(.bottom_right),
+    });
     try rel.add(&ecs, bottom_right, anchor_container, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {

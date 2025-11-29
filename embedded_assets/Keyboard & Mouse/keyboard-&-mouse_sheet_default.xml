@@ -1,4 +1,4 @@
-<TextureAtlas imagePath="keyboard-&amp;-mouse_sheet_default.png">
+<TextureAtlas imagePath="embedded://Keyboard &amp; Mouse/keyboard-&amp;-mouse_sheet_default.png">
   <SubTexture name="keyboard"
     x="0"
     y="0"

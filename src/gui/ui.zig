@@ -2,6 +2,7 @@ const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 
+const _assets = @import("../io/assets.zig");
 const _input = @import("../input/input.zig");
 
 /// UI Components
@@ -28,6 +29,10 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
                 std.log.err("Failed to setup UI input bindings: {}", .{err});
                 return err;
             };
+
+            const assets = e.getResource(_assets.Assets) orelse
+                return error.MissingAssetsResource;
+            _ = assets;
 
             const scheduler = e.getResource(
                 zevy_ecs.Scheduler,
@@ -103,6 +108,14 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
                 e,
                 zevy_ecs.Stage(zevy_ecs.Stages.PostDraw),
                 systems.uiRenderSystem,
+                ParamRegistry,
+            );
+
+            // Input key rendering system
+            scheduler.addSystem(
+                e,
+                zevy_ecs.Stage(zevy_ecs.Stages.PostDraw),
+                systems.uiInputKeyRenderSystem,
                 ParamRegistry,
             );
         }

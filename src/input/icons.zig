@@ -68,7 +68,7 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
     const rel_path = image_path_rel orelse return ParseError.MissingImagePath;
     const parent_dir: ?[]const u8 = if (assets != null) null else std.fs.path.dirname(xml_path) orelse ".";
 
-    var texture: rl.Texture = undefined;
+    var texture: *rl.Texture = undefined;
     if (assets) |a| {
         // Construct the final path/URI for the image by combining the directory of xml_path with the relative image path
         const base_uri = io_util.getDirectoryUri(xml_path);
@@ -84,12 +84,13 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
         const image_path = try std.fs.path.join(allocator, &[_][]const u8{ parent_dir orelse ".", rel_path });
         defer allocator.free(image_path);
         allocator.free(rel_path);
-
+        texture = try allocator.create(rl.Texture);
         const image_path_z = try std.heap.c_allocator.dupeZ(u8, image_path);
         defer std.heap.c_allocator.free(image_path_z);
-        texture = try rl.loadTexture(image_path_z);
-        if (!rl.isTextureValid(texture)) {
-            rl.unloadTexture(texture);
+        texture.* = try rl.loadTexture(image_path_z);
+        if (!rl.isTextureValid(texture.*)) {
+            rl.unloadTexture(texture.*);
+            allocator.destroy(texture);
             return ParseError.InvalidTexture;
         }
     }
@@ -97,29 +98,13 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
     // Transfer ownership of frames to returned PromptAtlas
     frames_owned = false;
 
-    if (!rl.isTextureValid(texture)) {
-        rl.unloadTexture(texture);
-        return ParseError.InvalidTexture;
-    }
-
-    // Build parsed_keys parallel array
-    var parsed_keys = try std.ArrayList(?input.InputKey).initCapacity(use_allocator, frames.items.len);
-    for (frames.items) |f| {
-        if (input.InputKey.fromString(f.name, use_allocator)) |k| {
-            const opt: ?input.InputKey = k;
-            try parsed_keys.append(use_allocator, opt);
-        } else {
-            try parsed_keys.append(use_allocator, null);
-        }
-    }
-
-    return PromptAtlas{
-        .texture = texture,
-        .frames = frames,
-        .allocator = use_allocator,
-        .owns_texture = (assets == null),
-        .parsed_keys = parsed_keys,
-    };
+    const promptAtlas = PromptAtlas.init(
+        allocator,
+        texture,
+        frames,
+        (assets == null),
+    );
+    return promptAtlas;
 }
 
 pub fn parseKeyboardMouse(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
@@ -149,32 +134,36 @@ fn freeFrameNames(allocator: std.mem.Allocator, frames: []const IconFrame) void 
 test "parse keyboardmouse texture atlas" {
     const testing = std.testing;
     const allocator = testing.allocator;
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
 
     // Raylib must be initialised to load textures
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
 
-    const xml_path = "embedded_assets/Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
-    var pa = try parseKeyboardMouse(allocator, xml_path, null);
+    const xml_path = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
+    var pa = try assets.loadAssetNow(PromptAtlas, xml_path, null);
     defer pa.deinit();
 
     try testing.expect(pa.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.texture));
+    try testing.expect(rl.isTextureValid(pa.texture.*));
 }
 
 test "parse xbox texture atlas" {
     const testing = std.testing;
     const allocator = testing.allocator;
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
 
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
 
-    const xml_path = "embedded_assets/Xbox Series/xbox-series_sheet_default.xml";
-    var pa = try parseXbox(allocator, xml_path, null);
+    const xml_path = "embedded://Xbox Series/xbox-series_sheet_default.xml";
+    var pa = try parseXbox(allocator, xml_path, &assets);
     defer pa.deinit();
 
     try testing.expect(pa.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.texture));
+    try testing.expect(rl.isTextureValid(pa.texture.*));
 }
 
 test "missing imagePath attribute returns error" {
@@ -211,7 +200,7 @@ test "parse keyboardmouse via Assets resolver (embedded://)" {
     defer pa.deinit();
 
     try testing.expect(pa.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.texture));
+    try testing.expect(rl.isTextureValid(pa.texture.*));
 }
 
 test "parse playstation via Assets resolver (embedded://)" {
@@ -229,5 +218,5 @@ test "parse playstation via Assets resolver (embedded://)" {
     defer pa.deinit();
 
     try testing.expect(pa.frameCount() > 0);
-    try testing.expect(rl.isTextureValid(pa.texture));
+    try testing.expect(rl.isTextureValid(pa.texture.*));
 }

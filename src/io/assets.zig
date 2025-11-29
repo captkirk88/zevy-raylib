@@ -275,7 +275,7 @@ pub const Assets = struct {
         return error.NoManagerForType;
     }
 
-    pub fn loadAssetNow(self: *Assets, comptime AssetType: type, file: []const u8, settings: anytype) anyerror!AssetType {
+    pub fn loadAssetNow(self: *Assets, comptime AssetType: type, file: []const u8, settings: anytype) anyerror!*AssetType {
         // Check if this is a multi-file asset (separated by semicolon)
         // This needs to be checked BEFORE scheme resolution
         if (std.mem.indexOf(u8, file, ";")) |_| {
@@ -312,7 +312,7 @@ pub const Assets = struct {
         }
     }
 
-    fn loadMultiFileAsset(self: *Assets, comptime AssetType: type, file_list: []const u8, settings: anytype) anyerror!AssetType {
+    fn loadMultiFileAsset(self: *Assets, comptime AssetType: type, file_list: []const u8, settings: anytype) anyerror!*AssetType {
         var iter = std.mem.splitScalar(u8, file_list, ';');
         var temp_files = try std.ArrayList([]const u8).initCapacity(self.allocator, 4);
         defer {
@@ -463,7 +463,7 @@ pub const Assets = struct {
         return error.NoManagerForType;
     }
 
-    fn loadAssetFromPath(self: *Assets, comptime AssetType: type, file_path: []const u8, settings: anytype) !AssetType {
+    fn loadAssetFromPath(self: *Assets, comptime AssetType: type, file_path: []const u8, settings: anytype) !*AssetType {
         // Settings can be null, a value, a pointer, or optional - all are valid
         const hash = std.hash_map.hashString(@typeName(AssetType));
         if (self.loaders.map.getPtr(hash)) |entry| {
@@ -472,12 +472,12 @@ pub const Assets = struct {
             else
                 @as(*anyopaque, @ptrCast(@constCast(&settings)));
             const asset_ptr = try entry.load_asset_now_fn(entry.ptr, file_path, settings_ptr);
-            return @as(*AssetType, @ptrCast(@alignCast(asset_ptr))).*;
+            return @as(*AssetType, @ptrCast(@alignCast(asset_ptr)));
         }
         return error.NoManagerForType;
     }
 
-    fn loadAssetFromData(self: *Assets, comptime AssetType: type, original_uri: []const u8, data: []const u8, settings: anytype) !AssetType {
+    fn loadAssetFromData(self: *Assets, comptime AssetType: type, original_uri: []const u8, data: []const u8, settings: anytype) !*AssetType {
         // Write data to a temp file and load via loadAssetFromPath
         // NOTE: This function does NOT own the data parameter - the caller is responsible for freeing it
         const path_without_scheme = if (std.mem.indexOf(u8, original_uri, "://")) |idx|
@@ -494,7 +494,7 @@ pub const Assets = struct {
         return try self.loadAssetFromPath(AssetType, temp_file, settings);
     }
 
-    fn loadEmbeddedAsset(self: *Assets, comptime AssetType: type, original_path: []const u8, data: []const u8, settings: anytype) anyerror!AssetType {
+    fn loadEmbeddedAsset(self: *Assets, comptime AssetType: type, original_path: []const u8, data: []const u8, settings: anytype) anyerror!*AssetType {
         defer self.allocator.free(data);
         return try self.loadAssetFromData(AssetType, original_path, data, settings);
     }
@@ -640,7 +640,7 @@ test "Assets load embedded asset" {
         std.log.err("Failed to load embedded asset: {any}", .{err});
         return err;
     };
-    try testing.expect(rl.isTextureValid(data));
+    try testing.expect(rl.isTextureValid(data.*));
 }
 
 test "Assets multi-file queued cleanup" {
@@ -1211,11 +1211,7 @@ test "Assets embedded scheme integration" {
 
     // Test embedded asset loading through scheme system
     const data = try assets.loadAssetNow(rl.Texture, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.png", null);
-    try testing.expect(rl.isTextureValid(data));
-
-    // Note: Async loading (loadAsset) doesn't support multi-file embedded assets
-    // because temp files are cleaned up before async load completes.
-    // This is expected behavior - use loadAssetNow for multi-file embedded assets.
+    try testing.expect(rl.isTextureValid(data.*));
 }
 
 test "Assets scheme system memory management" {

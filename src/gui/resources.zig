@@ -4,11 +4,12 @@ const rl = @import("raylib");
 // Resource types for UI (non-component global resources)
 const Assets = @import("../io/assets.zig").Assets;
 const AssetHandle = @import("../io/assets.zig").AssetHandle;
+const io_types = @import("../io/types.zig");
 
 pub const UIIconAtlasHandle = struct {
-    handle: AssetHandle,
+    atlas: *io_types.IconAtlas,
 
-    pub fn init(h: AssetHandle) UIIconAtlasHandle {
-        return .{ .handle = h };
+    pub fn init(atlas: *io_types.IconAtlas) UIIconAtlasHandle {
+        return .{ .atlas = atlas };
     }
 };

@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const input = @import("../input/input.zig");
 const icons = @import("icons.zig");
 const Assets = @import("../io/assets.zig").Assets;
 
@@ -38,7 +39,7 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.PromptAtlas, title: [:0]const
         const now = std.time.milliTimestamp();
 
         // Handle camera panning with mouse
-        if (rl.isMouseButtonDown(rl.MouseButton.left)) {
+        if (input.getMousePosition() != null and rl.isMouseButtonDown(.left)) {
             last_activity_time = now;
             const mouse_delta = rl.getMouseDelta();
             camera.target.x -= mouse_delta.x / camera.zoom;
@@ -74,7 +75,7 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.PromptAtlas, title: [:0]const
 
         for (prompt_atlas.frames.items) |frame| {
             rl.drawTextureRec(
-                prompt_atlas.texture,
+                prompt_atlas.texture.*,
                 .{
                     .x = @floatFromInt(@as(i32, @intCast(frame.frame.x))),
                     .y = @floatFromInt(@as(i32, @intCast(frame.frame.y))),
