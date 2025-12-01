@@ -1,27 +1,31 @@
-const asset_manager = @import("asset_manager.zig");
-const loader = @import("loader.zig");
-
 /// Built-in asset types and related utilities
 const assets = @import("assets.zig");
 /// Assets type for managing asset loading and schemes
 pub const Assets = assets.Assets;
 
 /// AssetHandle type for managing asset references
-pub const AssetHandle = asset_manager.AssetHandle;
-/// AssetManager type for loading and managing assets
-pub const AssetManager = asset_manager.AssetManager;
+pub const AssetHandle = assets.AssetHandle;
 
-pub const FileResolver = loader.FileResolver;
-/// AssetLoader wrapper type: validates that a loader implements the required interface
-pub const AssetLoader = loader.AssetLoader;
-/// AssetUnloader wrapper type: validates that an unloader implements the required interface
-pub const AssetUnloader = loader.AssetUnloader;
+/// LoadContext for loaders to access parent URI and related assets
+pub const LoadContext = assets.LoadContext;
 
-/// Built-in asset loaders
-pub const loaders = @import("loaders.zig");
+/// Built-in loaders
+pub const TextureLoader = assets.TextureLoader;
+pub const SoundLoader = assets.SoundLoader;
+pub const MusicLoader = assets.MusicLoader;
+pub const FontLoader = assets.FontLoader;
+pub const ShaderLoader = assets.ShaderLoader;
+pub const XmlDocumentLoader = assets.XmlDocumentLoader;
+pub const IconAtlasLoader = assets.IconAtlasLoader;
 
 /// General IO utility functions
 pub const util = @import("util.zig");
 
-/// Scheme resolver for handling different URI schemes (e.g., file://, http://)
+/// Scheme resolver for handling different URI schemes (e.g., file://, embedded://)
 pub const schemes = @import("scheme_resolver.zig");
+
+/// XML document utilities
+pub const xml = @import("xml.zig");
+
+/// Asset types
+pub const types = @import("types.zig");

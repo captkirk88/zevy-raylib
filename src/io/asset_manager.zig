@@ -2,6 +2,8 @@ const std = @import("std");
 const rl = @import("raylib");
 const AssetLoader = @import("loader.zig").AssetLoader;
 const Loaders = @import("loader.zig").Loaders;
+const FileResolver = @import("loader.zig").FileResolver;
+const AssetProcessor = @import("processor.zig").AssetProcessor;
 
 /// Handle type for loaded assets
 pub const AssetHandle = usize;
@@ -85,7 +87,16 @@ fn fileResolverPathExists(resolver: *const @import("loader.zig").FileResolver, r
     return true;
 }
 
-pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
+/// AssetManager with optional post-load processor support.
+///
+/// Parameters:
+///   - AssetType: The asset type returned by the loader (and optionally modified by the processor)
+///   - LoaderType: The loader type implementing the load interface
+///   - ProcessorType: Optional processor type. Pass `void` for no processing.
+///                    The processor modifies the asset in-place.
+pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type, comptime ProcessorType: type) type {
+    const has_processor = ProcessorType != void;
+
     const AssetEntry = struct {
         id: usize,
         asset: AssetType,
@@ -104,28 +115,57 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
         assets: std.StringHashMap(AssetEntry),
         queue: std.ArrayList(LoadRequest),
         loader: LoaderType,
+        processor: if (has_processor) ProcessorType else void,
+        processor_settings: if (has_processor) ?ProcessorType.ProcessSettings else void,
 
-        pub fn init(allocator: std.mem.Allocator, loader: LoaderType, loaders: *Loaders) error{OutOfMemory}!@This() {
-            const self = @This(){
+        const Self = @This();
+
+        /// Initialize an AssetManager without a processor
+        pub fn init(allocator: std.mem.Allocator, loader: LoaderType, loaders: *Loaders) error{OutOfMemory}!Self {
+            if (has_processor) {
+                @compileError("AssetManager with ProcessorType requires initWithProcessor()");
+            }
+            return Self{
                 .allocator = allocator,
                 .loaders = loaders,
                 .mutex = std.Thread.Mutex{},
                 .assets = std.StringHashMap(AssetEntry).init(allocator),
                 .queue = try std.ArrayList(LoadRequest).initCapacity(allocator, 0),
                 .loader = loader,
+                .processor = {},
+                .processor_settings = {},
             };
-
-            return self;
         }
 
-        pub fn deinit(self: *@This()) void {
+        /// Initialize an AssetManager with a processor
+        pub fn initWithProcessor(allocator: std.mem.Allocator, loader: LoaderType, processor: ProcessorType, processor_settings: ?ProcessorType.ProcessSettings, loaders: *Loaders) error{OutOfMemory}!Self {
+            if (!has_processor) {
+                @compileError("initWithProcessor() called but ProcessorType is void");
+            }
+            return Self{
+                .allocator = allocator,
+                .loaders = loaders,
+                .mutex = std.Thread.Mutex{},
+                .assets = std.StringHashMap(AssetEntry).init(allocator),
+                .queue = try std.ArrayList(LoadRequest).initCapacity(allocator, 0),
+                .loader = loader,
+                .processor = processor,
+                .processor_settings = processor_settings,
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
             // First unload all assets and free their keys
             var it = self.assets.iterator();
             while (it.next()) |entry| {
-                self.loader.unload(entry.value_ptr.asset);
+                if (has_processor) {
+                    self.processor.unload(entry.value_ptr.asset);
+                } else {
+                    self.loader.unload(entry.value_ptr.asset);
+                }
                 self.allocator.free(@constCast(entry.key_ptr.*)); // Free the owned key
             }
             self.assets.deinit();
@@ -137,19 +177,19 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             self.queue.deinit(self.allocator);
         }
 
-        pub fn count(self: *@This()) usize {
+        pub fn count(self: *Self) usize {
             self.mutex.lock();
             defer self.mutex.unlock();
             return self.assets.len;
         }
 
-        pub fn amount(self: *@This()) usize {
+        pub fn amount(self: *Self) usize {
             self.mutex.lock();
             defer self.mutex.unlock();
             return self.queue.items.len;
         }
 
-        pub fn loadAsset(self: *@This(), file: []const u8, settings: anytype) error{ InvalidPath, OutOfMemory }!AssetHandle {
+        pub fn loadAsset(self: *Self, file: []const u8, settings: anytype) error{ InvalidPath, OutOfMemory }!AssetHandle {
 
             // Check if already loaded using direct string comparison
             if (self.assets.get(file)) |entry| {
@@ -175,7 +215,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             return id;
         }
 
-        pub fn process(self: *@This()) anyerror!void {
+        pub fn process(self: *Self) anyerror!void {
             // First, safely get a request from the queue
             const req = blk: {
                 self.mutex.lock();
@@ -208,23 +248,33 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
                 self.allocator.free(req.?.file); // Free the owned file string
                 return error.FileNotFound;
             }
-            // Create FileResolver for complex loaders - use the directory containing this asset
-            const embedded = isEmbeddedPath(absolute_path);
-            var resolver_storage: @import("loader.zig").FileResolver = undefined;
-            const resolver_ptr: ?*const @import("loader.zig").FileResolver = if (!embedded) blk: {
-                const asset_dir = std.fs.path.dirname(absolute_path) orelse ".";
-                resolver_storage = .{
-                    .base_dir = asset_dir,
-                    .resolve_path = fileResolverResolvePath,
-                    .path_exists = fileResolverPathExists,
-                    .loaders = self.loaders,
-                };
-                break :blk &resolver_storage;
-            } else null;
+            // Create FileResolver for complex loaders
+            // For embedded paths, preserve the original URI for relative path resolution
+            const embedded = isEmbeddedPath(req.?.file);
+            const asset_dir = if (!embedded) std.fs.path.dirname(absolute_path) orelse "." else "";
+            var resolver_storage: FileResolver = .{
+                .base_dir = asset_dir,
+                .original_uri = if (embedded) req.?.file else null,
+                .scheme_registry = self.loaders.scheme_registry,
+                .resolve_path = fileResolverResolvePath,
+                .path_exists = fileResolverPathExists,
+                .loaders = self.loaders,
+            };
+            const resolver_ptr: *const FileResolver = &resolver_storage;
 
             // Convert settings to pointer if not null
             const settings_ptr = if (req.?.settings) |s| &s else null;
-            const asset = try self.loader.load(absolute_path, resolver_ptr, settings_ptr);
+            var raw_asset = try self.loader.load(absolute_path, resolver_ptr, settings_ptr);
+
+            // Run processor if configured (modifies asset in-place)
+            if (has_processor) {
+                const proc_settings_ptr = if (self.processor_settings) |s| &s else null;
+                self.processor.process(&raw_asset, self.allocator, resolver_ptr, proc_settings_ptr) catch |err| {
+                    // If processing fails, unload the raw asset
+                    self.loader.unload(raw_asset);
+                    return err;
+                };
+            }
 
             // Now safely store the result
             self.mutex.lock();
@@ -232,21 +282,25 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
 
             const entry = AssetEntry{
                 .id = req.?.id,
-                .asset = asset,
+                .asset = raw_asset,
             };
 
             // Transfer ownership of req.file to the HashMap
             try self.assets.put(req.?.file, entry);
         }
 
-        pub fn unloadAsset(self: *@This(), handle: AssetHandle) void {
+        pub fn unloadAsset(self: *Self, handle: AssetHandle) void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
             var it = self.assets.iterator();
             while (it.next()) |entry| {
                 if (entry.value_ptr.id == handle) {
-                    self.loader.unload(entry.value_ptr.asset);
+                    if (has_processor) {
+                        self.processor.unload(entry.value_ptr.asset);
+                    } else {
+                        self.loader.unload(entry.value_ptr.asset);
+                    }
                     const key_to_free = entry.key_ptr.*;
                     _ = self.assets.remove(key_to_free);
                     self.allocator.free(@constCast(key_to_free)); // Free the owned key
@@ -255,7 +309,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             }
         }
 
-        pub fn getAsset(self: *@This(), handle: AssetHandle) ?*AssetType {
+        pub fn getAsset(self: *Self, handle: AssetHandle) ?*AssetType {
             self.mutex.lock();
             defer self.mutex.unlock();
 
@@ -268,7 +322,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             return null;
         }
 
-        pub fn isLoaded(self: *@This(), handle: AssetHandle) bool {
+        pub fn isLoaded(self: *Self, handle: AssetHandle) bool {
             self.mutex.lock();
             defer self.mutex.unlock();
 
@@ -281,7 +335,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             return false;
         }
 
-        pub fn loadAssetNow(self: *@This(), file: []const u8, settings: ?LoaderType.LoadSettings) anyerror!AssetHandle {
+        pub fn loadAssetNow(self: *Self, file: []const u8, settings: ?LoaderType.LoadSettings) anyerror!AssetHandle {
             // Validate path early, before taking mutex
             if (!isValidAssetPath(file)) {
                 return error.InvalidPath;
@@ -301,28 +355,39 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
             const absolute_path = try resolveAbsolutePath(self.allocator, file);
             defer self.allocator.free(absolute_path);
 
-            // Create FileResolver for complex loaders - use the directory containing this asset
-            const embedded = isEmbeddedPath(absolute_path);
-            var resolver_storage: @import("loader.zig").FileResolver = undefined;
-            const resolver_ptr: ?*const @import("loader.zig").FileResolver = if (!embedded) blk: {
-                const asset_dir = std.fs.path.dirname(absolute_path) orelse ".";
-                resolver_storage = .{
-                    .base_dir = asset_dir,
-                    .resolve_path = fileResolverResolvePath,
-                    .path_exists = fileResolverPathExists,
-                    .loaders = self.loaders,
-                };
-                break :blk &resolver_storage;
-            } else null;
+            // Create FileResolver for complex loaders
+            // For embedded paths, preserve the original URI for relative path resolution
+            const embedded = isEmbeddedPath(file);
+            const asset_dir = if (!embedded) std.fs.path.dirname(absolute_path) orelse "." else "";
+            var resolver_storage: FileResolver = .{
+                .base_dir = asset_dir,
+                .original_uri = if (embedded) file else null,
+                .scheme_registry = self.loaders.scheme_registry,
+                .resolve_path = fileResolverResolvePath,
+                .path_exists = fileResolverPathExists,
+                .loaders = self.loaders,
+            };
+            const resolver_ptr: *const FileResolver = &resolver_storage;
 
             // Convert settings to pointer if not null
             const settings_ptr = if (settings) |s| &s else null;
-            const asset = try self.loader.load(absolute_path, resolver_ptr, settings_ptr);
+            var raw_asset = try self.loader.load(absolute_path, resolver_ptr, settings_ptr);
+
+            // Run processor if configured (modifies asset in-place)
+            if (has_processor) {
+                const proc_settings_ptr = if (self.processor_settings) |s| &s else null;
+                self.processor.process(&raw_asset, self.allocator, resolver_ptr, proc_settings_ptr) catch |err| {
+                    // If processing fails, unload the raw asset
+                    self.loader.unload(raw_asset);
+                    return err;
+                };
+            }
+
             const id = generateHandle(file);
 
             const entry = AssetEntry{
                 .id = id,
-                .asset = asset,
+                .asset = raw_asset,
             };
 
             // Ensure no other thread loaded the same asset in the meantime
@@ -332,7 +397,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
                 const existing_id = existing_entry.id;
                 self.mutex.unlock();
                 // Unload the asset we created since manager will own the duplicate
-                self.loader.unload(asset);
+                self.loader.unload(raw_asset);
                 return existing_id;
             }
 
@@ -356,7 +421,7 @@ test "AssetManager multiple assets" {
     const TestLoader = struct {
         pub const LoadSettings = struct {};
 
-        pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!TestAsset {
+        pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const FileResolver, _settings: ?*const LoadSettings) anyerror!TestAsset {
             _ = _settings;
             _ = _file_resolver;
             const filename = std.fs.path.basename(absolute_path);
@@ -373,7 +438,7 @@ test "AssetManager multiple assets" {
     };
     var loaders = try Loaders.init(std.testing.allocator);
     defer loaders.deinit();
-    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator, TestLoader{}, &loaders);
+    var manager = try AssetManager(TestAsset, TestLoader, void).init(std.testing.allocator, TestLoader{}, &loaders);
     defer manager.deinit();
 
     // Test with different settings types
@@ -400,7 +465,7 @@ test "AssetManager loadAssetNow" {
     const TestLoader = struct {
         pub const LoadSettings = struct {};
 
-        pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const @import("loader.zig").FileResolver, _settings: ?*const LoadSettings) anyerror!TestAsset {
+        pub fn load(_: @This(), absolute_path: []const u8, _file_resolver: ?*const FileResolver, _settings: ?*const LoadSettings) anyerror!TestAsset {
             _ = _settings;
             _ = _file_resolver;
             const filename = std.fs.path.basename(absolute_path);
@@ -417,7 +482,7 @@ test "AssetManager loadAssetNow" {
     };
     var loaders = try Loaders.init(std.testing.allocator);
     defer loaders.deinit();
-    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator, TestLoader{}, &loaders);
+    var manager = try AssetManager(TestAsset, TestLoader, void).init(std.testing.allocator, TestLoader{}, &loaders);
     defer manager.deinit();
 
     // Load immediately with proper settings type
@@ -443,7 +508,7 @@ test "AssetManager path validation" {
     const TestAsset = usize;
     const TestLoader = struct {
         pub const LoadSettings = struct {};
-        pub fn load(_: @This(), _: []const u8, _: ?*const @import("loader.zig").FileResolver, _: ?*const LoadSettings) anyerror!TestAsset {
+        pub fn load(_: @This(), _: []const u8, _: ?*const FileResolver, _: ?*const LoadSettings) anyerror!TestAsset {
             return 42;
         }
         pub fn extensions() []const []const u8 {
@@ -453,7 +518,7 @@ test "AssetManager path validation" {
     };
     var loaders = try Loaders.init(std.testing.allocator);
     defer loaders.deinit();
-    var manager = try AssetManager(TestAsset, TestLoader).init(std.testing.allocator, TestLoader{}, &loaders);
+    var manager = try AssetManager(TestAsset, TestLoader, void).init(std.testing.allocator, TestLoader{}, &loaders);
     defer manager.deinit();
 
     // Test loadAssetNow with invalid paths

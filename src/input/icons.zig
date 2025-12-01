@@ -142,8 +142,28 @@ test "parse keyboardmouse texture atlas" {
     defer rl.closeWindow();
 
     const xml_path = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
-    var pa = try assets.loadAssetNow(PromptAtlas, xml_path, null);
+    // Use parseKeyboardMouse which properly handles embedded assets
+    var pa = try parseKeyboardMouse(allocator, xml_path, &assets);
     defer pa.deinit();
+
+    try testing.expect(pa.frameCount() > 0);
+    try testing.expect(rl.isTextureValid(pa.texture.*));
+}
+
+test "loadAssetNow IconAtlas from embedded path" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
+
+    // Raylib must be initialised to load textures
+    rl.initWindow(640, 480, "icons test loadAssetNow");
+    defer rl.closeWindow();
+
+    // Test that assets.loadAssetNow works with embedded IconAtlas
+    // This exercises the scheme-aware FileResolver for relative path resolution
+    const xml_path = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
+    const pa = try assets.loadAssetNow(PromptAtlas, xml_path, null);
 
     try testing.expect(pa.frameCount() > 0);
     try testing.expect(rl.isTextureValid(pa.texture.*));

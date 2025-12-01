@@ -2,15 +2,19 @@ const std = @import("std");
 const rlb = @import("raylib-backend");
 const rl = @import("raylib-backend").c;
 const reflect = @import("zevy_ecs").reflect;
+const schemes = @import("scheme_resolver.zig");
 
 /// File resolver for complex loaders that need to load multiple related files
 pub const FileResolver = struct {
-    /// Absolute base directory path
+    /// Absolute base directory path (used for filesystem-based resolution)
     base_dir: []const u8,
 
     /// Original URI that was resolved to reach this file (e.g., "embedded://path/to/file.xml")
-    /// Optional - may be null for regular file paths
+    /// When set, relative paths are resolved using the scheme registry instead of filesystem
     original_uri: ?[]const u8 = null,
+
+    /// Scheme registry for resolving scheme-based URIs (optional, needed for embedded/custom schemes)
+    scheme_registry: ?*schemes.SchemeRegistry = null,
 
     /// Resolve a relative path to an absolute path within the base directory
     resolve_path: *const fn (self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) std.mem.Allocator.Error![]u8,
@@ -20,6 +24,53 @@ pub const FileResolver = struct {
     /// Pointer to the Loaders registry so a loader can request other
     /// asset types (via a small, typed API) without importing concrete managers.
     loaders: *Loaders,
+
+    /// Resolve a relative path, using scheme registry if original_uri has a scheme
+    /// Returns the resolved path/URI that can be used with loaders.loadNow()
+    pub fn resolveRelative(self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) ![]u8 {
+        // If we have an original URI with a scheme, resolve relative to that
+        if (self.original_uri) |uri| {
+            if (std.mem.indexOf(u8, uri, "://")) |scheme_end| {
+                // Find the directory portion of the URI
+                var last_slash: usize = uri.len;
+                while (last_slash > scheme_end + 3) : (last_slash -= 1) {
+                    if (uri[last_slash - 1] == '/') break;
+                }
+                // Construct new URI: scheme://base_dir/relative_path
+                const base_uri = uri[0..last_slash];
+                return std.mem.concat(allocator, u8, &[_][]const u8{ base_uri, relative_path });
+            }
+        }
+        // Fall back to filesystem-based resolution
+        return self.resolve_path(self, allocator, relative_path);
+    }
+
+    /// Check if a relative path exists, using scheme registry if original_uri has a scheme
+    pub fn existsRelative(self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) bool {
+        // If we have an original URI with a scheme and a scheme registry, check via registry
+        if (self.original_uri) |uri| {
+            if (self.scheme_registry) |registry| {
+                if (std.mem.indexOf(u8, uri, "://")) |scheme_end| {
+                    // Find the directory portion of the URI
+                    var last_slash: usize = uri.len;
+                    while (last_slash > scheme_end + 3) : (last_slash -= 1) {
+                        if (uri[last_slash - 1] == '/') break;
+                    }
+                    // Construct new URI: scheme://base_dir/relative_path
+                    const base_uri = uri[0..last_slash];
+                    const full_uri = std.mem.concat(allocator, u8, &[_][]const u8{ base_uri, relative_path }) catch return false;
+                    defer allocator.free(full_uri);
+
+                    // Try to resolve - if it succeeds, the resource exists
+                    var result = registry.resolve(allocator, full_uri) catch return false;
+                    result.deinit(allocator);
+                    return true;
+                }
+            }
+        }
+        // Fall back to filesystem-based check
+        return self.path_exists(self, relative_path);
+    }
 };
 
 /// AssetLoader wrapper type: validates that a loader implements the required interface
@@ -135,11 +186,22 @@ pub const Loaders = struct {
 
     allocator: std.mem.Allocator,
     map: std.AutoHashMap(u64, ManagerView),
+    /// Optional reference to scheme registry for scheme-aware path resolution
+    scheme_registry: ?*schemes.SchemeRegistry = null,
 
     pub fn init(allocator: std.mem.Allocator) anyerror!Loaders {
         return Loaders{
             .allocator = allocator,
             .map = std.AutoHashMap(u64, ManagerView).init(allocator),
+            .scheme_registry = null,
+        };
+    }
+
+    pub fn initWithSchemeRegistry(allocator: std.mem.Allocator, registry: *schemes.SchemeRegistry) anyerror!Loaders {
+        return Loaders{
+            .allocator = allocator,
+            .map = std.AutoHashMap(u64, ManagerView).init(allocator),
+            .scheme_registry = registry,
         };
     }
 
@@ -167,6 +229,48 @@ pub const Loaders = struct {
     pub fn loadNow(self: *Loaders, comptime AssetType: type, path: []const u8) anyerror!*AssetType {
         const hash = std.hash_map.hashString(@typeName(AssetType));
         if (self.map.get(hash)) |view| {
+            // Check if this is a scheme-based URI that needs resolution
+            if (self.scheme_registry) |registry| {
+                if (std.mem.indexOf(u8, path, "://") != null) {
+                    // Resolve through scheme registry
+                    var resolved = try registry.resolve(self.allocator, path);
+                    defer resolved.deinit(self.allocator);
+
+                    switch (resolved) {
+                        .embedded_data => |data| {
+                            // Write to temp file and load from there
+                            const io_utils = @import("util.zig");
+                            const path_without_scheme = if (std.mem.indexOf(u8, path, "://")) |idx|
+                                path[idx + 3 ..]
+                            else
+                                path;
+                            const extension = std.fs.path.extension(path_without_scheme);
+                            const ext = if (extension.len > 0) extension else ".tmp";
+                            const temp_file = try io_utils.writeTempFile(self.allocator, "", ext, data);
+                            defer self.allocator.free(temp_file);
+
+                            const res = try view.load_asset_now_fn(view.ptr, temp_file, null);
+                            return @as(*AssetType, @ptrCast(@alignCast(res)));
+                        },
+                        .file_path => |file_path| {
+                            defer self.allocator.free(file_path);
+                            const res = try view.load_asset_now_fn(view.ptr, file_path, null);
+                            return @as(*AssetType, @ptrCast(@alignCast(res)));
+                        },
+                        .url => |url| {
+                            defer self.allocator.free(url);
+                            const res = try view.load_asset_now_fn(view.ptr, url, null);
+                            return @as(*AssetType, @ptrCast(@alignCast(res)));
+                        },
+                        .custom => |custom| {
+                            defer self.allocator.free(custom);
+                            const res = try view.load_asset_now_fn(view.ptr, custom, null);
+                            return @as(*AssetType, @ptrCast(@alignCast(res)));
+                        },
+                    }
+                }
+            }
+            // No scheme or no registry - pass path directly
             const res = try view.load_asset_now_fn(view.ptr, path, null);
             return @as(*AssetType, @ptrCast(@alignCast(res)));
         }

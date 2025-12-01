@@ -262,13 +262,14 @@ pub const InputIconsLoader = struct {
 
         var owns_tex: bool = true;
 
-        // Resolve the image path relative to the XML file's base directory using the provided FileResolver.
-        const image_path_resolved = try resolver.resolve_path(resolver, std.heap.page_allocator, rel);
+        // Resolve the image path relative to the XML file's directory.
+        // Uses scheme-aware resolution if original_uri has a scheme (e.g., embedded://)
+        const image_path_resolved = try resolver.resolveRelative(std.heap.page_allocator, rel);
 
         // Ensure we free the temporary resolved path after use
         defer std.heap.page_allocator.free(image_path_resolved);
 
-        // Load the texture using the resolved absolute path to avoid relying on CWD
+        // Load the texture using the resolved path/URI
         const tex = try resolver.loaders.loadNow(rl.Texture, image_path_resolved);
         owns_tex = false;
 

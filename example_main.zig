@@ -172,7 +172,7 @@ pub fn main() !void {
 
     std.log.info("Adding RaylibPlugin...", .{});
     // Manually add plugins one by one to showcase integration
-    try plugin_manager.add(RaylibPlugin, RaylibPlugin{
+    try plugin_manager.add(RaylibPlugin(ParamRegistry), RaylibPlugin(ParamRegistry){
         .title = "Zevy Raylib Example",
         .width = 1280,
         .height = 720,

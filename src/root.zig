@@ -16,6 +16,9 @@ pub const UIPlugin = ui.UIPlugin;
 pub const AssetsPlugin = @import("assets.plugin.zig").AssetsPlugin;
 pub const InputPlugin = @import("input.plugin.zig").InputPlugin;
 
+/// Assets type for managing asset loading and schemes
+pub const Assets = io.Assets;
+
 pub const ExitAppEvent = app_plugin.ExitAppEvent;
 
 pub const params = struct {
