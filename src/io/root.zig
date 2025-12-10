@@ -29,3 +29,8 @@ pub const xml = @import("xml.zig");
 
 /// Asset types
 pub const types = @import("types.zig");
+
+test {
+    const std = @import("std");
+    std.testing.refAllDeclsRecursive(@This());
+}

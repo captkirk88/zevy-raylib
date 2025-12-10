@@ -224,7 +224,7 @@ pub fn setupUIInputBindings(input_mgr: *input.InputManager, allocator: std.mem.A
 /// Detects clicks, hovers, and interactions with all UI components
 /// This system should run in the Update stage, after InputManager.update()
 pub fn uiInteractionDetectionSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     input_mgr: zevy_ecs.Res(input.InputManager),
     click_writer: zevy_ecs.EventWriter(UIClickEvent),
     hover_writer: zevy_ecs.EventWriter(UIHoverEvent),
@@ -246,7 +246,7 @@ pub fn uiInteractionDetectionSystem(
         entity: zevy_ecs.Entity,
         focus: components.UIFocus,
     }, .{}),
-) void {
+) anyerror!void {
 
     // Get input position (handles mouse/touch automatically)
     const cursor_pos = input.getMousePosition() orelse return;
@@ -333,7 +333,7 @@ pub fn uiInteractionDetectionSystem(
             const children = rel.getChildren(item.entity, zevy_ecs.relations.Child);
             for (children) |child| {
                 if (activated_by_keypress) break;
-                if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
+                if (commands.getComponent(child, components.UIInputKey) catch null) |ik| {
                     const slice = ik.asSlice();
                     for (slice) |k| {
                         var j: usize = 0;
@@ -357,7 +357,7 @@ pub fn uiInteractionDetectionSystem(
             const children2 = rel.getChildren(item.entity, zevy_ecs.relations.Child);
             for (children2) |child| {
                 if (activated_by_keypress) break;
-                if (manager.getComponent(child, components.UIInputKey) catch null) |ik| {
+                if (commands.getComponent(child, components.UIInputKey) catch null) |ik| {
                     const slice = ik.asSlice();
                     for (slice) |k| {
                         for (current_keys) |ck| {
@@ -385,17 +385,19 @@ pub fn uiInteractionDetectionSystem(
 
             // Change focus to the clicked element: remove UIFocus from any other
             while (focus_query.next()) |fitem| {
-                _ = manager.removeComponent(fitem.entity, components.UIFocus) catch null;
+                _ = commands.removeComponent(fitem.entity, components.UIFocus) catch null;
             }
+            //try commands.flush(commands.manager); // Ensure focus removal is applied immediately
+
             // Add UIFocus to this entity (if focusable)
-            if (manager.getComponent(item.entity, components.UIFocusable) catch null) |ff| {
+            if (commands.getComponent(item.entity, components.UIFocusable) catch null) |ff| {
                 _ = ff;
-                _ = manager.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
+                _ = commands.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
             } else {
                 // Consider common interactive components focusable by default
-                if (manager.getComponent(item.entity, components.UIButton) catch null) |b| {
+                if (commands.getComponent(item.entity, components.UIButton) catch null) |b| {
                     _ = b;
-                    _ = manager.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
+                    _ = commands.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
                 }
             }
         } else if (activated_by_confirm or activated_by_keypress) {
@@ -430,7 +432,7 @@ pub fn uiInteractionDetectionSystem(
 /// `ui_focus_next` action is triggered. Focus is represented by adding
 /// or removing the `UIFocus` component on entities.
 pub fn uiFocusNavigationSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     input_mgr: zevy_ecs.Res(input.InputManager),
     rel: *zevy_ecs.Relations,
     last_hover: *zevy_ecs.Local(zevy_ecs.Entity),
@@ -452,16 +454,16 @@ pub fn uiFocusNavigationSystem(
     // (helper moved to top-level) use `isFocusable(manager, e)` below
 
     // Build ordered list of focusable entities (children of parent first)
-    var candidates = try std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64);
-    defer candidates.deinit(manager.allocator);
+    var candidates = try std.ArrayList(zevy_ecs.Entity).initCapacity(commands.allocator, 64);
+    defer candidates.deinit(commands.allocator);
 
     // If there's a currently focused entity, prefer siblings (children of its parent)
     var focused_parent: ?zevy_ecs.Entity = null;
     // Find current focused entity
     var current_focused: ?zevy_ecs.Entity = null;
     // Consume the focus_query once and collect all focusable entities.
-    var all_focusables = try std.ArrayList(zevy_ecs.Entity).initCapacity(manager.allocator, 64);
-    defer all_focusables.deinit(manager.allocator);
+    var all_focusables = try std.ArrayList(zevy_ecs.Entity).initCapacity(commands.allocator, 64);
+    defer all_focusables.deinit(commands.allocator);
     while (focus_query.next()) |item| {
         // Skip invisible or explicitly disabled focusable entities
         if (item.visible) |v| {
@@ -471,21 +473,21 @@ pub fn uiFocusNavigationSystem(
             if (en.state == false) continue;
         }
 
-        try all_focusables.append(manager.allocator, item.entity);
-        if (try manager.getComponent(item.entity, components.UIFocus)) |f| {
+        try all_focusables.append(commands.allocator, item.entity);
+        if (commands.getComponent(item.entity, components.UIFocus) catch null) |f| {
             _ = f;
             current_focused = item.entity;
         }
     }
 
     if (current_focused) |cf| {
-        if (rel.getParent(manager, cf, zevy_ecs.relations.Child) catch null) |p| {
+        if (rel.getParent(commands.manager, cf, zevy_ecs.relations.Child) catch null) |p| {
             focused_parent = p;
         }
     } else {
         // No focused entity — prefer the parent of the last-hovered entity
         if (last_hover.value()) |lh| {
-            if (rel.getParent(manager, lh, zevy_ecs.relations.Child) catch null) |p2| {
+            if (rel.getParent(commands.manager, lh, zevy_ecs.relations.Child) catch null) |p2| {
                 focused_parent = p2;
             }
         }
@@ -494,9 +496,9 @@ pub fn uiFocusNavigationSystem(
     if (focused_parent) |parent| {
         const children = rel.getChildren(parent, zevy_ecs.relations.Child);
         for (children) |child| {
-            if (try manager.getComponent(child, components.UIFocusable)) |f| {
+            if (commands.getComponent(child, components.UIFocusable) catch null) |f| {
                 _ = f;
-                try candidates.append(manager.allocator, child);
+                try candidates.append(commands.allocator, child);
             }
         }
     }
@@ -512,7 +514,7 @@ pub fn uiFocusNavigationSystem(
             }
         }
         if (exists) continue;
-        try candidates.append(manager.allocator, e);
+        try candidates.append(commands.allocator, e);
     }
 
     if (candidates.items.len == 0) return;
@@ -526,8 +528,8 @@ pub fn uiFocusNavigationSystem(
             const b = candidates.items[sj];
             var ax: f32 = 0.0;
             var bx: f32 = 0.0;
-            if (manager.getComponent(a, components.UIRect) catch null) |r| ax = r.x;
-            if (manager.getComponent(b, components.UIRect) catch null) |r2| bx = r2.x;
+            if (commands.getComponent(a, components.UIRect) catch null) |r| ax = r.x;
+            if (commands.getComponent(b, components.UIRect) catch null) |r2| bx = r2.x;
             if (ax <= bx) break;
             const tmp = candidates.items[sj - 1];
             candidates.items[sj - 1] = candidates.items[sj];
@@ -539,7 +541,7 @@ pub fn uiFocusNavigationSystem(
     // Find current focused entity index
     var current_index: ?usize = null;
     for (candidates.items, 0..) |ent, i| {
-        if (try manager.getComponent(ent, components.UIFocus)) |f| {
+        if (commands.getComponent(ent, components.UIFocus) catch null) |f| {
             _ = f;
             current_index = i;
             break;
@@ -555,8 +557,10 @@ pub fn uiFocusNavigationSystem(
             // defensive: current index no longer valid
         } else {
             const prev_ent = candidates.items[ci];
-            try manager.removeComponent(prev_ent, components.UIFocus);
-            focus_writer.write(.{ .entity = prev_ent, .gained = false });
+            if (commands.manager.isAlive(prev_ent)) {
+                commands.removeComponent(prev_ent, components.UIFocus) catch {};
+                focus_writer.write(.{ .entity = prev_ent, .gained = false });
+            }
         }
     }
 
@@ -565,14 +569,13 @@ pub fn uiFocusNavigationSystem(
     if (chosen_index >= candidates.items.len) return;
     const chosen_ent_checked = candidates.items[chosen_index];
     // Add focus to new entity and emit event
-    try manager.addComponent(chosen_ent_checked, components.UIFocus, components.UIFocus{});
+    try commands.addComponent(chosen_ent_checked, components.UIFocus, components.UIFocus{});
     focus_writer.write(.{ .entity = chosen_ent_checked, .gained = true });
 }
 
 /// Slider interaction detection system
 /// Handles dragging sliders to change values
 pub fn sliderInteractionSystem(
-    manager: *zevy_ecs.Manager,
     input_mgr: zevy_ecs.Res(input.InputManager),
     value_writer: zevy_ecs.EventWriter(UIValueChangedEvent),
     query: zevy_ecs.Query(struct {
@@ -583,8 +586,6 @@ pub fn sliderInteractionSystem(
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
-    _ = manager;
-
     // Get cursor position
     const cursor_pos = input.getMousePosition() orelse return;
 
@@ -635,7 +636,6 @@ pub fn sliderInteractionSystem(
 
 /// Toggle/checkbox interaction detection system
 pub fn toggleInteractionSystem(
-    manager: *zevy_ecs.Manager,
     input_mgr: zevy_ecs.Res(input.InputManager),
     click_writer: zevy_ecs.EventWriter(UIClickEvent),
     toggle_writer: zevy_ecs.EventWriter(UIToggleEvent),
@@ -647,8 +647,6 @@ pub fn toggleInteractionSystem(
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
-    _ = manager;
-
     const cursor_pos = input.getMousePosition() orelse return;
     const click_triggered = input_mgr.ptr.wasActionTriggered("ui_click") or
         input_mgr.ptr.wasActionTriggered("ui_confirm");
@@ -687,7 +685,6 @@ pub fn toggleInteractionSystem(
 
 /// Spinner interaction detection system
 pub fn spinnerInteractionSystem(
-    manager: *zevy_ecs.Manager,
     input_mgr: zevy_ecs.Res(input.InputManager),
     value_writer: zevy_ecs.EventWriter(UIValueChangedEvent),
     query: zevy_ecs.Query(struct {
@@ -698,8 +695,6 @@ pub fn spinnerInteractionSystem(
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
-    _ = manager;
-
     const cursor_pos = input.getMousePosition() orelse return;
     const click_triggered = input_mgr.ptr.wasActionTriggered("ui_click");
 
@@ -743,7 +738,6 @@ pub fn spinnerInteractionSystem(
 
 /// Dropdown interaction detection system
 pub fn dropdownInteractionSystem(
-    manager: *zevy_ecs.Manager,
     input_mgr: zevy_ecs.Res(input.InputManager),
     selection_writer: zevy_ecs.EventWriter(UISelectionChangedEvent),
     query: zevy_ecs.Query(struct {
@@ -753,7 +747,6 @@ pub fn dropdownInteractionSystem(
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
-    _ = manager;
     _ = input_mgr;
     _ = selection_writer;
 
@@ -771,7 +764,6 @@ pub fn dropdownInteractionSystem(
 
 /// Text box focus detection system
 pub fn textBoxFocusSystem(
-    manager: *zevy_ecs.Manager,
     input_mgr: zevy_ecs.Res(input.InputManager),
     focus_writer: zevy_ecs.EventWriter(UIFocusEvent),
     query: zevy_ecs.Query(struct {
@@ -782,8 +774,6 @@ pub fn textBoxFocusSystem(
         visible: ?components.UIVisible,
     }, .{}),
 ) void {
-    _ = manager;
-
     const cursor_pos = input.getMousePosition() orelse return;
     const click_triggered = input_mgr.ptr.wasActionTriggered("ui_click");
 

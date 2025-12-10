@@ -48,6 +48,8 @@ pub const FlexAlign = layout.FlexAlign;
 pub const FlexItemAlign = layout.FlexItemAlign;
 pub const FlexWrap = layout.FlexWrap;
 
+// TODO have visible handled before render removing need for extra param
+
 /// Render a UI text component
 pub fn renderText(rect: *const UIRect, text: *const UIText, visible: ?UIVisible) void {
     if (visible) |v| {
@@ -77,7 +79,9 @@ pub fn renderButton(rect: UIRect, button: *UIButton, visible: ?UIVisible) void {
         .flat => rg.labelButton(bounds, button.text),
     };
 
-    button.hovered = rl.checkCollisionPointRec(rl.getMousePosition(), bounds);
+    if (input.getMousePosition()) |mouse_pos| {
+        button.hovered = rl.checkCollisionPointRec(mouse_pos, bounds);
+    }
 }
 
 /// Render a UI toggle/checkbox component
@@ -108,8 +112,6 @@ pub fn renderSlider(rect: UIRect, slider: *UISlider, visible: ?UIVisible) void {
         slider.min_value,
         slider.max_value,
     );
-
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI progress bar component
@@ -152,8 +154,6 @@ pub fn renderTextBox(rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) voi
 
     // Update text length
     textbox.text_len = std.mem.indexOf(u8, textbox.buffer, &[_]u8{0}) orelse textbox.buffer.len;
-
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI panel component
@@ -202,8 +202,6 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
 
     const bounds = rect.toRectangle();
 
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
-
     // Join items with semicolons for raygui
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(buffer[0..]);
@@ -222,8 +220,6 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
         items_str[0 .. items_str.len - 1 :0],
         &dropdown.active,
     );
-
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI image component
@@ -266,8 +262,6 @@ pub fn renderSpinner(rect: UIRect, spinner: *UISpinner, visible: ?UIVisible) voi
         spinner.max_value,
         spinner.edit_mode,
     );
-
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI color picker component
@@ -279,7 +273,6 @@ pub fn renderColorPicker(rect: UIRect, picker: *UIColorPicker, visible: ?UIVisib
     const bounds = rect.toRectangle();
 
     _ = rg.colorPicker(bounds, "", &picker.color);
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI list view component
@@ -309,8 +302,6 @@ pub fn renderListView(rect: UIRect, list_view: *UIListView, visible: ?UIVisible)
         &list_view.scroll_index,
         &list_view.active,
     );
-
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI message box component
@@ -346,8 +337,6 @@ pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void 
     }
 
     _ = rg.tabBar(bounds, tab_ptrs[0..tab_count], &tab_bar.active);
-
-    // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render input key icon/text for a UI element.
@@ -413,7 +402,12 @@ pub fn renderInputKeyAt(bounds: rl.Rectangle, key: input.InputKey, atlas: ?*cons
         // Fallback: draw a small background box and the label via raygui
         const label_rect = rl.Rectangle{ .x = x, .y = y, .width = st.size * 2.5, .height = st.size };
         rl.drawRectangleRec(label_rect, st.tint);
-        const label_nt: [:0]const u8 = buf[0 .. pos + 1 :0];
+        if (pos < buf.len) {
+            buf[pos] = 0;
+        } else {
+            buf[buf.len - 1] = 0;
+        }
+        const label_nt: [:0]const u8 = buf[0..pos :0];
         _ = rg.label(label_rect, label_nt);
     }
 }

@@ -453,8 +453,17 @@ pub const UIContainer = struct {
     /// Whether this container clips children to its bounds
     clip_children: bool = false,
 
-    pub fn init(id: []const u8) UIContainer {
-        return .{ .id = id };
+    var next_id: u32 = 0;
+    var id_buffer: [32]u8 = undefined;
+
+    pub fn init(id: ?[]const u8) UIContainer {
+        const final_id = id orelse blk: {
+            // Generate a unique ID using a thread-local counter
+            const id_num = @atomicRmw(u32, &next_id, .Add, 1, .monotonic);
+            const formatted = std.fmt.bufPrint(&id_buffer, "ui_container_{d}", .{id_num}) catch "ui_container";
+            break :blk formatted;
+        };
+        return .{ .id = final_id };
     }
 
     pub fn withClipping(self: UIContainer, clip: bool) UIContainer {

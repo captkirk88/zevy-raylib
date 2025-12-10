@@ -12,7 +12,8 @@
     // internet connectivity.
     .dependencies = .{
         .zevy_ecs = .{
-            .path = "../zevy-ecs",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#334346855307eb3a9028825647bc01b23a72072a",
+            .hash = "zevy_ecs-1.56.0-VoL9mYKoBgAGYKW7ZNcsUoo1VwHwMTbo32yqVOa4DR20",
         },
         .raylib_zig = .{
             .url = "git+https://github.com/raylib-zig/raylib-zig#3cd4d3179d967fc8b931514603fdbc4a43a1d771",
@@ -25,6 +26,14 @@
         .xml = .{
             .url = "git+https://github.com/ianprime0509/zig-xml#8874de5b846f4e3e806a062cd11a01b2bb90fc7a",
             .hash = "xml-0.2.0-ZTbP3wE6AgCsnyZut_plzxi6WB2tzzh3kFRBOp3AL7n9",
+        },
+        .zevy_reflect = .{
+            .url = "git+https://github.com/captkirk88/zevy-reflect#a7534fc03d51bde31162c81bcbbe3cb513b18027",
+            .hash = "zevy_reflect-0.0.1-8SzYxp7EAAB3I-yhLbVneAvo3CwhCuqdRWm_VhviQQKA",
+        },
+        .zevy_mem = .{
+            .url = "git+https://github.com/captkirk88/zevy-mem#7fcc868b6bdfacf33b19a2f039b4ad80a2c5776b",
+            .hash = "zevy_mem-0.0.1-jK9L0ddJAQCLE0FDf69SYdChMKsPPBGFLJNr0NmUFBq7",
         },
     },
     .paths = .{

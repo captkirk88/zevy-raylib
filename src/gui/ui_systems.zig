@@ -13,7 +13,7 @@ const ui_resources = @import("resources.zig");
 const ui_style = @import("style.zig");
 
 pub fn startupUiSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
 ) !void {
     rg.loadStyleDefault();
     const default_font = try rl.getFontDefault();
@@ -21,7 +21,7 @@ pub fn startupUiSystem(
     // Populate the default style with the default font and register it. Ignore if already present.
     var style = ui_style.UIStyle.init();
     style.font = default_font;
-    _ = manager.addResource(ui_style.UIStyle, style) catch {};
+    _ = commands.addResource(ui_style.UIStyle, style) catch {};
 }
 
 const ChildInfo = struct {
@@ -35,7 +35,7 @@ const ChildInfo = struct {
 /// Collects children from a parent entity, caches their UIRect and FlexItem components,
 /// and sorts them by order field for stable, deterministic layout.
 fn collectAndSortChildren(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     children: []const zevy_ecs.Entity,
     is_row: bool,
     allocator: std.mem.Allocator,
@@ -52,10 +52,10 @@ fn collectAndSortChildren(
 
     for (children) |child| {
         // Skip children without UIRect
-        if (try manager.getComponent(child, components.UIRect)) |child_rect| {
+        if (try commands.getComponent(child, components.UIRect)) |child_rect| {
             // Default flex item if component missing
             var fi: layout.FlexItem = layout.FlexItem.init();
-            if (try manager.getComponent(child, layout.FlexItem)) |fptr| fi = fptr.*;
+            if (try commands.getComponent(child, layout.FlexItem)) |fptr| fi = fptr.*;
 
             // Calculate base size from basis or current dimension
             const base = if (fi.basis) |b| b else if (is_row) child_rect.width else child_rect.height;
@@ -67,7 +67,7 @@ fn collectAndSortChildren(
             try child_infos.append(allocator, ChildInfo{
                 .child = child,
                 .rect = child_rect,
-                .flex_item = try manager.getComponent(child, layout.FlexItem),
+                .flex_item = try commands.getComponent(child, layout.FlexItem),
                 .base = base,
                 .order = fi.order,
             });
@@ -362,7 +362,6 @@ fn positionChildren(
 /// );
 /// ```
 pub fn uiRenderSystem(
-    manager: *zevy_ecs.Manager,
     // Query for text labels
     text_query: zevy_ecs.Query(struct {
         rect: components.UIRect,
@@ -468,7 +467,6 @@ pub fn uiRenderSystem(
         enabled: ?components.UIEnabled,
     }, .{}),
 ) anyerror!void {
-    _ = manager;
     // Render panels first (backgrounds)
     var panel_count: usize = 0;
     while (panel_query.next()) |q| {
@@ -597,7 +595,7 @@ pub fn uiRenderSystem(
 /// );
 /// ```
 pub fn uiInputKeyRenderSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     // Query for input keys that are children
     input_key_query: zevy_ecs.Query(struct {
         entity: zevy_ecs.Entity,
@@ -605,14 +603,14 @@ pub fn uiInputKeyRenderSystem(
         children: zevy_ecs.Relation(zevy_ecs.relations.Child),
     }, .{}),
     style: zevy_ecs.Res(@import("style.zig").UIStyle),
+    icon_atlas: zevy_ecs.Res(ui_resources.UIIconAtlasHandle),
 ) anyerror!void {
     while (input_key_query.next()) |q| {
         const ui_key: *components.UIInputKey = q.input_key;
         const parent: zevy_ecs.Entity = q.children.target;
-        const parent_rect_opt = manager.getComponent(parent, components.UIRect) catch continue;
+        const parent_rect_opt = commands.getComponent(parent, components.UIRect) catch continue;
         const parent_rect = parent_rect_opt orelse continue;
-        const atlas_opt = manager.getResource(ui_resources.UIIconAtlasHandle);
-        const atlas_ptr = if (atlas_opt) |h| h.atlas else null;
+        const atlas_ptr = icon_atlas.ptr.atlas;
         renderer.renderInputKeyAt(parent_rect.toRectangle(), ui_key.asSlice()[0], atlas_ptr, style.ptr);
     }
 }
@@ -634,7 +632,7 @@ pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, 
 /// Layout calculation system for flex layouts
 /// Uses extracted helper functions for child collection, size computation, and positioning.
 pub fn flexLayoutSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     container_query: zevy_ecs.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -657,8 +655,8 @@ pub fn flexLayoutSystem(
         };
 
         // Collect and sort children
-        var collected = try collectAndSortChildren(manager, children, is_row, manager.allocator);
-        defer collected.infos.deinit(manager.allocator);
+        var collected = try collectAndSortChildren(commands, children, is_row, commands.allocator);
+        defer collected.infos.deinit(commands.allocator);
 
         if (collected.infos.items.len == 0) continue;
 
@@ -675,14 +673,14 @@ pub fn flexLayoutSystem(
 
         // Compute sizes considering grow/shrink and constraints
         var computed_sizes = try computeFlexSizes(
-            manager.allocator,
+            commands.allocator,
             collected.infos.items,
             main_size,
             cq.flex.gap,
             collected.total_base,
             is_row,
         );
-        defer computed_sizes.deinit(manager.allocator);
+        defer computed_sizes.deinit(commands.allocator);
 
         // Position children
         positionChildren(
@@ -700,7 +698,7 @@ pub fn flexLayoutSystem(
 /// Layout calculation system for grid layouts
 /// Positions UI elements in a grid based on column/row configuration and gap settings.
 pub fn gridLayoutSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     container_query: zevy_ecs.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -714,12 +712,12 @@ pub fn gridLayoutSystem(
         if (children.len == 0) continue;
 
         // Collect children (no sorting needed for grid - order by insertion)
-        var child_infos = try std.ArrayList(ChildInfo).initCapacity(manager.allocator, children.len);
-        defer child_infos.deinit(manager.allocator);
+        var child_infos = try std.ArrayList(ChildInfo).initCapacity(commands.allocator, children.len);
+        defer child_infos.deinit(commands.allocator);
 
         for (children) |child| {
-            if (try manager.getComponent(child, components.UIRect)) |child_rect| {
-                try child_infos.append(manager.allocator, ChildInfo{
+            if (try commands.getComponent(child, components.UIRect)) |child_rect| {
+                try child_infos.append(commands.allocator, ChildInfo{
                     .child = child,
                     .rect = child_rect,
                     .flex_item = null, // Grid doesn't use flex items
@@ -762,7 +760,7 @@ pub fn gridLayoutSystem(
 }
 
 pub fn anchorLayoutSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     container_query: zevy_ecs.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -776,8 +774,8 @@ pub fn anchorLayoutSystem(
         if (children.len == 0) continue;
 
         for (children) |child| {
-            const rect = try manager.getComponent(child, components.UIRect) orelse continue;
-            const anchor = try manager.getComponent(child, layout.AnchorLayout) orelse continue;
+            const rect = try commands.getComponent(child, components.UIRect) orelse continue;
+            const anchor = try commands.getComponent(child, layout.AnchorLayout) orelse continue;
 
             const cw = rect.width;
             const ch = rect.height;
@@ -824,7 +822,7 @@ pub fn anchorLayoutSystem(
 }
 
 pub fn dockLayoutSystem(
-    manager: *zevy_ecs.Manager,
+    commands: *zevy_ecs.Commands,
     container_query: zevy_ecs.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -840,8 +838,8 @@ pub fn dockLayoutSystem(
         var remaining = container_rect;
 
         for (children) |child| {
-            const rect = try manager.getComponent(child, components.UIRect) orelse continue;
-            const dock = try manager.getComponent(child, layout.DockLayout) orelse continue;
+            const rect = try commands.getComponent(child, components.UIRect) orelse continue;
+            const dock = try commands.getComponent(child, layout.DockLayout) orelse continue;
 
             switch (dock.side) {
                 .left => {

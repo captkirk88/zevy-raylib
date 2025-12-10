@@ -1,5 +1,5 @@
 const std = @import("std");
-const reflect = @import("zevy_ecs").reflect;
+const reflect = @import("zevy_reflect");
 const FileResolver = @import("loader.zig").FileResolver;
 
 /// AssetProcessor wrapper type: validates that a processor implements the required interface

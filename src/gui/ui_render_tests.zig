@@ -9,54 +9,12 @@ const style = @import("style.zig");
 const Assets = @import("../io/assets.zig").Assets;
 const ui_resources = @import("resources.zig");
 
-const SKIP_IN_DEBUG = true;
+const SKIP_IN_DEBUG = false;
 
 const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
 const TEST_SKIP_TIMEOUT_SECS = 10;
-
-// Small helper system used only in tests to ensure InputManager.update() is called
-fn testInputUpdateSystem(
-    manager: *zevy_ecs.Manager,
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    style_res: zevy_ecs.Res(style.UIStyle),
-) !void {
-    _ = manager;
-    _ = style_res;
-    try input_mgr.ptr.update();
-}
-
-// Debug draw system used only in these tests: draw a rectangle around focused elements
-fn focusDebugDrawSystem(
-    manager: *zevy_ecs.Manager,
-    query: zevy_ecs.Query(struct {
-        entity: zevy_ecs.Entity,
-        rect: comps.UIRect,
-        focus: comps.UIFocus,
-        visible: ?comps.UIVisible,
-        enabled: ?comps.UIEnabled,
-    }, .{}),
-    style_res: zevy_ecs.Res(style.UIStyle),
-) void {
-    _ = manager;
-    _ = style_res;
-    while (query.next()) |item| {
-        const rect: *comps.UIRect = item.rect;
-        const visible: ?*comps.UIVisible = item.visible;
-        const enabled: ?*comps.UIEnabled = item.enabled;
-        if (visible) |v| {
-            if (!v.visible) continue;
-        }
-
-        if (enabled) |en| {
-            if (en.state == false) continue;
-        }
-
-        const b = rect.toRectangle();
-        rl.drawRectangleLinesEx(b, 2, rl.Color.magenta);
-    }
-}
 
 fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     if (should_skip) return error.SkipZigTest;
@@ -98,15 +56,19 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
 }
 
 fn deinitTest(ecs: *zevy_ecs.Manager) void {
+    const scheduler = ecs.getResource(zevy_ecs.Scheduler);
+    if (scheduler) |sched| {
+        sched.runStage(ecs, zevy_ecs.Stage(zevy_ecs.Stages.Exit)) catch {};
+    }
     ecs.deinit();
     rl.closeWindow();
 }
 
-fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void) anyerror!void {
+fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: *zevy_ecs.Commands) void) anyerror!void {
     const scheduler = ecs.getResource(zevy_ecs.Scheduler) orelse return;
 
     // Run startup stage once before the loop
-    try scheduler.runStage(ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup));
+    try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreStartup), zevy_ecs.Stage(zevy_ecs.Stages.Startup));
 
     const start = std.time.milliTimestamp();
 
@@ -116,17 +78,61 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (ecs: *zevy_ecs.Manager) void)
         const now = std.time.milliTimestamp();
         if (now - start >= max_duration_ms) break;
 
-        update_fn(ecs);
+        var cmds = try zevy_ecs.Commands.init(ecs.allocator, ecs);
+        update_fn(&cmds);
+        defer cmds.deinit();
 
-        try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), zevy_ecs.Stage(zevy_ecs.Stages.PostUpdate));
+        try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.First), zevy_ecs.Stage(zevy_ecs.Stages.PostUpdate));
 
         rl.beginDrawing();
         rl.clearBackground(rl.Color.black);
         rl.drawFPS(0, 0);
 
-        try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreDraw), zevy_ecs.Stage(zevy_ecs.Stages.PostDraw));
+        try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreDraw), zevy_ecs.Stage(zevy_ecs.Stages.Last));
 
         rl.endDrawing();
+    }
+}
+
+// Small helper system used only in tests to ensure InputManager.update() is called
+fn testInputUpdateSystem(
+    manager: *zevy_ecs.Commands,
+    input_mgr: zevy_ecs.Res(input.InputManager),
+    style_res: zevy_ecs.Res(style.UIStyle),
+) !void {
+    _ = manager;
+    _ = style_res;
+    try input_mgr.ptr.update();
+}
+
+// Debug draw system used only in these tests: draw a rectangle around focused elements
+fn focusDebugDrawSystem(
+    manager: *zevy_ecs.Commands,
+    query: zevy_ecs.Query(struct {
+        entity: zevy_ecs.Entity,
+        rect: comps.UIRect,
+        focus: comps.UIFocus,
+        visible: ?comps.UIVisible,
+        enabled: ?comps.UIEnabled,
+    }, .{}),
+    style_res: zevy_ecs.Res(style.UIStyle),
+) void {
+    _ = manager;
+    _ = style_res;
+    while (query.next()) |item| {
+        const rect: *comps.UIRect = item.rect;
+        const visible: ?*comps.UIVisible = item.visible;
+        const enabled: ?*comps.UIEnabled = item.enabled;
+        if (visible) |v| {
+            if (!v.visible) continue;
+        }
+
+        if (enabled) |en| {
+            if (en.state == false) continue;
+        }
+
+        const b = rect.toRectangle();
+        rl.drawRectangleLinesEx(b, 2, rl.Color.magenta);
     }
 }
 
@@ -144,7 +150,7 @@ test "Render Button default" {
     });
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -171,7 +177,7 @@ test "Render Button flat" {
     try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -198,7 +204,7 @@ test "Render Button toggle" {
     try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -230,7 +236,7 @@ test "Render Flex Layout" {
     }
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -260,7 +266,7 @@ test "Render Grid Layout" {
     }
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -297,7 +303,7 @@ test "Render Anchor Layout" {
     try rel.add(&ecs, bottom_right, anchor_container, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -362,7 +368,7 @@ test "Render Dock Layout" {
     try rel.add(&ecs, fill, dock_container, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
             // No per-frame logic required for this test
         }
@@ -399,7 +405,7 @@ test "Render Two Buttons Same Input" {
     try rel.add(&ecs, icon_b, btn_b, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
         }
     }.run);
@@ -443,7 +449,7 @@ test "UI Focus Navigation Demo" {
     sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Manager) void {
+        fn run(e: *zevy_ecs.Commands) void {
             _ = e;
         }
     }.run);

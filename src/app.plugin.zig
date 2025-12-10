@@ -21,7 +21,7 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
 
         pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
             const log = std.log.scoped(.zevy_raylib);
-            const sch = try e.getOrAddResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator));
+            const sch = try e.getOrAddResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator), null);
 
             try sch.registerEvent(
                 e,
