@@ -8,7 +8,7 @@ pub const input = @import("input/input.zig");
 pub const ui = @import("gui/ui.zig");
 
 /// Embed utility functions to include resources in the binary
-pub const embed = @import("builtin/embed.zig");
+pub const embed = @import("build/embed.zig");
 
 const app_plugin = @import("app.plugin.zig");
 pub const RaylibPlugin = app_plugin.RaylibPlugin;

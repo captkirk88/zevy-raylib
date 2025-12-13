@@ -2,4 +2,3 @@
 zig-out/
 .**/*
 bin/
-build/

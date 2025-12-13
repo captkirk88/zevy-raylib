@@ -1,5 +1,7 @@
 const std = @import("std");
-const embed = @import("src/builtin/embed.zig");
+
+/// Builtin asset embedding utilities.
+pub const embed = @import("src/build/embed.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -37,7 +39,7 @@ pub fn build(b: *std.Build) !void {
     }) orelse return error.RaylibZig_DepNotFound;
 
     _ = b.addModule("embed", .{
-        .root_source_file = b.path("src/builtin/embed.zig"),
+        .root_source_file = b.path("build/embed.zig"),
         .target = target,
         .optimize = optimize,
     });

@@ -41,7 +41,6 @@
         "build.zig.zon",
         "src",
         "LICENSE",
-        "kennedy input prompts license.txt",
         //"README.md",
     },
 }
