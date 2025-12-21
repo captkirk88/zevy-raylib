@@ -1,3 +1,4 @@
+const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const io = @import("io/root.zig");
@@ -12,7 +13,12 @@ pub const AssetsPlugin = struct {
         _ = self;
         _ = plugin_manager;
         _ = try e.addResource(io.Assets, io.Assets.init(e.allocator));
-        const scheduler = e.getResource(zevy_ecs.Scheduler) orelse return error.MissingScheduler;
-        _ = scheduler;
+    }
+
+    pub fn deinit(self: *Self, _: std.mem.Allocator, e: *zevy_ecs.Manager) anyerror!void {
+        // Do not manually deinit ECS-managed resources here: the ECS manager owns
+        // resource lifetimes and will deinit them during `Manager.deinit()`.
+        _ = self;
+        _ = e;
     }
 };

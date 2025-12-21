@@ -21,7 +21,7 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
 
         pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
             const log = std.log.scoped(.zevy_raylib);
-            const sch = try e.getOrAddResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator), null);
+            const sch = try e.getOrAddResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator), null);
 
             try sch.registerEvent(
                 e,
@@ -39,7 +39,7 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
             rl.setTargetFPS(self.target_fps);
         }
 
-        pub fn deinit(self: *Self, ecs: *zevy_ecs.Manager) void {
+        pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) void {
             const log = std.log.scoped(.zevy_raylib);
             _ = self;
             _ = ecs;

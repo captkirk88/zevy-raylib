@@ -224,17 +224,17 @@ pub fn setupUIInputBindings(input_mgr: *input.InputManager, allocator: std.mem.A
 /// Detects clicks, hovers, and interactions with all UI components
 /// This system should run in the Update stage, after InputManager.update()
 pub fn uiInteractionDetectionSystem(
-    commands: *zevy_ecs.Commands,
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    click_writer: zevy_ecs.EventWriter(UIClickEvent),
-    hover_writer: zevy_ecs.EventWriter(UIHoverEvent),
+    commands: *zevy_ecs.params.Commands,
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    click_writer: zevy_ecs.params.EventWriter(UIClickEvent),
+    hover_writer: zevy_ecs.params.EventWriter(UIHoverEvent),
     // Local persistent storage: last hovered entity and previous pressed keys
-    last_hover: *zevy_ecs.Local(zevy_ecs.Entity),
-    prev_pressed: *zevy_ecs.Local(PrevPressed),
+    last_hover: *zevy_ecs.params.Local(zevy_ecs.Entity),
+    prev_pressed: *zevy_ecs.params.Local(PrevPressed),
 
-    // Query for buttons
-    rel: *zevy_ecs.Relations,
-    button_query: zevy_ecs.Query(struct {
+    // Query for button.paramss
+    rel: *zevy_ecs.params.Relations,
+    button_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         button: components.UIButton,
@@ -242,7 +242,7 @@ pub fn uiInteractionDetectionSystem(
         visible: ?components.UIVisible,
     }, .{}),
     // Query yielding currently-focused entities so we can clear focus on click
-    focus_query: zevy_ecs.Query(struct {
+    focus_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         focus: components.UIFocus,
     }, .{}),
@@ -288,13 +288,13 @@ pub fn uiInteractionDetectionSystem(
 
     // Process buttons
     while (button_query.next()) |item| {
-
+        const rect: *components.UIRect = item.rect;
         // Skip invisible elements
         if (item.visible) |v| {
             if (!v.visible) continue;
         }
 
-        const bounds = item.rect.toRectangle();
+        const bounds = rect.toRectangle();
         const is_hovered = rl.checkCollisionPointRec(cursor_pos, bounds);
 
         // Track hover state changes
@@ -432,12 +432,12 @@ pub fn uiInteractionDetectionSystem(
 /// `ui_focus_next` action is triggered. Focus is represented by adding
 /// or removing the `UIFocus` component on entities.
 pub fn uiFocusNavigationSystem(
-    commands: *zevy_ecs.Commands,
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    rel: *zevy_ecs.Relations,
-    last_hover: *zevy_ecs.Local(zevy_ecs.Entity),
-    focus_writer: zevy_ecs.EventWriter(UIFocusEvent),
-    focus_query: zevy_ecs.Query(struct {
+    commands: *zevy_ecs.params.Commands,
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    rel: *zevy_ecs.params.Relations,
+    last_hover: *zevy_ecs.params.Local(zevy_ecs.Entity),
+    focus_writer: zevy_ecs.params.EventWriter(UIFocusEvent),
+    focus_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         focusable: components.UIFocusable,
         enabled: ?components.UIEnabled,
@@ -446,7 +446,7 @@ pub fn uiFocusNavigationSystem(
 ) !void {
     // manager is used below; no discard needed
 
-    // If no focus action was pressed, nothing to do
+    // If no focus action was pressed, nothi.paramsng to do
     const next_pressed = input_mgr.ptr.wasActionTriggered("ui_focus_next");
     const prev_pressed = input_mgr.ptr.wasActionTriggered("ui_focus_prev");
     if (!next_pressed and !prev_pressed) return;
@@ -576,9 +576,9 @@ pub fn uiFocusNavigationSystem(
 /// Slider interaction detection system
 /// Handles dragging sliders to change values
 pub fn sliderInteractionSystem(
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    value_writer: zevy_ecs.EventWriter(UIValueChangedEvent),
-    query: zevy_ecs.Query(struct {
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    value_writer: zevy_ecs.params.EventWriter(UIValueChangedEvent),
+    query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         slider: components.UISlider,
@@ -636,10 +636,10 @@ pub fn sliderInteractionSystem(
 
 /// Toggle/checkbox interaction detection system
 pub fn toggleInteractionSystem(
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    click_writer: zevy_ecs.EventWriter(UIClickEvent),
-    toggle_writer: zevy_ecs.EventWriter(UIToggleEvent),
-    query: zevy_ecs.Query(struct {
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    click_writer: zevy_ecs.params.EventWriter(UIClickEvent),
+    toggle_writer: zevy_ecs.params.EventWriter(UIToggleEvent),
+    query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         toggle: components.UIToggle,
@@ -685,9 +685,9 @@ pub fn toggleInteractionSystem(
 
 /// Spinner interaction detection system
 pub fn spinnerInteractionSystem(
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    value_writer: zevy_ecs.EventWriter(UIValueChangedEvent),
-    query: zevy_ecs.Query(struct {
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    value_writer: zevy_ecs.params.EventWriter(UIValueChangedEvent),
+    query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         spinner: components.UISpinner,
@@ -738,9 +738,9 @@ pub fn spinnerInteractionSystem(
 
 /// Dropdown interaction detection system
 pub fn dropdownInteractionSystem(
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    selection_writer: zevy_ecs.EventWriter(UISelectionChangedEvent),
-    query: zevy_ecs.Query(struct {
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    selection_writer: zevy_ecs.params.EventWriter(UISelectionChangedEvent),
+    query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         dropdown: components.UIDropdown,
@@ -764,9 +764,9 @@ pub fn dropdownInteractionSystem(
 
 /// Text box focus detection system
 pub fn textBoxFocusSystem(
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    focus_writer: zevy_ecs.EventWriter(UIFocusEvent),
-    query: zevy_ecs.Query(struct {
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    focus_writer: zevy_ecs.params.EventWriter(UIFocusEvent),
+    query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         textbox: components.UITextBox,

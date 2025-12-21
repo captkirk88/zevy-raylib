@@ -58,13 +58,24 @@ test "zevy_raylib" {
                 try std.testing.expect(false);
             }
         }
+
+        pub fn deinit(self: *@This(), _: std.mem.Allocator, e: *zevy_ecs.Manager) !void {
+            _ = self;
+            _ = e;
+        }
     };
 
     const allocator = std.testing.allocator;
     var ecs = try zevy_ecs.Manager.init(allocator);
-    defer ecs.deinit();
     var plugs = plugins.PluginManager.init(allocator);
-    defer plugs.deinit(&ecs);
+    defer {
+        if (plugs.deinit(&ecs)) |errors| {
+            for (errors) |err| {
+                std.log.err("{s}: {s}", .{ err.plugin, @errorName(err.err) });
+            }
+        }
+        ecs.deinit();
+    }
     try plug(allocator, &plugs, &ecs);
     try plugs.add(TestPlugin, .{});
 

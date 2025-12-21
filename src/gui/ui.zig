@@ -35,10 +35,10 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
             _ = assets;
 
             const scheduler = e.getResource(
-                zevy_ecs.Scheduler,
+                zevy_ecs.schedule.Scheduler,
             ) orelse try e.addResource(
-                zevy_ecs.Scheduler,
-                try zevy_ecs.Scheduler.init(e.allocator),
+                zevy_ecs.schedule.Scheduler,
+                try zevy_ecs.schedule.Scheduler.init(e.allocator),
             );
 
             try scheduler.registerEvent(e, input.UIClickEvent, ParamRegistry);
@@ -50,21 +50,21 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
 
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Startup),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup),
                 systems.startupUiSystem,
                 ParamRegistry,
             );
 
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 input.sliderInteractionSystem,
                 ParamRegistry,
             );
 
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 input.toggleInteractionSystem,
                 ParamRegistry,
             );
@@ -72,25 +72,25 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
             // Layout systems
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 systems.anchorLayoutSystem,
                 ParamRegistry,
             );
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 systems.flexLayoutSystem,
                 ParamRegistry,
             );
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 systems.gridLayoutSystem,
                 ParamRegistry,
             );
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 systems.dockLayoutSystem,
                 ParamRegistry,
             );
@@ -98,7 +98,7 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
             // Input handling
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.Update),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 input.uiInteractionDetectionSystem,
                 ParamRegistry,
             );
@@ -106,7 +106,7 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
             // Rendering system
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.PostDraw),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
                 systems.uiRenderSystem,
                 ParamRegistry,
             );
@@ -114,10 +114,15 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
             // Input key rendering system
             scheduler.addSystem(
                 e,
-                zevy_ecs.Stage(zevy_ecs.Stages.PostDraw),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
                 systems.uiInputKeyRenderSystem,
                 ParamRegistry,
             );
+        }
+
+        pub fn deinit(self: *@This(), _: std.mem.Allocator, e: *zevy_ecs.Manager) anyerror!void {
+            _ = self;
+            _ = e;
         }
     };
 }

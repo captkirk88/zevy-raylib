@@ -15,8 +15,16 @@ pub fn InputPlugin(comptime ParamRegistry: type) type {
             _ = self;
             _ = plugin_manager;
             _ = try e.addResource(input.InputManager, input.InputManager.init(e.allocator));
-            const scheduler = e.getResource(zevy_ecs.Scheduler) orelse try e.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(e.allocator));
-            scheduler.addSystem(e, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), inputUpdateSystem, ParamRegistry);
+            const scheduler = e.getResource(zevy_ecs.schedule.Scheduler) orelse try e.addResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator));
+            scheduler.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), inputUpdateSystem, ParamRegistry);
+        }
+
+        pub fn deinit(self: *Self, _: std.mem.Allocator, e: *zevy_ecs.Manager) anyerror!void {
+            // Resources added via `Manager.addResource` are owned by the ECS and
+            // will be cleaned up by `Manager.deinit`. Avoid double-free by
+            // not deinitializing them here.
+            _ = self;
+            _ = e;
         }
     };
 }

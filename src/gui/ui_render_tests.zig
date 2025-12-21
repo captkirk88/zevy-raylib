@@ -37,38 +37,73 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     // Load the icon atlas
     ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
 
-    var sch = try ecs.addResource(zevy_ecs.Scheduler, try zevy_ecs.Scheduler.init(ecs.allocator));
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
+    var sch = try ecs.addResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(ecs.allocator));
+    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
 
     // Ensure the InputManager is updated each frame before UI interaction detection
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), testInputUpdateSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), testInputUpdateSystem, zevy_ecs.DefaultParamRegistry);
 
     // UI interaction detection relies on InputManager having been updated
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), ui.input.uiInteractionDetectionSystem, zevy_ecs.DefaultParamRegistry);
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.anchorLayoutSystem, zevy_ecs.DefaultParamRegistry);
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.gridLayoutSystem, zevy_ecs.DefaultParamRegistry);
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.systems.dockLayoutSystem, zevy_ecs.DefaultParamRegistry);
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiRenderSystem, zevy_ecs.DefaultParamRegistry);
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), ui.systems.uiInputKeyRenderSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate),
+        ui.input.uiInteractionDetectionSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
+        ui.systems.anchorLayoutSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
+        ui.systems.flexLayoutSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
+        ui.systems.gridLayoutSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
+        ui.systems.dockLayoutSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
+        ui.systems.uiRenderSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
+        ui.systems.uiInputKeyRenderSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
 
     return ecs;
 }
 
 fn deinitTest(ecs: *zevy_ecs.Manager) void {
-    const scheduler = ecs.getResource(zevy_ecs.Scheduler);
+    const scheduler = ecs.getResource(zevy_ecs.schedule.Scheduler);
     if (scheduler) |sched| {
-        sched.runStage(ecs, zevy_ecs.Stage(zevy_ecs.Stages.Exit)) catch {};
+        sched.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last)) catch {};
     }
     ecs.deinit();
     rl.closeWindow();
 }
 
-fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: *zevy_ecs.Commands) void) anyerror!void {
-    const scheduler = ecs.getResource(zevy_ecs.Scheduler) orelse return;
+fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: *zevy_ecs.params.Commands) void) anyerror!void {
+    const scheduler = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return;
 
     // Run startup stage once before the loop
-    try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreStartup), zevy_ecs.Stage(zevy_ecs.Stages.Startup));
+    try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup));
 
     const start = std.time.milliTimestamp();
 
@@ -78,17 +113,17 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: *zevy_ecs.Commands)
         const now = std.time.milliTimestamp();
         if (now - start >= max_duration_ms) break;
 
-        var cmds = try zevy_ecs.Commands.init(ecs.allocator, ecs);
+        var cmds = try zevy_ecs.params.Commands.init(ecs.allocator, ecs);
         update_fn(&cmds);
         defer cmds.deinit();
 
-        try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.First), zevy_ecs.Stage(zevy_ecs.Stages.PostUpdate));
+        try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostUpdate));
 
         rl.beginDrawing();
         rl.clearBackground(rl.Color.black);
         rl.drawFPS(0, 0);
 
-        try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreDraw), zevy_ecs.Stage(zevy_ecs.Stages.Last));
+        try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last));
 
         rl.endDrawing();
     }
@@ -96,9 +131,9 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: *zevy_ecs.Commands)
 
 // Small helper system used only in tests to ensure InputManager.update() is called
 fn testInputUpdateSystem(
-    manager: *zevy_ecs.Commands,
-    input_mgr: zevy_ecs.Res(input.InputManager),
-    style_res: zevy_ecs.Res(style.UIStyle),
+    manager: *zevy_ecs.params.Commands,
+    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    style_res: zevy_ecs.params.Res(style.UIStyle),
 ) !void {
     _ = manager;
     _ = style_res;
@@ -107,15 +142,15 @@ fn testInputUpdateSystem(
 
 // Debug draw system used only in these tests: draw a rectangle around focused elements
 fn focusDebugDrawSystem(
-    manager: *zevy_ecs.Commands,
-    query: zevy_ecs.Query(struct {
+    manager: *zevy_ecs.params.Commands,
+    query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: comps.UIRect,
         focus: comps.UIFocus,
         visible: ?comps.UIVisible,
         enabled: ?comps.UIEnabled,
     }, .{}),
-    style_res: zevy_ecs.Res(style.UIStyle),
+    style_res: zevy_ecs.params.Res(style.UIStyle),
 ) void {
     _ = manager;
     _ = style_res;
@@ -150,7 +185,7 @@ test "Render Button default" {
     });
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -177,7 +212,7 @@ test "Render Button flat" {
     try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -204,7 +239,7 @@ test "Render Button toggle" {
     try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -236,7 +271,7 @@ test "Render Flex Layout" {
     }
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -266,7 +301,7 @@ test "Render Grid Layout" {
     }
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -303,7 +338,7 @@ test "Render Anchor Layout" {
     try rel.add(&ecs, bottom_right, anchor_container, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -368,7 +403,7 @@ test "Render Dock Layout" {
     try rel.add(&ecs, fill, dock_container, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
             // No per-frame logic required for this test
         }
@@ -405,7 +440,7 @@ test "Render Two Buttons Same Input" {
     try rel.add(&ecs, icon_b, btn_b, zevy_ecs.relations.Child);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
         }
     }.run);
@@ -415,7 +450,7 @@ test "UI Focus Navigation Demo" {
     var ecs = try initTest("UI Focus Navigation Demo");
     defer deinitTest(&ecs);
 
-    const sch = ecs.getResource(zevy_ecs.Scheduler).?;
+    const sch = ecs.getResource(zevy_ecs.schedule.Scheduler).?;
 
     // Create three focusable buttons laid out horizontally
     const btn1 = ecs.create(.{
@@ -444,12 +479,12 @@ test "UI Focus Navigation Demo" {
     _ = btn3;
 
     // Register the focus navigation system for this test so Tab will cycle focus
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
     // Add our debug draw system so focused element is outlined
-    sch.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.Commands) void {
+        fn run(e: *zevy_ecs.params.Commands) void {
             _ = e;
         }
     }.run);

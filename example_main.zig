@@ -44,8 +44,8 @@ const Sprite = struct {
 // Example system that updates entity positions
 fn movementSystem(
     manager: *zevy_ecs.Manager,
-    query: zevy_ecs.Query(struct { pos: Position, vel: Velocity }, .{}),
-    dt_res: zevy_ecs.Res(DeltaTime),
+    query: zevy_ecs.params.Query(struct { pos: Position, vel: Velocity }, .{}),
+    dt_res: zevy_ecs.params.Res(DeltaTime),
 ) !void {
     _ = manager;
     const dt = dt_res.ptr.*;
@@ -66,7 +66,7 @@ fn movementSystem(
 // Example system that renders sprites
 fn renderSystem(
     manager: *zevy_ecs.Manager,
-    query: zevy_ecs.Query(struct { pos: Position, sprite: Sprite }, struct {}),
+    query: zevy_ecs.params.Query(struct { pos: Position, sprite: Sprite }, struct {}),
 ) !void {
     _ = manager;
 
@@ -86,9 +86,9 @@ const CloseMeButtonTag = struct {};
 
 fn buttonClickedSystem(
     manager: *zevy_ecs.Manager,
-    exit_app_writer: zevy_ecs.EventWriter(zevy_raylib.ExitAppEvent),
-    click_events: zevy_ecs.EventReader(zevy_raylib.ui.input.UIClickEvent),
-    query: zevy_ecs.Query(struct {
+    exit_app_writer: zevy_ecs.params.EventWriter(zevy_raylib.ExitAppEvent),
+    click_events: zevy_ecs.params.EventReader(zevy_raylib.ui.input.UIClickEvent),
+    query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         button: zevy_raylib.ui.components.UIButton,
         tag: CloseMeButtonTag,
@@ -108,12 +108,12 @@ fn buttonClickedSystem(
 }
 
 // Main game loop system
-fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.Scheduler) !void {
+fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !void {
     var accumulator: f32 = 0.0;
     const fixed_dt: f32 = 1.0 / 60.0; // 1/60 for physics/logic updates
     const dt = try ecs.addResource(DeltaTime, fixed_dt);
 
-    try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreStartup), zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate) - 1);
+    try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).subtract(1));
 
     const exit_event_store = ecs.getResource(zevy_ecs.EventStore(zevy_raylib.ExitAppEvent)) orelse return error.MissingExitAppEventStore;
     while (exit_event_store.isEmpty() and !rl.windowShouldClose()) {
@@ -129,7 +129,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.Scheduler) !void {
             dt.* = fixed_dt;
 
             // Run PreUpdate stage (input updates happen here)
-            try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreUpdate), zevy_ecs.Stage(zevy_ecs.Stages.PreDraw) - 1);
+            try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).subtract(1));
 
             updates += 1;
             if (updates > 5) break; // avoid too many catch-up updates per frame
@@ -142,7 +142,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.Scheduler) !void {
         rl.clearBackground(rl.Color.black);
 
         // Run render systems (extended to include UI stage at PostDraw + 1000)
-        try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.PreDraw), zevy_ecs.Stage(zevy_ecs.Stages.Last) - 1);
+        try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).subtract(1));
 
         // Display FPS
         rl.drawFPS(10, 10);
@@ -154,7 +154,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.Scheduler) !void {
         rl.drawText(entity_count, 10, 100, 16, rl.Color.white);
     }
 
-    try scheduler.runStages(ecs, zevy_ecs.Stage(zevy_ecs.Stages.Exit), zevy_ecs.Stage(zevy_ecs.Stages.Max) - 1);
+    try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Max).subtract(1));
 }
 
 pub fn main() !void {
@@ -197,13 +197,13 @@ pub fn main() !void {
     zevy_raylib.ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
 
     // Get the scheduler that was created by the plugins
-    var scheduler = ecs.getResource(zevy_ecs.Scheduler) orelse return error.MissingScheduler;
+    var scheduler = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return error.MissingScheduler;
 
     // Register our custom systems
     std.log.info("Registering custom systems...", .{});
-    scheduler.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.PostUpdate), buttonClickedSystem, zevy_ecs.DefaultParamRegistry);
-    scheduler.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Update), movementSystem, zevy_ecs.DefaultParamRegistry);
-    scheduler.addSystem(&ecs, zevy_ecs.Stage(zevy_ecs.Stages.Draw), renderSystem, zevy_ecs.DefaultParamRegistry);
+    scheduler.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostUpdate), buttonClickedSystem, zevy_ecs.DefaultParamRegistry);
+    scheduler.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update), movementSystem, zevy_ecs.DefaultParamRegistry);
+    scheduler.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Draw), renderSystem, zevy_ecs.DefaultParamRegistry);
 
     // Create some example entities
     std.log.info("Creating example entities...", .{});
@@ -255,7 +255,7 @@ pub fn main() !void {
         CloseMeButtonTag{},
     });
 
-    const relations = ecs.getResource(zevy_ecs.Relations).?;
+    const relations = ecs.getResource(zevy_ecs.params.Relations).?;
     try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.Child);
 
     // Add input key icon to the button
