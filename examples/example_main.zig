@@ -146,8 +146,19 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !vo
 
         // Display FPS
         rl.drawFPS(10, 10);
-        rl.drawText("Zevy Raylib Plugin Integration Example", 10, 40, 20, rl.Color.dark_gray);
-        rl.drawText("Press ESC to exit", 10, 70, 16, rl.Color.gray);
+        // draw tps
+        var tps_buf: [32]u8 = undefined;
+        const tps = @as(usize, @intFromFloat(@as(f32, @floatFromInt(updates)) / fixed_dt));
+        const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{tps}) catch "TPS: ?";
+        rl.drawText(
+            tps_text,
+            10,
+            rl.getScreenHeight() - 30,
+            16,
+            rl.Color.yellow,
+        );
+        rl.drawText("Zevy Raylib Plugin Integration Example", 10, 40, 20, rl.Color.lime);
+        rl.drawText("Press ESC to exit", 10, 70, 16, rl.Color.light_gray);
 
         var buf: [128]u8 = undefined;
         const entity_count = try std.fmt.bufPrintZ(&buf, "Total Entities: {d}", .{CIRCLE_COUNT});
@@ -252,19 +263,13 @@ pub fn main() !void {
     const close_button = ecs.create(.{
         ui.components.UIRect.init(0, 0, 100, 50),
         ui.components.UIButton.init("Close Me"),
+        ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
         layout.AnchorLayout.init(.top_right),
         CloseMeButtonTag{},
     });
 
     const relations = ecs.getResource(zevy_ecs.params.Relations).?;
     try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.kinds.Child);
-
-    // Add input key icon to the button
-    const icon_child = ecs.create(.{
-        ui.components.UIRect.init(70, 10, 16, 16),
-        ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
-    });
-    try relations.add(&ecs, icon_child, close_button, zevy_ecs.relations.kinds.Child);
 
     std.log.info("Starting game loop...", .{});
 
