@@ -12,8 +12,8 @@
     // internet connectivity.
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#1210aa6f2dbe7119568703dff2edef4e298d9e21",
-            .hash = "zevy_ecs-1.56.0-VoL9mS3fBgCFEGQY21e_JMj7dKVrVIwRihKfIkiI76YX",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#a9a4616e794e79d0bd913d83ee1223cab4adcf14",
+            .hash = "zevy_ecs-1.56.0-VoL9mYbxBgCqxxYHBBrBPVoKCFZsh9DKdfgDF2TBrSP0",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",

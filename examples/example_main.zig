@@ -43,7 +43,7 @@ const Sprite = struct {
 
 // Example system that updates entity positions
 fn movementSystem(
-    manager: *zevy_ecs.Manager,
+    manager: *zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { pos: Position, vel: Velocity }, .{}),
     dt_res: zevy_ecs.params.Res(DeltaTime),
 ) !void {
@@ -65,8 +65,8 @@ fn movementSystem(
 
 // Example system that renders sprites
 fn renderSystem(
-    manager: *zevy_ecs.Manager,
-    query: zevy_ecs.params.Query(struct { pos: Position, sprite: Sprite }, struct {}),
+    manager: *zevy_ecs.params.Commands,
+    query: zevy_ecs.params.Query(struct { pos: Position, sprite: Sprite }, .{}),
 ) !void {
     _ = manager;
 
@@ -85,7 +85,7 @@ fn renderSystem(
 const CloseMeButtonTag = struct {};
 
 fn buttonClickedSystem(
-    manager: *zevy_ecs.Manager,
+    manager: *zevy_ecs.params.Commands,
     exit_app_writer: zevy_ecs.params.EventWriter(zevy_raylib.ExitAppEvent),
     click_events: zevy_ecs.params.EventReader(zevy_raylib.ui.input.UIClickEvent),
     query: zevy_ecs.params.Query(struct {
@@ -168,7 +168,13 @@ pub fn main() !void {
 
     // Initialize plugin manager
     var plugin_manager = plugins.PluginManager.init(allocator);
-    defer plugin_manager.deinit(&ecs);
+    defer {
+        if (plugin_manager.deinit(&ecs)) |errors| {
+            for (errors) |err| {
+                std.log.err("{s}: {s}", .{ err.plugin, @errorName(err.err) });
+            }
+        }
+    }
 
     std.log.info("Adding RaylibPlugin...", .{});
     // Manually add plugins one by one to showcase integration
@@ -241,12 +247,7 @@ pub fn main() !void {
     const root_container = ecs.create(.{
         layout.UIContainer.init("root"),
         // Screen bounds rectangle
-        ui.components.UIRect.init(
-            0,
-            0,
-            @floatFromInt(rl.getScreenWidth()),
-            @floatFromInt(rl.getScreenHeight()),
-        ),
+        ui.components.UIRect.initScreen(),
     });
     const close_button = ecs.create(.{
         ui.components.UIRect.init(0, 0, 100, 50),
@@ -256,14 +257,14 @@ pub fn main() !void {
     });
 
     const relations = ecs.getResource(zevy_ecs.params.Relations).?;
-    try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.Child);
+    try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.kinds.Child);
 
     // Add input key icon to the button
     const icon_child = ecs.create(.{
         ui.components.UIRect.init(70, 10, 16, 16),
         ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
-    try relations.add(&ecs, icon_child, close_button, zevy_ecs.relations.Child);
+    try relations.add(&ecs, icon_child, close_button, zevy_ecs.relations.kinds.Child);
 
     std.log.info("Starting game loop...", .{});
 

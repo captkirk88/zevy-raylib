@@ -18,14 +18,17 @@ pub fn AssetProcessor(comptime AssetType: type, comptime ProcessorType: type) ty
         if (!reflect.hasStruct(ProcessorType, "ProcessSettings")) {
             @compileError("Processor must have a ProcessSettings pub struct declaration: " ++ @typeName(ProcessorType));
         }
-        if (!reflect.hasFuncWithArgs(ProcessorType, "process", .{
+        _ = reflect.verifyFuncWithArgs(ProcessorType, "process", .{
             *AssetType,
             std.mem.Allocator,
             ?*const FileResolver,
             ?*const ProcessorType.ProcessSettings,
-        })) {
-            @compileError("Processor must have a process method: " ++ @typeName(ProcessorType));
-        }
+        }) catch |err| {
+            switch (err) {
+                error.NotAFunction, error.FuncDoesNotExist => @compileError("Processor must have a 'process' method: " ++ @typeName(ProcessorType)),
+                error.IncorrectArgs => @compileError("Processor 'process' method has incorrect arguments: " ++ @typeName(ProcessorType)),
+            }
+        };
     }
 
     return struct {

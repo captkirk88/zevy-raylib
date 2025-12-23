@@ -600,7 +600,7 @@ pub fn uiInputKeyRenderSystem(
     input_key_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         input_key: components.UIInputKey,
-        children: zevy_ecs.Relation(zevy_ecs.relations.Child),
+        children: zevy_ecs.relations.Relation(zevy_ecs.relations.kinds.Child),
     }, .{}),
     style: zevy_ecs.params.Res(@import("style.zig").UIStyle),
     icon_atlas: zevy_ecs.params.Res(ui_resources.UIIconAtlasHandle),
@@ -644,7 +644,7 @@ pub fn flexLayoutSystem(
     var container_count: usize = 0;
     while (container_query.next()) |cq| {
         container_count += 1;
-        const children = rel.getChildren(cq.entity, zevy_ecs.relations.Child);
+        const children = rel.getChildren(cq.entity, zevy_ecs.relations.kinds.Child);
         if (children.len == 0) continue;
         const flex: *layout.FlexLayout = cq.flex;
 
@@ -711,7 +711,7 @@ pub fn gridLayoutSystem(
     rel: *zevy_ecs.params.Relations,
 ) anyerror!void {
     while (container_query.next()) |cq| {
-        const children = rel.getChildren(cq.entity, zevy_ecs.relations.Child);
+        const children = rel.getChildren(cq.entity, zevy_ecs.relations.kinds.Child);
         if (children.len == 0) continue;
 
         // Collect children (no sorting needed for grid - order by insertion)
@@ -773,7 +773,7 @@ pub fn anchorLayoutSystem(
 ) anyerror!void {
     while (container_query.next()) |cq| {
         const container_rect = cq.rect.*;
-        const children = rel.getChildren(cq.entity, zevy_ecs.relations.Child);
+        const children = rel.getChildren(cq.entity, zevy_ecs.relations.kinds.Child);
         if (children.len == 0) continue;
 
         for (children) |child| {
@@ -835,7 +835,7 @@ pub fn dockLayoutSystem(
 ) anyerror!void {
     while (container_query.next()) |cq| {
         const container_rect = cq.rect.*;
-        const children = rel.getChildren(cq.entity, zevy_ecs.relations.Child);
+        const children = rel.getChildren(cq.entity, zevy_ecs.relations.kinds.Child);
         if (children.len == 0) continue;
 
         var remaining = container_rect;

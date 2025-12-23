@@ -79,7 +79,7 @@ pub fn build(b: *std.Build) !void {
 
     // Example executable that showcases manual plugin integration
     const example_mod = b.createModule(.{
-        .root_source_file = b.path("example_main.zig"),
+        .root_source_file = b.path("examples/example_main.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -122,4 +122,58 @@ pub fn build(b: *std.Build) !void {
     // make the two of them run in parallel.
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    if (isSelf(b)) {
+        setupExamples(b, mod, "zevy_raylib", target, optimize);
+    }
+}
+
+/// Check if the build is running in this project
+fn isSelf(b: *std.Build) bool {
+    // Check for a file that only exists in the main zevy-ecs project
+    if (std.fs.accessAbsolute(b.path("build.zig").getPath(b), .{})) {
+        return true;
+    } else |_| {
+        return true;
+    }
+}
+
+pub fn setupExamples(b: *std.Build, mod: *std.Build.Module, mod_import_name: []const u8, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
+    // Examples
+    const examples_step = b.step("examples", "Run all examples");
+
+    var examples_dir = std.fs.openDirAbsolute(b.path("examples").getPath(b), .{ .iterate = true }) catch return;
+    defer examples_dir.close();
+
+    var examples_iter = examples_dir.iterate();
+    while (examples_iter.next() catch null) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".zig")) {
+            const example_name = std.fs.path.stem(entry.name);
+            const example_path = std.fs.path.join(b.allocator, &.{ "examples", entry.name }) catch continue;
+            defer b.allocator.free(example_path);
+
+            const example_mod = b.addModule(example_name, .{
+                .root_source_file = b.path(example_path),
+                .target = target,
+                .optimize = optimize,
+            });
+
+            var iter = mod.import_table.iterator();
+            while (iter.next()) |import_entry| {
+                example_mod.addImport(import_entry.key_ptr.*, import_entry.value_ptr.*);
+            }
+            example_mod.addImport(mod_import_name, mod);
+
+            const example_exe = b.addExecutable(.{
+                .name = example_name,
+                .root_module = example_mod,
+            });
+
+            const run_example = b.addRunArtifact(example_exe);
+            const example_step = b.step(example_name, b.fmt("Run the {s} example", .{example_name}));
+            example_step.dependOn(&run_example.step);
+
+            examples_step.dependOn(example_step);
+        }
+    }
 }

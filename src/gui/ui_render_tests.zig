@@ -16,7 +16,7 @@ const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
 const TEST_SKIP_TIMEOUT_SECS = 10;
 
-fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
+fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Manager {
     if (should_skip) return error.SkipZigTest;
 
     const allocator = std.testing.allocator;
@@ -24,6 +24,14 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     rl.initWindow(800, 600, name);
 
     var ecs = try zevy_ecs.Manager.init(allocator);
+
+    if (description) |desc| {
+        _ = ecs.create(.{
+            ui.components.UIRect.init(10, 10, 780, 30),
+            ui.components.UIText.init(desc).withAlignment(.left).withFontSize(16),
+            ui.layout.AbsoluteLayout.init(.bottom_left),
+        });
+    }
     const input_mgr_res = try ecs.addResource(input.InputManager, .init(allocator));
     // Register default UI input bindings for tests (Enter/Space/Gamepad A/etc.)
     ui.input.setupUIInputBindings(input_mgr_res, allocator) catch |err| {
@@ -38,10 +46,21 @@ fn initTest(name: [:0]const u8) anyerror!zevy_ecs.Manager {
     ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
 
     var sch = try ecs.addResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(ecs.allocator));
-    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup), ui.systems.startupUiSystem, zevy_ecs.DefaultParamRegistry);
+
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup),
+        ui.systems.startupUiSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
 
     // Ensure the InputManager is updated each frame before UI interaction detection
-    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), testInputUpdateSystem, zevy_ecs.DefaultParamRegistry);
+    sch.addSystem(
+        &ecs,
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate),
+        testInputUpdateSystem,
+        zevy_ecs.DefaultParamRegistry,
+    );
 
     // UI interaction detection relies on InputManager having been updated
     sch.addSystem(
@@ -172,7 +191,7 @@ fn focusDebugDrawSystem(
 }
 
 test "Render Button default" {
-    var ecs = try initTest("Render Button default");
+    var ecs = try initTest("Render Button default", null);
     defer {
         deinitTest(&ecs);
     }
@@ -193,7 +212,7 @@ test "Render Button default" {
 }
 
 test "Render Button flat" {
-    var ecs = try initTest("Render Button flat");
+    var ecs = try initTest("Render Button flat", null);
     defer {
         deinitTest(&ecs);
     }
@@ -204,12 +223,12 @@ test "Render Button flat" {
     });
 
     // Attach an input-key child so the renderer/system can show the prompt
-    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const icon_child = ecs.create(.{
         comps.UIRect.init(0, 0, 16, 16),
         comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
+    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.kinds.Child);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.params.Commands) void {
@@ -220,7 +239,7 @@ test "Render Button flat" {
 }
 
 test "Render Button toggle" {
-    var ecs = try initTest("Render Button toggle");
+    var ecs = try initTest("Render Button toggle", null);
     defer {
         deinitTest(&ecs);
     }
@@ -231,12 +250,12 @@ test "Render Button toggle" {
     });
 
     // Attach an input-key child so the renderer/system can show the prompt
-    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const icon_child = ecs.create(.{
         comps.UIRect.init(0, 0, 16, 16),
         comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.Child);
+    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.kinds.Child);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.params.Commands) void {
@@ -247,7 +266,7 @@ test "Render Button toggle" {
 }
 
 test "Render Flex Layout" {
-    var ecs = try initTest("Render Flex Layout");
+    var ecs = try initTest("Render Flex Layout", null);
     defer {
         deinitTest(&ecs);
     }
@@ -260,14 +279,14 @@ test "Render Flex Layout" {
         layouts.UIContainer.init("flex_container"),
     });
     const titles = [_]?[:0]const u8{ "Panel 1", "Panel 2", "Panel 3", null };
-    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     for (0..4) |i| {
         const child = ecs.create(.{
             comps.UIRect.init(0, 0, 380, 50),
             comps.UIPanel.init(titles[i]),
             //comps.UIText.init("Panel {d}", .{i + 1}).withFontSize(16),
         });
-        try rel.add(&ecs, child, flex_container, zevy_ecs.relations.Child);
+        try rel.add(&ecs, child, flex_container, zevy_ecs.relations.kinds.Child);
     }
 
     try testLoop(&ecs, struct {
@@ -279,7 +298,7 @@ test "Render Flex Layout" {
 }
 
 test "Render Grid Layout" {
-    var ecs = try initTest("Render Grid Layout");
+    var ecs = try initTest("Render Grid Layout", null);
     defer {
         deinitTest(&ecs);
     }
@@ -290,14 +309,14 @@ test "Render Grid Layout" {
         layouts.UIContainer.init("grid_container"),
     });
 
-    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const titles = [_][:0]const u8{ "Grid Item 0", "Grid Item 1", "Grid Item 2", "Grid Item 3", "Grid Item 4", "Grid Item 5" };
     for (titles) |title| {
         const child = ecs.create(.{
             comps.UIRect.init(0, 0, 190, 190),
             comps.UIPanel.init(title),
         });
-        try rel.add(&ecs, child, grid_container, zevy_ecs.relations.Child);
+        try rel.add(&ecs, child, grid_container, zevy_ecs.relations.kinds.Child);
     }
 
     try testLoop(&ecs, struct {
@@ -309,7 +328,7 @@ test "Render Grid Layout" {
 }
 
 test "Render Anchor Layout" {
-    var ecs = try initTest("Render Anchor Layout");
+    var ecs = try initTest("Render Anchor Layout", null);
     defer {
         deinitTest(&ecs);
     }
@@ -322,20 +341,20 @@ test "Render Anchor Layout" {
         layouts.UIContainer.init("anchor_container"),
     });
 
-    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const top_left = ecs.create(.{
         comps.UIRect.init(0, 0, 100, 50),
         comps.UIPanel.init("Top Left"),
         layouts.AnchorLayout.init(.top_left),
     });
-    try rel.add(&ecs, top_left, anchor_container, zevy_ecs.relations.Child);
+    try rel.add(&ecs, top_left, anchor_container, zevy_ecs.relations.kinds.Child);
 
     const bottom_right = ecs.create(.{
         comps.UIRect.init(0, 0, 100, 50),
         comps.UIPanel.init("Bottom Right"),
         layouts.AnchorLayout.init(.bottom_right),
     });
-    try rel.add(&ecs, bottom_right, anchor_container, zevy_ecs.relations.Child);
+    try rel.add(&ecs, bottom_right, anchor_container, zevy_ecs.relations.kinds.Child);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.params.Commands) void {
@@ -346,7 +365,7 @@ test "Render Anchor Layout" {
 }
 
 test "Render Dock Layout" {
-    var ecs = try initTest("Render Dock Layout");
+    var ecs = try initTest("Render Dock Layout", null);
     defer {
         deinitTest(&ecs);
     }
@@ -360,7 +379,7 @@ test "Render Dock Layout" {
         layouts.UIContainer.init("dock_container"),
     });
 
-    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
 
     // Left docked panel
     const left = ecs.create(.{
@@ -368,7 +387,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Left"),
         layouts.DockLayout.init(.left),
     });
-    try rel.add(&ecs, left, dock_container, zevy_ecs.relations.Child);
+    try rel.add(&ecs, left, dock_container, zevy_ecs.relations.kinds.Child);
 
     // Top docked panel
     const top = ecs.create(.{
@@ -376,7 +395,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Top"),
         layouts.DockLayout.init(.top),
     });
-    try rel.add(&ecs, top, dock_container, zevy_ecs.relations.Child);
+    try rel.add(&ecs, top, dock_container, zevy_ecs.relations.kinds.Child);
 
     // Right docked panel
     const right = ecs.create(.{
@@ -384,7 +403,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Right"),
         layouts.DockLayout.init(.right),
     });
-    try rel.add(&ecs, right, dock_container, zevy_ecs.relations.Child);
+    try rel.add(&ecs, right, dock_container, zevy_ecs.relations.kinds.Child);
 
     // Bottom docked panel
     const bottom = ecs.create(.{
@@ -392,7 +411,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Bottom"),
         layouts.DockLayout.init(.bottom),
     });
-    try rel.add(&ecs, bottom, dock_container, zevy_ecs.relations.Child);
+    try rel.add(&ecs, bottom, dock_container, zevy_ecs.relations.kinds.Child);
 
     // Fill the remaining area with a panel
     const fill = ecs.create(.{
@@ -400,7 +419,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Fill"),
         layouts.DockLayout.init(.fill),
     });
-    try rel.add(&ecs, fill, dock_container, zevy_ecs.relations.Child);
+    try rel.add(&ecs, fill, dock_container, zevy_ecs.relations.kinds.Child);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.params.Commands) void {
@@ -411,10 +430,10 @@ test "Render Dock Layout" {
 }
 
 test "Render Two Buttons Same Input" {
-    var ecs = try initTest("Render Two Buttons Same Input");
+    var ecs = try initTest("Render Two Buttons Same Input", "Press [Enter/Return]");
     defer deinitTest(&ecs);
 
-    const rel = ecs.getResource(zevy_ecs.RelationManager).?;
+    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
 
     const btn_a = ecs.create(.{
         comps.UIRect.init(200, 200, 140, 50),
@@ -431,13 +450,13 @@ test "Render Two Buttons Same Input" {
         comps.UIRect.init(0, 0, 16, 16),
         comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_a, btn_a, zevy_ecs.relations.Child);
+    try rel.add(&ecs, icon_a, btn_a, zevy_ecs.relations.kinds.Child);
 
     const icon_b = ecs.create(.{
         comps.UIRect.init(0, 0, 16, 16),
-        comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
+        comps.UIInputKey.initSingle(.{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_b, btn_b, zevy_ecs.relations.Child);
+    try rel.add(&ecs, icon_b, btn_b, zevy_ecs.relations.kinds.Child);
 
     try testLoop(&ecs, struct {
         fn run(e: *zevy_ecs.params.Commands) void {
@@ -447,7 +466,7 @@ test "Render Two Buttons Same Input" {
 }
 
 test "UI Focus Navigation Demo" {
-    var ecs = try initTest("UI Focus Navigation Demo");
+    var ecs = try initTest("UI Focus Navigation Demo", "Use [Tab]");
     defer deinitTest(&ecs);
 
     const sch = ecs.getResource(zevy_ecs.schedule.Scheduler).?;

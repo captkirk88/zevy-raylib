@@ -330,7 +330,7 @@ pub fn uiInteractionDetectionSystem(
         // Activated by a direct InputKey press that matches a child's UIInputKey
         var activated_by_keypress: bool = false;
         if (newly_len > 0) {
-            const children = rel.getChildren(item.entity, zevy_ecs.relations.Child);
+            const children = rel.getChildren(item.entity, zevy_ecs.relations.kinds.Child);
             for (children) |child| {
                 if (activated_by_keypress) break;
                 if (commands.getComponent(child, components.UIInputKey) catch null) |ik| {
@@ -354,7 +354,7 @@ pub fn uiInteractionDetectionSystem(
         // pressed keys as a fallback so entities that declare the input
         // are activated even without hover.
         if (!activated_by_keypress and click_triggered_confirm) {
-            const children2 = rel.getChildren(item.entity, zevy_ecs.relations.Child);
+            const children2 = rel.getChildren(item.entity, zevy_ecs.relations.kinds.Child);
             for (children2) |child| {
                 if (activated_by_keypress) break;
                 if (commands.getComponent(child, components.UIInputKey) catch null) |ik| {
@@ -481,20 +481,20 @@ pub fn uiFocusNavigationSystem(
     }
 
     if (current_focused) |cf| {
-        if (rel.getParent(commands.manager, cf, zevy_ecs.relations.Child) catch null) |p| {
+        if (rel.getParent(commands.manager, cf, zevy_ecs.relations.kinds.Child) catch null) |p| {
             focused_parent = p;
         }
     } else {
         // No focused entity — prefer the parent of the last-hovered entity
         if (last_hover.value()) |lh| {
-            if (rel.getParent(commands.manager, lh, zevy_ecs.relations.Child) catch null) |p2| {
+            if (rel.getParent(commands.manager, lh, zevy_ecs.relations.kinds.Child) catch null) |p2| {
                 focused_parent = p2;
             }
         }
     }
 
     if (focused_parent) |parent| {
-        const children = rel.getChildren(parent, zevy_ecs.relations.Child);
+        const children = rel.getChildren(parent, zevy_ecs.relations.kinds.Child);
         for (children) |child| {
             if (commands.getComponent(child, components.UIFocusable) catch null) |f| {
                 _ = f;

@@ -39,7 +39,7 @@ pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
         .width = 1280,
         .height = 720,
     });
-    try plugs.add(AssetsPlugin, AssetsPlugin{});
+    try plugs.add(AssetsPlugin, .{});
     try plugs.add(InputPlugin(ParamRegistry), .{});
     try plugs.add(UIPlugin(ParamRegistry), .{});
 }

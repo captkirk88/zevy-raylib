@@ -7,6 +7,7 @@ const raygui = @import("raygui");
 const ui = @import("gui/ui.zig");
 const assets_plugin = @import("assets.plugin.zig");
 
+/// Event emitted when the application is going to exit
 pub const ExitAppEvent = struct {};
 
 pub fn RaylibPlugin(comptime ParamRegistry: type) type {

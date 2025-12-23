@@ -29,7 +29,7 @@ pub fn InputPlugin(comptime ParamRegistry: type) type {
     };
 }
 
-fn inputUpdateSystem(manager: *zevy_ecs.Manager, input_manager: *params.Bindings) !void {
-    _ = manager;
+fn inputUpdateSystem(commands: *zevy_ecs.params.Commands, input_manager: *params.Bindings) !void {
+    _ = commands;
     try input_manager.update();
 }

@@ -12,8 +12,31 @@ pub const UIRect = struct {
     width: f32,
     height: f32,
 
+    /// Initialize with specific position and size
     pub fn init(x: f32, y: f32, width: f32, height: f32) UIRect {
         return .{ .x = x, .y = y, .width = width, .height = height };
+    }
+
+    /// Initialize to full screen size
+    pub fn initScreen() UIRect {
+        return .{
+            .x = 0,
+            .y = 0,
+            .width = @floatFromInt(rl.getScreenWidth()),
+            .height = @floatFromInt(rl.getScreenHeight()),
+        };
+    }
+
+    /// Initialize from a camera's position and target
+    ///
+    /// **UNTESTED**
+    pub fn initCamera(cam: *rl.Camera) UIRect {
+        return .{
+            .x = cam.position.x,
+            .y = cam.position.y,
+            .width = cam.target.x,
+            .height = cam.target.y,
+        };
     }
 
     pub fn toRectangle(self: *const UIRect) rl.Rectangle {
