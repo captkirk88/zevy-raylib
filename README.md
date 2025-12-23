@@ -21,16 +21,12 @@ Zevy Raylib is an integration layer that connects the Zevy ECS with the Raylib g
   - [AssetManager](#assetmanager)
   - [Schemes & Loaders](#schemes--loaders)
 - [GUI](#gui)
-  - [Components](#components)
-  - [Layout & Renderer](#layout--renderer)
-  - [Systems](#systems)
 - [Embed](#embed)
 - [Plugins](#plugins)
-  - [RaylibPlugin (app.plugin.zig)](#raylibplugin-appppluginzig)
-  - [RayGuiPlugin (app.plugin.zig)](#rayguiplugin-appppluginzig)
+  - [RaylibPlugin (app.plugin.zig)](#raylibplugin-apppluginzig)
+  - [RayGuiPlugin (app.plugin.zig)](#rayguiplugin-apppluginzig)
   - [AssetsPlugin (assets.plugin.zig)](#assetsplugin-assetspluginzig)
   - [InputPlugin (input.plugin.zig)](#inputplugin-inputpluginzig)
-- [Examples & Tests](#examples--tests)
 - [Contributing](#contributing)
 
 ---
@@ -43,33 +39,17 @@ Zevy Raylib is a small library that wires the Raylib runtime into a Zevy ECS-bas
 
 ## Quick Start
 
-An example application demonstrating manual plugin integration is included. To build and run it:
+[Examples](examples/) can be ran with:
 
 ```bash
-zig build run
+zig build examples
 ```
-
-This launches a window showing bouncing colored circles, demonstrating:
-
-- Manual plugin registration (`RaylibPlugin`, `AssetsPlugin`, `InputPlugin`, `RayGuiPlugin`)
-- Custom ECS systems for movement and rendering
-- Entity creation with Position, Velocity, and Sprite components
-- Integration of the Zevy ECS scheduler with Raylib's game loop
-
-The example source is located in `example_main.zig` at the repository root.
 
 > [!WARNING]
 > This library and its APIs are experimental. They are intended as a convenient integration layer for example apps and prototypes.
 > The API and internal behavior can and will change without backward compatibility guarantees.
-> Tests and cross-platform coverage are limited — treat this as a development-time dependency rather than a production runtime.
-> Please open issues or submit PRs if you rely on features that should be stabilized.
-
-Files of interest:
-
-- `src/root.zig` — main package root and plugin wiring
-- `src/app.plugin.zig` — Raylib and RayGui plugin implementations
-- `src/assets.plugin.zig` — Adds the asset subsystem to the ECS
-- `src/input.plugin.zig` — Input plugin and system registration
+> Tests and cross-platform coverage are limited — treat this as a development-ready library, not production-ready.
+> Please open issues or submit PRs if you rely on features that should be stabilized or suggested.
 
 ---
 
