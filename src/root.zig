@@ -31,13 +31,14 @@ pub const ParamRegistry = zevy_ecs.MergedSystemParamRegistry(&[_]type{
 });
 
 /// Registers all plugins defined in this package
-pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager) anyerror!void {
+pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager, headless: bool) anyerror!void {
     _ = allocator;
     _ = ecs;
     try plugs.add(RaylibPlugin(ParamRegistry), .{
         .title = "Zevy Raylib App",
         .width = 1280,
         .height = 720,
+        .headless = headless,
     });
     try plugs.add(AssetsPlugin, .{});
     try plugs.add(InputPlugin(ParamRegistry), .{});
@@ -69,14 +70,10 @@ test "zevy_raylib" {
     var ecs = try zevy_ecs.Manager.init(allocator);
     var plugs = plugins.PluginManager.init(allocator);
     defer {
-        if (plugs.deinit(&ecs)) |errors| {
-            for (errors) |err| {
-                std.log.err("{s}: {s}", .{ err.plugin, @errorName(err.err) });
-            }
-        }
+        _ = plugs.deinit(&ecs);
         ecs.deinit();
     }
-    try plug(allocator, &plugs, &ecs);
+    try plug(allocator, &plugs, &ecs, true);
     try plugs.add(TestPlugin, .{});
 
     try std.testing.expect(plugs.get(RaylibPlugin(ParamRegistry)) != null);

@@ -19,6 +19,7 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
         height: i32,
         target_fps: i32 = 60,
         log_level: rl.TraceLogLevel = .warning,
+        headless: bool = false,
 
         pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
             const log = std.log.scoped(.zevy_raylib);
@@ -31,23 +32,26 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
             );
 
             rl.setTraceLogLevel(self.log_level);
-            rl.initWindow(self.width, self.height, self.title);
-            log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
-            rl.initAudioDevice();
-            log.info("Audio device: {s}", .{if (rl.isAudioDeviceReady()) "Ready" else "Not Ready"});
+            if (!self.headless) {
+                rl.initWindow(self.width, self.height, self.title);
+                log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
+                rl.initAudioDevice();
+                log.info("Audio device: {s}", .{if (rl.isAudioDeviceReady()) "Ready" else "Not Ready"});
 
-            if (self.target_fps < 30) self.target_fps = 30;
-            rl.setTargetFPS(self.target_fps);
+                if (self.target_fps < 30) self.target_fps = 30;
+                rl.setTargetFPS(self.target_fps);
+            }
         }
 
         pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) void {
             const log = std.log.scoped(.zevy_raylib);
-            _ = self;
             _ = ecs;
-            rl.closeAudioDevice();
-            if (!rl.isAudioDeviceReady()) log.info("Audio device closed", .{}) else log.err("Audio device failed to close", .{});
-            rl.closeWindow();
-            if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
+            if (!self.headless) {
+                rl.closeAudioDevice();
+                if (!rl.isAudioDeviceReady()) log.info("Audio device closed", .{}) else log.err("Audio device failed to close", .{});
+                rl.closeWindow();
+                if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
+            }
         }
 
         pub fn setWidth(self: *Self, width: i32) void {

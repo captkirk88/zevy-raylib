@@ -24,7 +24,6 @@ Zevy Raylib is an integration layer that connects the Zevy ECS with the Raylib g
 - [Embed](#embed)
 - [Plugins](#plugins)
   - [RaylibPlugin (app.plugin.zig)](#raylibplugin-apppluginzig)
-  - [RayGuiPlugin (app.plugin.zig)](#rayguiplugin-apppluginzig)
   - [AssetsPlugin (assets.plugin.zig)](#assetsplugin-assetspluginzig)
   - [InputPlugin (input.plugin.zig)](#inputplugin-inputpluginzig)
 - [Contributing](#contributing)
@@ -61,12 +60,6 @@ The input layer provides the following:
 - `InputBindings` and `InputBinding` — mapping action names to input chords.
 - Input types and helpers (keyboard, mouse, touch, gesture, and gamepads).
 
-Files and location:
-
-- `src/input/input_manager.zig`
-- `src/input/input_bindings.zig`
-- `src/input/input_types.zig`
-
 ### InputManager
 
 `InputManager` is designed to be added to the ECS via the `InputPlugin` and optionally polled directly from systems. It supports event handlers and action checking API:
@@ -85,12 +78,6 @@ Input bindings, chords, and actions are declared with types located inside the `
 
 The IO module provides a powerful `AssetManager<T, Loader>` generator for loading and tracking assets.
 
-Key files:
-
-- `src/io/asset_manager.zig` — generic `AssetManager` implementation
-- `src/io/loaders.zig` — built-in loaders for asset types
-- `src/io/loader.zig` — loader interfaces
-- `src/io/scheme_resolver.zig` — handles scheme parsing and resolving
 
 ### AssetManager
 
