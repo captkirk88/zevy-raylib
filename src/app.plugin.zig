@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const rl = @import("raylib");
@@ -7,9 +8,48 @@ const raygui = @import("raygui");
 const ui = @import("gui/ui.zig");
 const assets_plugin = @import("assets.plugin.zig");
 
+// const rlraw = @cImport({
+//     @cInclude("raylib.h");
+// });
+
+// Extern functions
+extern fn SetTraceLogCallback(callback: ?*const fn (c_int, [*c]const u8, [*c]u8) callconv(.c) void) void;
+
+/// Raylib log callback that redirects to zevy_raylib scoped logger
+const raylib_log_callback = struct {
+    const c_stdio = @cImport({
+        @cInclude("stdio.h");
+    });
+
+    fn callback(log_level: c_int, format: [*c]const u8, args: c_stdio.va_list) callconv(.c) void {
+        if (format == null) return;
+        var buf: [1024:0]u8 = undefined;
+        _ = c_stdio.vsprintf(&buf, format, args);
+        const message = std.mem.span(@as([*:0]const u8, &buf));
+
+        const raylib_log_level: rl.TraceLogLevel = @enumFromInt(log_level);
+        const level: std.log.Level = switch (raylib_log_level) {
+            .trace, .debug => .debug,
+            .info => .info,
+            .warning => .warn,
+            .err, .fatal => .err,
+            else => .info,
+        };
+
+        const log = std.log.scoped(.zevy_raylib);
+        switch (level) {
+            .debug => log.debug("{s}", .{message}),
+            .info => log.info("{s}", .{message}),
+            .warn => log.warn("{s}", .{message}),
+            .err => log.err("{s}", .{message}),
+        }
+    }
+};
+
 /// Event emitted when the application is going to exit
 pub const ExitAppEvent = struct {};
 
+/// Raylib plugin for Zevy ECS
 pub fn RaylibPlugin(comptime ParamRegistry: type) type {
     return struct {
         const Self = @This();
@@ -20,6 +60,7 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
         target_fps: i32 = 60,
         log_level: rl.TraceLogLevel = .warning,
         headless: bool = false,
+        raylib_logcallback: *const fn (c_int, [*c]const u8, [*c]u8) callconv(.c) void = raylib_log_callback.callback,
 
         pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
             const log = std.log.scoped(.zevy_raylib);
@@ -31,6 +72,7 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
                 ParamRegistry,
             );
 
+            SetTraceLogCallback(self.raylib_logcallback);
             rl.setTraceLogLevel(self.log_level);
             if (!self.headless) {
                 rl.initWindow(self.width, self.height, self.title);
@@ -52,31 +94,6 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
                 rl.closeWindow();
                 if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
             }
-        }
-
-        pub fn setWidth(self: *Self, width: i32) void {
-            self.width = width;
-            rl.setWindowSize(self.width, self.height);
-        }
-
-        pub fn setHeight(self: *Self, height: i32) void {
-            self.height = height;
-            rl.setWindowSize(self.width, self.height);
-        }
-
-        pub fn setTargetFPS(self: *Self, fps: i32) void {
-            self.target_fps = fps;
-            rl.setTargetFPS(self.target_fps);
-        }
-
-        pub fn setLevel(self: *Self, level: rl.TraceLogLevel) void {
-            self.log_level = level;
-            rl.setTraceLogLevel(self.log_level);
-        }
-
-        pub fn setTitle(self: *Self, title: [:0]const u8) void {
-            self.title = title;
-            rl.setWindowTitle(self.title);
         }
     };
 }
