@@ -3,6 +3,11 @@ const std = @import("std");
 /// Builtin asset embedding utilities.
 pub const embed = @import("src/build/embed.zig");
 
+const ModuleImport = struct {
+    name: []const u8,
+    module: *std.Build.Module,
+};
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
 
@@ -77,40 +82,6 @@ pub fn build(b: *std.Build) !void {
         std.debug.panic("Failed to add example embedded assets module: {s}\n", .{@errorName(err)});
     };
 
-    // Example executable that showcases manual plugin integration
-    const example_mod = b.createModule(.{
-        .root_source_file = b.path("examples/example_main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "zevy_ecs", .module = zevy_ecs_dep.module("zevy_ecs") },
-            .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
-            .{ .name = "raylib", .module = raylib_dep.module("raylib") },
-            .{ .name = "raygui", .module = raylib_dep.module("raygui") },
-            .{ .name = "zevy_raylib", .module = mod },
-            .{ .name = embed_opts.import_name, .module = embed_assets_mod },
-            .{ .name = example_embed_opts.import_name, .module = example_embed_assets_mod },
-        },
-    });
-
-    const example_exe = b.addExecutable(.{
-        .name = "zevy_raylib_example",
-        .root_module = example_mod,
-    });
-
-    example_exe.linkLibrary(raylib_dep.artifact("raylib"));
-    b.installArtifact(example_exe);
-
-    const run_example = b.addRunArtifact(example_exe);
-    run_example.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_example.addArgs(args);
-    }
-
-    const run_step = b.step("run", "Run the plugin integration example");
-    run_step.dependOn(&run_example.step);
-
     const mod_tests = b.addTest(.{
         .root_module = mod,
     });
@@ -124,7 +95,15 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_mod_tests.step);
 
     if (isSelf(b)) {
-        setupExamples(b, mod, "zevy_raylib", target, optimize);
+        setupExamples(b, &[_]std.Build.Module.Import{
+            .{ .name = "raylib", .module = raylib_dep.module("raylib") },
+            .{ .name = "raygui", .module = raylib_dep.module("raygui") },
+            .{ .name = "zevy_raylib", .module = mod },
+            .{ .name = "zevy_ecs", .module = zevy_ecs_dep.module("zevy_ecs") },
+            .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
+            .{ .name = embed_opts.import_name, .module = embed_assets_mod },
+            .{ .name = example_embed_opts.import_name, .module = example_embed_assets_mod },
+        }, target, optimize);
     }
 }
 
@@ -138,7 +117,7 @@ fn isSelf(b: *std.Build) bool {
     }
 }
 
-pub fn setupExamples(b: *std.Build, mod: *std.Build.Module, mod_import_name: []const u8, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
+pub fn setupExamples(b: *std.Build, modules: []const std.Build.Module.Import, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
     // Examples
     const examples_step = b.step("examples", "Run all examples");
 
@@ -158,11 +137,17 @@ pub fn setupExamples(b: *std.Build, mod: *std.Build.Module, mod_import_name: []c
                 .optimize = optimize,
             });
 
-            var iter = mod.import_table.iterator();
-            while (iter.next()) |import_entry| {
-                example_mod.addImport(import_entry.key_ptr.*, import_entry.value_ptr.*);
+            // Add imports from the first module if any
+            if (modules.len > 0) {
+                for (modules) |module| {
+                    example_mod.addImport(module.name, module.module);
+                }
             }
-            example_mod.addImport(mod_import_name, mod);
+
+            // Add each module
+            for (modules) |item| {
+                example_mod.addImport(item.name, item.module);
+            }
 
             const example_exe = b.addExecutable(.{
                 .name = example_name,
