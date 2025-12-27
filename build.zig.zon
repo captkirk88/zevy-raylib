@@ -12,8 +12,8 @@
     // internet connectivity.
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#491c1cb970791c06ef17269436f1b9a8af07dba9",
-            .hash = "zevy_ecs-1.56.0-VoL9mYzzBgDyGajmBzmJs2DzTcUwsO2EP9QRxCLHGoP9",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#6b984b1415d4dd28b77cbdf3157b78c95c77739f",
+            .hash = "zevy_ecs-1.56.0-VoL9mcH5BgC_rpYNq3FQ2bNtfqXwWTtRmncte9Snyt5d",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",
@@ -31,15 +31,12 @@
             .hash = "xml-0.2.0-ZTbP3wE6AgCsnyZut_plzxi6WB2tzzh3kFRBOp3AL7n9",
         },
         .zevy_reflect = .{
-            .url = "git+https://github.com/captkirk88/zevy-reflect#5275f0c056aeab2a371a466ee0e3733db0dd7390",
-            .hash = "zevy_reflect-0.0.1-8SzYxrgiAgCKTc2uwU98GCKLR8Zpk2eYmFicCno_cIRQ",
+            .url = "git+https://github.com/captkirk88/zevy-reflect#739797f94a94c9f3e6e1d70b5fe75228cd801247",
+            .hash = "zevy_reflect-0.0.1-8SzYxvVWAgAv4POB43USjmhHDg0TqjM5BMQLovuZ_N6o",
         },
-        // .zevy_reflect = .{
-        //     .path = "../zevy-reflect",
-        // },
         .zevy_mem = .{
-            .url = "git+https://github.com/captkirk88/zevy-mem#7fcc868b6bdfacf33b19a2f039b4ad80a2c5776b",
-            .hash = "zevy_mem-0.0.1-jK9L0ddJAQCLE0FDf69SYdChMKsPPBGFLJNr0NmUFBq7",
+            .url = "git+https://github.com/captkirk88/zevy-mem#a1120bb8c4405f8edcbf7df992299b5dea48a62f",
+            .hash = "zevy_mem-0.0.1-jK9L0bwJAgD5Z1lsyzRl_xZ51R3Sq6Wkvb65gP87ycLG",
         },
     },
     .paths = .{

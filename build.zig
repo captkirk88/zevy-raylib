@@ -14,35 +14,35 @@ pub fn build(b: *std.Build) !void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const known_folders_dep = b.lazyDependency("known_folders", .{
+    const known_folders_dep = b.dependency("known_folders", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return error.KnownFolders_DepNotFound;
+    });
 
-    const xml_dep = b.lazyDependency("xml", .{
+    const xml_dep = b.dependency("xml", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return error.XML_DepNotFound;
+    });
 
-    const zevy_ecs_dep = b.lazyDependency("zevy_ecs", .{
+    const zevy_ecs_dep = b.dependency("zevy_ecs", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return error.ZevyECS_DepNotFound;
+    });
 
-    const zevy_mem_dep = b.lazyDependency("zevy_mem", .{
+    const zevy_mem_dep = b.dependency("zevy_mem", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return error.ZevyMem_DepNotFound;
+    });
 
-    const zevy_reflect_dep = b.lazyDependency("zevy_reflect", .{
+    const zevy_reflect_dep = b.dependency("zevy_reflect", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return error.ZevyReflect_DepNotFound;
+    });
 
-    const raylib_dep = b.lazyDependency("raylib_zig", .{
+    const raylib_dep = b.dependency("raylib_zig", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return error.RaylibZig_DepNotFound;
+    });
 
     _ = b.addModule("embed", .{
         .root_source_file = b.path("build/embed.zig"),
