@@ -1,5 +1,6 @@
 const std = @import("std");
 const ecs_build = @import("zevy_ecs");
+const buildtools = @import("zevy_buildtools");
 
 /// Builtin asset embedding utilities.
 pub const embed = @import("src/build/embed.zig");
@@ -95,15 +96,16 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
 
-    if (ecs_build.isSelf(b)) {
-        ecs_build.setupExamples(b, &[_]std.Build.Module.Import{
-            .{ .name = "raylib", .module = raylib_dep.module("raylib") },
-            .{ .name = "raygui", .module = raylib_dep.module("raygui") },
-            .{ .name = "zevy_raylib", .module = mod },
-            .{ .name = "zevy_ecs", .module = zevy_ecs_dep.module("zevy_ecs") },
-            .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
-            .{ .name = embed_opts.import_name, .module = embed_assets_mod },
-            .{ .name = example_embed_opts.import_name, .module = example_embed_assets_mod },
-        }, target, optimize);
-    }
+    buildtools.examples.setupExamples(b, &[_]std.Build.Module.Import{
+        .{ .name = "raylib", .module = raylib_dep.module("raylib") },
+        .{ .name = "raygui", .module = raylib_dep.module("raygui") },
+        .{ .name = "zevy_raylib", .module = mod },
+        .{ .name = "zevy_ecs", .module = zevy_ecs_dep.module("zevy_ecs") },
+        .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
+        .{ .name = embed_opts.import_name, .module = embed_assets_mod },
+        .{ .name = example_embed_opts.import_name, .module = example_embed_assets_mod },
+    }, target, optimize);
+
+    try buildtools.fetch.addFetchStep(b, b.path("build.zig.zon"));
+    buildtools.fetch.addGetStep(b);
 }

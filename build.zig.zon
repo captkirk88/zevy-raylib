@@ -12,8 +12,8 @@
     // internet connectivity.
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#6b984b1415d4dd28b77cbdf3157b78c95c77739f",
-            .hash = "zevy_ecs-1.56.0-VoL9mcH5BgC_rpYNq3FQ2bNtfqXwWTtRmncte9Snyt5d",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#382bede6178c470e62ed167a23309ee2c18f8da2",
+            .hash = "zevy_ecs-1.56.0-VoL9md8IBwDfZ0wpUIRlR725wUbnb-c3rHOU8nEzUtwT",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",
@@ -21,22 +21,29 @@
         .raylib_zig = .{
             .url = "git+https://github.com/raylib-zig/raylib-zig#3cd4d3179d967fc8b931514603fdbc4a43a1d771",
             .hash = "raylib_zig-5.6.0-dev-KE8REE1LBQCL7lia-DwUkusWI1G4kJmhtatLh2kNsuiE",
+            .ignore = true,
         },
         .known_folders = .{
             .url = "git+https://github.com/ziglibs/known-folders#83d39161eac2ed6f37ad3cb4d9dd518696ce90bb",
             .hash = "known_folders-0.0.0-Fy-PJv3LAAABBRVoZWVrKZdyLoUfl5VRY5fqRRRdnF5L",
+            .ignore = true,
         },
         .xml = .{
             .url = "git+https://github.com/ianprime0509/zig-xml#8874de5b846f4e3e806a062cd11a01b2bb90fc7a",
             .hash = "xml-0.2.0-ZTbP3wE6AgCsnyZut_plzxi6WB2tzzh3kFRBOp3AL7n9",
+            .ignore = true,
         },
         .zevy_reflect = .{
-            .url = "git+https://github.com/captkirk88/zevy-reflect#739797f94a94c9f3e6e1d70b5fe75228cd801247",
-            .hash = "zevy_reflect-0.0.1-8SzYxvVWAgAv4POB43USjmhHDg0TqjM5BMQLovuZ_N6o",
+            .url = "git+https://github.com/captkirk88/zevy-reflect#15e55f475c1b0d2f38accbd83a5a75c970ac5981",
+            .hash = "zevy_reflect-0.0.1-8SzYxmR0AgBRzHSiEaDYGLb6aMr_-tPzB-WEM31uKQfz",
         },
         .zevy_mem = .{
-            .url = "git+https://github.com/captkirk88/zevy-mem#a1120bb8c4405f8edcbf7df992299b5dea48a62f",
-            .hash = "zevy_mem-0.0.1-jK9L0bwJAgD5Z1lsyzRl_xZ51R3Sq6Wkvb65gP87ycLG",
+            .url = "git+https://github.com/captkirk88/zevy-mem#abf720b930e955e64d8f7e19ec1b9dcccb370298",
+            .hash = "zevy_mem-0.0.1-jK9L0SbQAgASz_DC07oh3HbMevWjNh2G9B1oQc6Z4mpk",
+        },
+        .zevy_buildtools = .{
+            .url = "git+https://github.com/captkirk88/zevy-buildtools#34137d06a8ca55e146af8653e208e39bd7c6bd49",
+            .hash = "zevy_buildtools-0.0.0-So808Wp9AACw8cGzXxCKpUdjPAziAr33sDQQJ2mPXtNN",
         },
     },
     .paths = .{
