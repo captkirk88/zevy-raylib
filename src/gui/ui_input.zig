@@ -64,16 +64,18 @@ pub const UIHoverEvent = struct {
 };
 
 /// Event emitted when a UI element's value changes (sliders, spinners, etc.)
-pub const UIValueChangedEvent = struct {
-    /// The entity whose value changed
-    entity: zevy_ecs.Entity,
-    /// The type of component that changed
-    component_type_name: []const u8,
-    /// The old value (generic f32 for numeric components)
-    old_value: f32,
-    /// The new value
-    new_value: f32,
-};
+pub fn UIValueChangedEvent(comptime ComponentType: type) type {
+    return struct {
+        pub const Type: type = ComponentType;
+
+        /// The entity whose value changed
+        entity: zevy_ecs.Entity,
+        /// The old value (generic f32 for numeric components)
+        old_value: f32,
+        /// The new value
+        new_value: f32,
+    };
+}
 
 /// Event emitted when a UI element gains or loses focus
 pub const UIFocusEvent = struct {
@@ -577,7 +579,7 @@ pub fn uiFocusNavigationSystem(
 /// Handles dragging sliders to change values
 pub fn sliderInteractionSystem(
     input_mgr: zevy_ecs.params.Res(input.InputManager),
-    value_writer: zevy_ecs.params.EventWriter(UIValueChangedEvent),
+    value_writer: zevy_ecs.params.EventWriter(UIValueChangedEvent(components.UISlider)),
     query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -625,7 +627,6 @@ pub fn sliderInteractionSystem(
             if (@abs(new_value - old_value) > 0.001) {
                 value_writer.write(.{
                     .entity = item.entity,
-                    .component_type_name = "UISlider",
                     .old_value = old_value,
                     .new_value = new_value,
                 });
@@ -686,7 +687,7 @@ pub fn toggleInteractionSystem(
 /// Spinner interaction detection system
 pub fn spinnerInteractionSystem(
     input_mgr: zevy_ecs.params.Res(input.InputManager),
-    value_writer: zevy_ecs.params.EventWriter(UIValueChangedEvent),
+    value_writer: zevy_ecs.params.EventWriter(UIValueChangedEvent(components.UISpinner)),
     query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -727,7 +728,6 @@ pub fn spinnerInteractionSystem(
             if (new_value != old_value) {
                 value_writer.write(.{
                     .entity = item.entity,
-                    .component_type_name = "UISpinner",
                     .old_value = @floatFromInt(old_value),
                     .new_value = @floatFromInt(new_value),
                 });
@@ -854,9 +854,8 @@ test "UI input event types" {
     try testing.expectEqual(@as(f32, 100), click_event.position.x);
 
     // Test UIValueChangedEvent
-    const value_event = UIValueChangedEvent{
+    const value_event = UIValueChangedEvent(components.UISlider){
         .entity = .{ .id = 2, .generation = 0 },
-        .component_type_name = "UISlider",
         .old_value = 0.5,
         .new_value = 0.75,
     };

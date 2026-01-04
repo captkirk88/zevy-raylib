@@ -39,6 +39,24 @@ pub const UIRect = struct {
         };
     }
 
+    pub fn initFromPoints(x0: f32, y0: f32, x1: f32, y1: f32) UIRect {
+        return .{
+            .x = x0,
+            .y = y0,
+            .width = x1 - x0,
+            .height = y1 - y0,
+        };
+    }
+
+    pub fn initFromRelative(parent: *const UIRect, rel_x: f32, rel_y: f32, rel_width: f32, rel_height: f32) UIRect {
+        return .{
+            .x = parent.x + rel_x * parent.width,
+            .y = parent.y + rel_y * parent.height,
+            .width = rel_width * parent.width,
+            .height = rel_height * parent.height,
+        };
+    }
+
     pub fn toRectangle(self: *const UIRect) rl.Rectangle {
         return .{ .x = self.x, .y = self.y, .width = self.width, .height = self.height };
     }

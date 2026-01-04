@@ -43,7 +43,8 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
 
             try scheduler.registerEvent(e, input.UIClickEvent, ParamRegistry);
             try scheduler.registerEvent(e, input.UIHoverEvent, ParamRegistry);
-            try scheduler.registerEvent(e, input.UIValueChangedEvent, ParamRegistry);
+            try scheduler.registerEvent(e, input.UIValueChangedEvent(components.UISlider), ParamRegistry);
+            try scheduler.registerEvent(e, input.UIValueChangedEvent(components.UISpinner), ParamRegistry);
             try scheduler.registerEvent(e, input.UIToggleEvent, ParamRegistry);
             try scheduler.registerEvent(e, input.UIFocusEvent, ParamRegistry);
             try scheduler.registerEvent(e, input.UISelectionChangedEvent, ParamRegistry);

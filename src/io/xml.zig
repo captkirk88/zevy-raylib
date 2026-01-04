@@ -35,12 +35,6 @@ pub const XmlDocument = struct {
         writer: WriterState,
     };
 
-    /// Parsed atlas data return type
-    pub const AtlasParseResult = struct {
-        image_path: ?[]u8,
-        frames: std.ArrayList(@import("../graphics/texture_atlas.zig").NamedFrame),
-    };
-
     const ReaderState = struct {
         data: []const u8,
         static_reader: xml.Reader.Static,
@@ -191,72 +185,6 @@ pub const XmlDocument = struct {
         return std.fmt.parseInt(T, raw, 10) catch return error.InvalidIntegerValue;
     }
 
-    /// Convenience helper: parse a TextureAtlas-style XML document and return
-    /// the imagePath (if present) and an ArrayList of NamedFrame entries.
-    /// The returned ArrayList and any image_path buffer are owned by `allocator`
-    /// and must be freed by the caller when done.
-    pub fn parseTextureAtlas(self: *XmlDocument, allocator: std.mem.Allocator) Error!AtlasParseResult {
-        const NamedFrame = @import("../graphics/texture_atlas.zig").NamedFrame;
-
-        const rdr = try self.reader();
-
-        var frames = try std.ArrayList(NamedFrame).initCapacity(allocator, 16);
-        var frames_owned: bool = true;
-        defer if (frames_owned) frames.deinit(allocator);
-
-        var image_path_rel: ?[]u8 = null;
-        errdefer if (image_path_rel) |p| allocator.free(p);
-
-        while (true) {
-            const node = self.readNode() catch |err| {
-                frames.deinit(allocator);
-                return err;
-            };
-            switch (node) {
-                .eof => break,
-                .element_start => {
-                    const element_name = rdr.elementName();
-                    if (std.mem.eql(u8, element_name, "TextureAtlas")) {
-                        if (image_path_rel == null) {
-                            const maybe_path = try self.attributeValue("imagePath");
-                            if (maybe_path) |path_slice| {
-                                image_path_rel = try allocator.dupe(u8, path_slice);
-                                if (image_path_rel) |p| {
-                                    const unescaped = try unescapeXmlEntities(allocator, p);
-                                    allocator.free(p);
-                                    image_path_rel = unescaped;
-                                }
-                            }
-                        }
-                    } else if (std.mem.eql(u8, element_name, "SubTexture")) {
-                        const frame_name = try allocator.dupe(u8, try self.requireAttributeValue("name"));
-                        var frame_name_owned: bool = true;
-                        defer if (frame_name_owned) allocator.free(frame_name);
-                        const frame_rect = @import("../graphics/texture_atlas.zig").FrameRect{
-                            .x = try self.parseAttributeInt(i32, "x"),
-                            .y = try self.parseAttributeInt(i32, "y"),
-                            .w = try self.parseAttributeInt(i32, "width"),
-                            .h = try self.parseAttributeInt(i32, "height"),
-                        };
-                        try frames.append(allocator, .{ .name = frame_name, .frame = frame_rect });
-                        // ownership transferred to frames; prevent deferred free
-                        frame_name_owned = false;
-                    }
-                },
-                else => {},
-            }
-        }
-
-        // transfer ownership out of errdefer context
-        const result = AtlasParseResult{
-            .image_path = image_path_rel,
-            .frames = frames,
-        };
-
-        // Prevent the frames.deinit defer from running since we're returning the list
-        frames_owned = false;
-        return result;
-    }
 };
 
 pub fn unescapeXmlEntities(allocator: std.mem.Allocator, in: []const u8) ![]u8 {

@@ -20,7 +20,7 @@ fn deinitTest(assets: *Assets) void {
     rl.closeWindow();
 }
 
-fn testRenderLoop(_: *Assets, prompt_atlas: *icons.PromptAtlas, title: [:0]const u8) anyerror!void {
+fn testRenderLoop(_: *Assets, prompt_atlas: *icons.IconAtlas, title: [:0]const u8) anyerror!void {
     const start = std.time.milliTimestamp();
     const max_duration_ms = 5 * std.time.ms_per_s; // Run for 5 seconds
     var frame_text_buffer: [64:0]u8 = undefined;
@@ -69,9 +69,11 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.PromptAtlas, title: [:0]const
         var frame_index: usize = 0;
         var x: i32 = 20;
         var y: i32 = 100;
-        const cols = 15;
-        const frame_size = 48;
-        const padding = 2;
+        const cols = 10;
+        const frame_size: i32 = 48;
+        const cell_padding: i32 = 8;
+        const padding: i32 = 4;
+        const label_font_size: i32 = 12;
 
         for (prompt_atlas.frames.items) |frame| {
             rl.drawTextureRec(
@@ -88,14 +90,18 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.PromptAtlas, title: [:0]const
 
             var name_buffer: [64:0]u8 = undefined;
             const name_z = std.fmt.bufPrintZ(&name_buffer, "{s}", .{frame.name}) catch "frame";
-            rl.drawText(name_z, x + 2, y + frame_size + 2, 6, rl.Color.gray);
+
+            const text_width: i32 = rl.measureText(name_z, @intCast(label_font_size));
+            const cell_width: i32 = @max(frame_size, text_width) + cell_padding * 2;
+            const label_x = x + @divExact(cell_width - text_width, 2);
+            rl.drawText(name_z, label_x, y + frame_size + 4, @intCast(label_font_size), rl.Color.gray);
 
             frame_index += 1;
-            x += frame_size + padding;
+            x += cell_width + padding;
 
             if (frame_index % cols == 0) {
                 x = 20;
-                y += frame_size + 18;
+                y += frame_size + label_font_size + cell_padding + padding * 2;
             }
         }
 
@@ -116,6 +122,7 @@ test "Render Keyboard & Mouse Icons" {
     const uri = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
     var atlas = try icons.parseKeyboardMouse(assets.allocator, uri, &assets);
     defer atlas.deinit();
+    try atlas.populateKeyboardMappings();
 
     try testRenderLoop(&assets, &atlas, "Keyboard & Mouse Icons");
 }

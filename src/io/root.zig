@@ -18,6 +18,9 @@ pub const ShaderLoader = assets.ShaderLoader;
 pub const XmlDocumentLoader = assets.XmlDocumentLoader;
 pub const IconAtlasLoader = assets.IconAtlasLoader;
 
+const processor = @import("processor.zig");
+pub const AssetProcessorTemplate = processor.AssetProcessorTemplate;
+
 /// General IO utility functions
 pub const util = @import("util.zig");
 

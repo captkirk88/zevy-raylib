@@ -350,6 +350,44 @@ fn positionChildren(
     }
 }
 
+pub fn onAddedUiText(
+    commands: *zevy_ecs.params.Commands,
+    added: zevy_ecs.params.OnAdded(components.UIText),
+    ui_style_res: zevy_ecs.params.Res(ui_style.UIStyle),
+    rel: *zevy_ecs.params.Relations,
+) !void {
+    for (added.iter()) |entry| {
+        if ((commands.manager.hasComponent(entry.entity, components.UIRect) catch false) == false) {
+            const comp = entry.comp;
+            const measurement = rl.measureTextEx(ui_style_res.ptr.font, comp.text, @floatFromInt(comp.font_size), 1.0);
+            if (try rel.getParent(commands.manager, entry.entity, zevy_ecs.relations.kinds.Child)) |parent| {
+                // Adjust for parent's padding if applicable
+                var pad: layout.Padding = undefined;
+                if (commands.manager.getComponent(parent, layout.FlexLayout) catch null) |fl_comp| {
+                    pad = fl_comp.padding;
+                } else if (commands.manager.getComponent(parent, layout.GridLayout) catch null) |gl_comp| {
+                    pad = gl_comp.padding;
+                } else {
+                    pad = layout.Padding.uniform(0.0);
+                }
+                _ = try commands.addComponent(entry.entity, components.UIRect, components.UIRect{
+                    .x = pad.left,
+                    .y = pad.top,
+                    .width = measurement.x,
+                    .height = measurement.y,
+                });
+            } else {
+                _ = try commands.addComponent(entry.entity, components.UIRect, components.UIRect{
+                    .x = 0,
+                    .y = 0,
+                    .width = measurement.x,
+                    .height = measurement.y,
+                });
+            }
+        }
+    }
+}
+
 /// UI Render System
 /// Renders all UI entities based on their components
 /// This system should be called during the render stage of your game loop

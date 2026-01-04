@@ -20,9 +20,7 @@ pub fn InputPlugin(comptime ParamRegistry: type) type {
         }
 
         pub fn deinit(self: *Self, _: std.mem.Allocator, e: *zevy_ecs.Manager) anyerror!void {
-            // Resources added via `Manager.addResource` are owned by the ECS and
-            // will be cleaned up by `Manager.deinit`. Avoid double-free by
-            // not deinitializing them here.
+            // Do not manually deinit ECS-managed resources here unless they have a different func name for deinit: the ECS manager owns resource lifetimes and will deinit them during `Manager.deinit()`.
             _ = self;
             _ = e;
         }

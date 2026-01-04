@@ -9,6 +9,10 @@ const TextureAtlas = atlas.TextureAtlas;
 const FrameRect = atlas.FrameRect;
 const io_types = @import("../io/types.zig");
 const input = @import("../input/input.zig");
+const icon_parser = @import("icons_parser.zig");
+
+pub const AtlasParseResult = icon_parser.AtlasParseResult;
+pub const parseTextureAtlas = icon_parser.parseTextureAtlas;
 
 const ParseError = error{ MissingImagePath, InvalidTexture, UnsupportedScheme };
 const IconFrame = @import("../graphics/texture_atlas.zig").NamedFrame;
@@ -22,9 +26,10 @@ pub const PromptType = enum {
     nintendoswitch,
     steamdeck,
 };
-pub const PromptAtlas = io_types.IconAtlas;
 
-fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
+pub const IconAtlas = io_types.IconAtlas;
+
+fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !IconAtlas {
     // Resolve and parse the XML file, handling both file paths and scheme URIs
     var use_allocator: std.mem.Allocator = allocator;
     var document = if (assets) |a| blk: {
@@ -54,7 +59,7 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
     defer document.deinit();
 
     // Parse the XML document to extract frame data and image path
-    const parsed = try document.parseTextureAtlas(use_allocator);
+    const parsed = try icon_parser.parseTextureAtlas(&document, use_allocator);
     var frames = parsed.frames;
     const image_path_rel = parsed.image_path;
 
@@ -95,35 +100,35 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
         }
     }
 
-    // Transfer ownership of frames to returned PromptAtlas
+    // Transfer ownership of frames to returned IconAtlas
     frames_owned = false;
 
-    const promptAtlas = PromptAtlas.init(
+    const iconAtlas = IconAtlas.init(
         allocator,
         texture,
         frames,
         (assets == null),
     );
-    return promptAtlas;
+    return iconAtlas;
 }
 
-pub fn parseKeyboardMouse(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
+pub fn parseKeyboardMouse(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !IconAtlas {
     return parseAtlasXml(allocator, xml_path, assets);
 }
 
-pub fn parseXbox(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
+pub fn parseXbox(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !IconAtlas {
     return parseAtlasXml(allocator, xml_path, assets);
 }
 
-pub fn parsePlaystation(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
+pub fn parsePlaystation(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !IconAtlas {
     return parseAtlasXml(allocator, xml_path, assets);
 }
 
-pub fn parseNintendoSwitch(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
+pub fn parseNintendoSwitch(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !IconAtlas {
     return parseAtlasXml(allocator, xml_path, assets);
 }
 
-pub fn parseSteamDeck(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !PromptAtlas {
+pub fn parseSteamDeck(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*Assets) !IconAtlas {
     return parseAtlasXml(allocator, xml_path, assets);
 }
 
@@ -163,7 +168,7 @@ test "loadAssetNow IconAtlas from embedded path" {
     // Test that assets.loadAssetNow works with embedded IconAtlas
     // This exercises the scheme-aware FileResolver for relative path resolution
     const xml_path = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
-    const pa = try assets.loadAssetNow(PromptAtlas, xml_path, null);
+    const pa = try assets.loadAssetNow(IconAtlas, xml_path, null);
 
     try testing.expect(pa.frameCount() > 0);
     try testing.expect(rl.isTextureValid(pa.texture.*));

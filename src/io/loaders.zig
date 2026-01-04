@@ -7,6 +7,7 @@ const loaders = @import("loader.zig");
 const known_folders = @import("known_folders");
 const xml = @import("xml");
 const xml_mod = @import("xml.zig");
+const icons_parser = @import("../input/icons_parser.zig");
 
 pub const TextureLoader = struct {
     pub const LoadSettings = struct {
@@ -249,6 +250,10 @@ pub const InputIconsLoader = struct {
         // Read XML file into memory
         const file = try std.fs.openFileAbsolute(absolute_path, .{});
         defer file.close();
+        const stat = try file.stat();
+        if (stat.size > 10 * 1024 * 1024) {
+            return error.FileTooLarge;
+        }
         const data = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10 MB limit
 
         // Parse XML using XmlDocument and the reusable helper
@@ -256,7 +261,7 @@ pub const InputIconsLoader = struct {
         var doc = try XmlDocument.initFromSlice(allocator, data, .{});
         defer doc.deinit();
 
-        const parsed = try doc.parseTextureAtlas(allocator);
+        const parsed = try icons_parser.parseTextureAtlas(&doc, allocator);
         const rel = parsed.image_path orelse return error.InvalidFile;
         const frames = parsed.frames;
 
@@ -275,13 +280,16 @@ pub const InputIconsLoader = struct {
 
         // Build IconAtlas (owns the texture)
         const IconAtlas = types.IconAtlas;
-
-        return IconAtlas.init(
+        var atlas = IconAtlas.init(
             allocator,
             tex,
             frames,
             owns_tex,
         );
+
+        // Populate keyboard mappings so UI can render key icons instead of text.
+        if (atlas.key_mappings != null) try atlas.populateKeyboardMappings();
+        return atlas;
     }
 
     pub fn extensions() []const []const u8 {

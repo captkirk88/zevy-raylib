@@ -198,9 +198,7 @@ pub const SchemeRegistry = struct {
 
 // ===== BUILT-IN RESOLVERS =====
 
-/// Embedded asset resolver - NOTE: This is defined in assets.zig as it needs access to embedded_assets module
-/// Use the EmbeddedResolver from assets.zig instead
-/// File system resolver - resolves file://path to absolute file path
+/// Simple file resolver - returns the path as-is
 pub const FileResolver = struct {
     pub fn resolve(self: *FileResolver, allocator: std.mem.Allocator, path: []const u8) !ResolveResult {
         _ = self;
@@ -239,27 +237,6 @@ pub const UrlResolver = struct {
             try std.fmt.allocPrint(allocator, "{s}/{s}", .{ self.base_url, path });
 
         return ResolveResult{ .url = url };
-    }
-};
-
-/// Environment-based resolver - resolves different paths based on build mode
-pub const EnvironmentResolver = struct {
-    dev_base: []const u8,
-    prod_base: []const u8,
-    is_debug: bool,
-
-    pub fn init(dev_base: []const u8, prod_base: []const u8, is_debug: bool) EnvironmentResolver {
-        return EnvironmentResolver{
-            .dev_base = dev_base,
-            .prod_base = prod_base,
-            .is_debug = is_debug,
-        };
-    }
-
-    pub fn resolve(self: *EnvironmentResolver, allocator: std.mem.Allocator, path: []const u8) !ResolveResult {
-        const base = if (self.is_debug) self.dev_base else self.prod_base;
-        const resolved_path = try std.fs.path.join(allocator, &[_][]const u8{ base, path });
-        return ResolveResult{ .file_path = resolved_path };
     }
 };
 
@@ -397,23 +374,6 @@ test "SchemeRegistry get schemes list" {
     }
     try testing.expect(found_file);
     try testing.expect(found_assets);
-}
-
-test "SchemeRegistry environment resolver" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    var registry = SchemeRegistry.init(allocator);
-    defer registry.deinit();
-
-    var env_resolver = EnvironmentResolver.init("dev_assets", "prod_assets", true);
-    try registry.registerScheme("env", SchemeResolver.init(&env_resolver));
-
-    const result = try registry.resolve(allocator, "env://config.json");
-    defer allocator.free(result.file_path);
-
-    try testing.expect(result == .file_path);
-    try testing.expect(std.mem.indexOf(u8, result.file_path, "dev_assets") != null);
 }
 
 test "SchemeRegistry resolver replacement" {

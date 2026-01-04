@@ -73,7 +73,7 @@ pub const UIStyle = struct {
     button: ButtonStyle = ButtonStyle.init(),
 
     // Typography (top-level convenience fields)
-    font: ?rl.Font = null,
+    font: rl.Font,
     font_size: i32 = 10,
 
     // Text style subtype
@@ -87,6 +87,6 @@ pub const UIStyle = struct {
     input_icon: InputIconStyle = InputIconStyle.init(),
 
     pub fn init() UIStyle {
-        return UIStyle{};
+        return UIStyle{ .font = rl.getFontDefault() catch |err| std.debug.panic("Failed to get default font: {}", .{err}) };
     }
 };

@@ -234,6 +234,10 @@ pub const Padding = struct {
         return .{ .top = top, .right = right, .bottom = bottom, .left = left };
     }
 
+    pub fn initFromRect(rect: rl.Rectangle) Padding {
+        return .{ .top = rect.y, .right = rect.width, .bottom = rect.height, .left = rect.x };
+    }
+
     pub fn uniform(value: f32) Padding {
         return .{ .top = value, .right = value, .bottom = value, .left = value };
     }

@@ -3,7 +3,7 @@ const rl = @import("raylib");
 const AssetLoader = @import("loader.zig").AssetLoader;
 const Loaders = @import("loader.zig").Loaders;
 const FileResolver = @import("loader.zig").FileResolver;
-const AssetProcessor = @import("processor.zig").AssetProcessor;
+const AssetProcessorTemplate = @import("processor.zig").AssetProcessorTemplate;
 
 /// Handle type for loaded assets
 pub const AssetHandle = usize;
@@ -87,15 +87,28 @@ fn fileResolverPathExists(resolver: *const @import("loader.zig").FileResolver, r
     return true;
 }
 
-/// AssetManager with optional post-load processor support.
+/// AssetManager without post-load processor support.
+///
+/// Parameters:
+///   - AssetType: The asset type returned by the loader (and optionally modified by the processor)
+///   - LoaderType: The loader type implementing the load interface
+pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type) type {
+    return AssetManagerWithProcessor(AssetType, LoaderType, void);
+}
+
+/// AssetManager with post-load processor support.
 ///
 /// Parameters:
 ///   - AssetType: The asset type returned by the loader (and optionally modified by the processor)
 ///   - LoaderType: The loader type implementing the load interface
 ///   - ProcessorType: Optional processor type. Pass `void` for no processing.
 ///                    The processor modifies the asset in-place.
-pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type, comptime ProcessorType: type) type {
+pub fn AssetManagerWithProcessor(comptime AssetType: type, comptime LoaderType: type, comptime ProcessorType: type) type {
     const has_processor = ProcessorType != void;
+
+    const Template = AssetProcessorTemplate(ProcessorType, AssetType);
+    if (has_processor) Template.validate(ProcessorType);
+    const AssetProcessor = if (has_processor) Template.Interface else void;
 
     const AssetEntry = struct {
         id: usize,
@@ -115,7 +128,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type, comptim
         assets: std.StringHashMap(AssetEntry),
         queue: std.ArrayList(LoadRequest),
         loader: LoaderType,
-        processor: if (has_processor) ProcessorType else void,
+        processor: AssetProcessor,
         processor_settings: if (has_processor) ?ProcessorType.ProcessSettings else void,
 
         const Self = @This();
@@ -132,26 +145,26 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type, comptim
                 .assets = std.StringHashMap(AssetEntry).init(allocator),
                 .queue = try std.ArrayList(LoadRequest).initCapacity(allocator, 0),
                 .loader = loader,
-                .processor = {},
+                .processor = void,
                 .processor_settings = {},
             };
         }
 
         /// Initialize an AssetManager with a processor
         pub fn initWithProcessor(allocator: std.mem.Allocator, loader: LoaderType, processor: ProcessorType, processor_settings: ?ProcessorType.ProcessSettings, loaders: *Loaders) error{OutOfMemory}!Self {
-            if (!has_processor) {
-                @compileError("initWithProcessor() called but ProcessorType is void");
-            }
-            return Self{
+            var self = Self{
                 .allocator = allocator,
                 .loaders = loaders,
                 .mutex = std.Thread.Mutex{},
                 .assets = std.StringHashMap(AssetEntry).init(allocator),
                 .queue = try std.ArrayList(LoadRequest).initCapacity(allocator, 0),
                 .loader = loader,
-                .processor = processor,
+                .processor = undefined,
                 .processor_settings = processor_settings,
             };
+            if (has_processor) {
+                Template.populate(&self.processor, &processor);
+            }
         }
 
         pub fn deinit(self: *Self) void {
@@ -161,11 +174,7 @@ pub fn AssetManager(comptime AssetType: type, comptime LoaderType: type, comptim
             // First unload all assets and free their keys
             var it = self.assets.iterator();
             while (it.next()) |entry| {
-                if (has_processor) {
-                    self.processor.unload(entry.value_ptr.asset);
-                } else {
-                    self.loader.unload(entry.value_ptr.asset);
-                }
+                self.loader.unload(entry.value_ptr.asset);
                 self.allocator.free(@constCast(entry.key_ptr.*)); // Free the owned key
             }
             self.assets.deinit();
@@ -438,7 +447,7 @@ test "AssetManager multiple assets" {
     };
     var loaders = try Loaders.init(std.testing.allocator);
     defer loaders.deinit();
-    var manager = try AssetManager(TestAsset, TestLoader, void).init(std.testing.allocator, TestLoader{}, &loaders);
+    var manager = try AssetManagerWithProcessor(TestAsset, TestLoader, void).init(std.testing.allocator, TestLoader{}, &loaders);
     defer manager.deinit();
 
     // Test with different settings types

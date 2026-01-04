@@ -2,59 +2,67 @@ const std = @import("std");
 const reflect = @import("zevy_reflect");
 const FileResolver = @import("loader.zig").FileResolver;
 
-/// AssetProcessor wrapper type: validates that a processor implements the required interface
-/// and provides a unified interface for post-processing assets after they are loaded.
+/// Template for creating asset processors
 ///
-/// Processors are optional and can be used to transform or enrich assets after loading.
-/// For example, an IconAtlasProcessor might build a KeyCode -> frame index lookup table
-/// from the raw frame names in a texture atlas.
+/// ProcessorType: The type of the processor implementing the processing logic.
 ///
-/// Required processor methods:
-///   - process(self: ProcessorType, asset: *AssetType, allocator: Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void
-///   - ProcessSettings: type (must be declared, can be an empty struct)
-pub fn AssetProcessor(comptime AssetType: type, comptime ProcessorType: type) type {
-    // Compile-time validation
-    comptime {
-        if (!reflect.hasStruct(ProcessorType, "ProcessSettings")) {
-            @compileError("Processor must have a ProcessSettings pub struct declaration: " ++ @typeName(ProcessorType));
-        }
-        _ = reflect.verifyFuncWithArgs(ProcessorType, "process", .{
-            *AssetType,
-            std.mem.Allocator,
-            ?*const FileResolver,
-            ?*const ProcessorType.ProcessSettings,
-        }) catch |err| {
-            switch (err) {
-                error.NotAFunction, error.FuncDoesNotExist => @compileError("Processor must have a 'process' method: " ++ @typeName(ProcessorType)),
-                error.IncorrectArgs => @compileError("Processor 'process' method has incorrect arguments: " ++ @typeName(ProcessorType)),
-            }
-        };
+/// AssetType: The type of asset to be processed.
+///
+/// Requirements:
+/// - ProcessorType must have a public struct named `ProcessSettings` defining any settings for processing
+/// - ProcessorType must implement a method with the signature:
+/// ```zig
+///  pub fn process(self: *@This(), asset: *AssetType, allocator: std.mem.Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void
+/// ```
+///
+/// Example:
+/// ```zig
+/// const MyAsset = struct {
+///     data: []u8,
+/// };
+/// const MyProcessor = struct {
+///     pub const ProcessSettings = struct {
+///         multiplier: usize,
+///     };
+///
+///     pub fn process(self: *@This(), asset: *MyAsset, allocator: std.mem.Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void {
+///         _ = allocator;
+///         _ = file_resolver;
+///         if (settings) |s| {
+///             // Process asset using s.multiplier
+///         }
+///     }
+/// };
+/// const Template = AssetProcessorTemplate(MyAsset, MyProcessor);
+/// const AssetProcessor = Template.Interface;
+/// const processor: AssetProcessor = undefined;
+/// const processor_inst = try Template.populateFromValue(std.testing.allocator, &processor, .{});
+/// defer std.testing.allocator.destroy(processor_inst);
+///
+/// var asset = MyAsset{ .data = ... };
+/// const settings = MyProcessor.ProcessSettings{ .multiplier = 3 };
+/// try processor.vtable.process(processor.ptr, &asset, std.testing.allocator, null, &settings);
+/// ```
+pub fn AssetProcessorTemplate(comptime ProcessorType: type, comptime AssetType: type) type {
+    if (!reflect.hasStruct(ProcessorType, "ProcessSettings")) {
+        @compileError("Processor must have a ProcessSettings pub struct declaration: " ++ @typeName(ProcessorType));
     }
+    return reflect.Template(struct {
+        pub const Name: []const u8 = "AssetProcessor";
 
-    return struct {
-        instance: ProcessorType,
-
-        const Self = @This();
-        pub const ProcessSettings = ProcessorType.ProcessSettings;
-
-        pub fn init(processor: ProcessorType) Self {
-            return .{
-                .instance = processor,
-            };
+        pub fn process(_: *@This(), asset: *AssetType, _: std.mem.Allocator, resolver: ?*const FileResolver, settings: ?*const ProcessorType.ProcessSettings) anyerror!void {
+            _ = asset;
+            _ = resolver;
+            _ = settings;
+            unreachable;
         }
-
-        /// Process an asset after it has been loaded.
-        /// The processor modifies the asset in-place.
-        pub fn process(self: Self, asset: *AssetType, allocator: std.mem.Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessorType.ProcessSettings) anyerror!void {
-            return try self.instance.process(asset, allocator, file_resolver, settings);
-        }
-    };
+    });
 }
 
 test "AssetProcessor basic interface" {
     const TestAsset = struct {
-        value: usize,
-        processed: bool,
+        value: usize = 0,
+        processed: bool = false,
     };
 
     const TestProcessor = struct {
@@ -64,8 +72,8 @@ test "AssetProcessor basic interface" {
             add_value: usize = 0,
         };
 
-        pub fn process(self: @This(), asset: *TestAsset, allocator: std.mem.Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void {
-            _ = allocator;
+        pub fn process(self: *@This(), asset: *TestAsset, allocator_: std.mem.Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void {
+            _ = allocator_;
             _ = file_resolver;
             asset.value *= self.multiplier;
             if (settings) |s| {
@@ -75,12 +83,16 @@ test "AssetProcessor basic interface" {
         }
     };
 
-    const processor = AssetProcessor(TestAsset, TestProcessor).init(TestProcessor{ .multiplier = 2 });
+    const Template = AssetProcessorTemplate(TestProcessor, TestAsset);
+    const AssetProcessor = Template.Interface;
+    var processor: AssetProcessor = undefined;
+    var inst = TestProcessor{ .multiplier = 2 };
+    Template.populate(&processor, &inst);
 
     var asset = TestAsset{ .value = 10, .processed = false };
     const settings = TestProcessor.ProcessSettings{ .add_value = 5 };
 
-    try processor.process(&asset, std.testing.allocator, null, &settings);
+    try processor.vtable.process(processor.ptr, &asset, std.testing.allocator, null, &settings);
 
     try std.testing.expectEqual(@as(usize, 25), asset.value); // (10 * 2) + 5
     try std.testing.expect(asset.processed);
@@ -95,18 +107,22 @@ test "AssetProcessor without settings" {
     const NoOpProcessor = struct {
         pub const ProcessSettings = struct {};
 
-        pub fn process(_: @This(), asset: *TestAsset, allocator: std.mem.Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void {
-            _ = allocator;
+        pub fn process(_: *@This(), asset: *TestAsset, allocator_: std.mem.Allocator, file_resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void {
+            _ = allocator_;
             _ = file_resolver;
             _ = settings;
             asset.touched = true;
         }
     };
 
-    const processor = AssetProcessor(TestAsset, NoOpProcessor).init(NoOpProcessor{});
+    const Template = AssetProcessorTemplate(NoOpProcessor, TestAsset);
+    const AssetProcessor = Template.Interface;
+    var processor: AssetProcessor = undefined;
+    var inst = NoOpProcessor{};
+    Template.populate(&processor, &inst);
 
     var asset = TestAsset{ .data = "test" };
-    try processor.process(&asset, std.testing.allocator, null, null);
+    try processor.vtable.process(processor.ptr, &asset, std.testing.allocator, null, null);
 
     try std.testing.expectEqualStrings("test", asset.data);
     try std.testing.expect(asset.touched);

@@ -5,6 +5,7 @@ const io_utils = @import("util.zig");
 const schemes = @import("scheme_resolver.zig");
 const types = @import("types.zig");
 const xml = @import("xml.zig");
+const icons_parser = @import("../input/icons_parser.zig");
 
 pub const AssetHandle = u64;
 
@@ -323,17 +324,6 @@ pub const Assets = struct {
         resolver_ptr.* = schemes.UrlResolver.init(base_url);
         try self.registerScheme(scheme, schemes.SchemeResolver.initOwned(resolver_ptr));
     }
-
-    pub fn registerEnvironmentScheme(self: *Assets, scheme: []const u8, dev_base: []const u8, prod_base: []const u8, is_debug: bool) !void {
-        const resolver_ptr = try self.allocator.create(schemes.EnvironmentResolver);
-        resolver_ptr.* = schemes.EnvironmentResolver.init(dev_base, prod_base, is_debug);
-        try self.registerScheme(scheme, schemes.SchemeResolver.initOwned(resolver_ptr));
-    }
-
-    /// For compatibility
-    pub fn pendingMultiFileCount(_: *Assets) usize {
-        return 0;
-    }
 };
 
 // ===== BUILT-IN LOADERS =====
@@ -562,7 +552,7 @@ pub const IconAtlasLoader = struct {
         var doc = try xml.XmlDocument.initFromSlice(ctx.allocator, data, .{});
         defer doc.deinit();
 
-        const parsed = try doc.parseTextureAtlas(ctx.allocator);
+        const parsed = try icons_parser.parseTextureAtlas(&doc, ctx.allocator);
         const rel_image_path = parsed.image_path orelse return error.MissingImagePath;
         defer ctx.allocator.free(rel_image_path);
 
@@ -570,119 +560,10 @@ pub const IconAtlasLoader = struct {
         // ctx.loadRelated uses the parent URI's scheme
         const texture = try ctx.loadRelated(rl.Texture, rel_image_path);
 
-        // Build IconAtlas with processor logic inline
+        // Build IconAtlas and populate mappings
         var atlas = types.IconAtlas.init(ctx.allocator, texture, parsed.frames, false);
-
-        // Process KeyCode/MouseButton mappings from frame names
-        const input = @import("../input/input_types.zig");
-        atlas.key_mappings = std.AutoHashMap(input.KeyCode, types.InputIconMapping).init(ctx.allocator);
-        atlas.mouse_mappings = std.AutoHashMap(input.MouseButton, types.InputIconMapping).init(ctx.allocator);
-
-        for (parsed.frames.items, 0..) |frame, idx| {
-            if (parseKeyCode(frame.name)) |key_code| {
-                atlas.key_mappings.?.put(key_code, .{
-                    .normal_index = idx,
-                }) catch {};
-            } else if (parseMouseButton(frame.name)) |mouse_button| {
-                atlas.mouse_mappings.?.put(mouse_button, .{
-                    .normal_index = idx,
-                }) catch {};
-            }
-        }
-
+        try atlas.populateKeyboardMappings();
         return atlas;
-    }
-
-    fn parseKeyCode(name: []const u8) ?@import("../input/input_types.zig").KeyCode {
-        const input = @import("../input/input_types.zig");
-        const mappings = .{
-            .{ "keyboard_a", input.KeyCode.key_a },
-            .{ "keyboard_b", input.KeyCode.key_b },
-            .{ "keyboard_c", input.KeyCode.key_c },
-            .{ "keyboard_d", input.KeyCode.key_d },
-            .{ "keyboard_e", input.KeyCode.key_e },
-            .{ "keyboard_f", input.KeyCode.key_f },
-            .{ "keyboard_g", input.KeyCode.key_g },
-            .{ "keyboard_h", input.KeyCode.key_h },
-            .{ "keyboard_i", input.KeyCode.key_i },
-            .{ "keyboard_j", input.KeyCode.key_j },
-            .{ "keyboard_k", input.KeyCode.key_k },
-            .{ "keyboard_l", input.KeyCode.key_l },
-            .{ "keyboard_m", input.KeyCode.key_m },
-            .{ "keyboard_n", input.KeyCode.key_n },
-            .{ "keyboard_o", input.KeyCode.key_o },
-            .{ "keyboard_p", input.KeyCode.key_p },
-            .{ "keyboard_q", input.KeyCode.key_q },
-            .{ "keyboard_r", input.KeyCode.key_r },
-            .{ "keyboard_s", input.KeyCode.key_s },
-            .{ "keyboard_t", input.KeyCode.key_t },
-            .{ "keyboard_u", input.KeyCode.key_u },
-            .{ "keyboard_v", input.KeyCode.key_v },
-            .{ "keyboard_w", input.KeyCode.key_w },
-            .{ "keyboard_x", input.KeyCode.key_x },
-            .{ "keyboard_y", input.KeyCode.key_y },
-            .{ "keyboard_z", input.KeyCode.key_z },
-            .{ "keyboard_0", input.KeyCode.key_0 },
-            .{ "keyboard_1", input.KeyCode.key_1 },
-            .{ "keyboard_2", input.KeyCode.key_2 },
-            .{ "keyboard_3", input.KeyCode.key_3 },
-            .{ "keyboard_4", input.KeyCode.key_4 },
-            .{ "keyboard_5", input.KeyCode.key_5 },
-            .{ "keyboard_6", input.KeyCode.key_6 },
-            .{ "keyboard_7", input.KeyCode.key_7 },
-            .{ "keyboard_8", input.KeyCode.key_8 },
-            .{ "keyboard_9", input.KeyCode.key_9 },
-            .{ "keyboard_space", input.KeyCode.key_space },
-            .{ "keyboard_enter", input.KeyCode.key_enter },
-            .{ "keyboard_escape", input.KeyCode.key_escape },
-            .{ "keyboard_tab", input.KeyCode.key_tab },
-            .{ "keyboard_backspace", input.KeyCode.key_backspace },
-            .{ "keyboard_shift", input.KeyCode.key_left_shift },
-            .{ "keyboard_ctrl", input.KeyCode.key_left_control },
-            .{ "keyboard_alt", input.KeyCode.key_left_alt },
-            .{ "keyboard_up", input.KeyCode.key_up },
-            .{ "keyboard_down", input.KeyCode.key_down },
-            .{ "keyboard_left", input.KeyCode.key_left },
-            .{ "keyboard_right", input.KeyCode.key_right },
-        };
-
-        var lower_buf: [64]u8 = undefined;
-        const len = @min(name.len, 64);
-        for (0..len) |i| {
-            lower_buf[i] = std.ascii.toLower(name[i]);
-        }
-        const lower_name = lower_buf[0..len];
-
-        inline for (mappings) |mapping| {
-            if (std.mem.eql(u8, lower_name, mapping[0])) {
-                return mapping[1];
-            }
-        }
-        return null;
-    }
-
-    fn parseMouseButton(name: []const u8) ?@import("../input/input_types.zig").MouseButton {
-        const input = @import("../input/input_types.zig");
-        const mappings = .{
-            .{ "mouse_left", input.MouseButton.left },
-            .{ "mouse_right", input.MouseButton.right },
-            .{ "mouse_middle", input.MouseButton.middle },
-            .{ "mouse_scroll", input.MouseButton.middle },
-        };
-
-        var lower_buf: [64]u8 = undefined;
-        const len = @min(name.len, 64);
-        for (0..len) |i| {
-            lower_buf[i] = std.ascii.toLower(name[i]);
-        }
-        const lower_name = lower_buf[0..len];
-
-        inline for (mappings) |mapping| {
-            if (std.mem.eql(u8, lower_name, mapping[0])) {
-                return mapping[1];
-            }
-        }
-        return null;
     }
 
     pub fn unload(_: *IconAtlasLoader, atlas: types.IconAtlas) void {
