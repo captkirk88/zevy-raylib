@@ -2,9 +2,6 @@ const std = @import("std");
 const ecs_build = @import("zevy_ecs");
 const buildtools = @import("zevy_buildtools");
 
-/// Builtin asset embedding utilities.
-pub const embed = @import("src/build/embed.zig");
-
 const ModuleImport = struct {
     name: []const u8,
     module: *std.Build.Module,
@@ -67,20 +64,20 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    const embed_opts: embed.EmbedAssetsOptions = .{
+    const embed_opts: buildtools.embed.EmbedAssetsOptions = .{
         .assets_dir = "embedded_assets/",
     };
 
-    const embed_assets_mod = embed.addEmbeddedAssetsModule(b, target, optimize, mod, embed_opts) catch |err| {
+    const embed_assets_mod = buildtools.embed.addEmbeddedAssetsModule(b, target, optimize, mod, embed_opts) catch |err| {
         std.debug.panic("Failed to add embedded assets module: {s}\n", .{@errorName(err)});
     };
 
-    const example_embed_opts: embed.EmbedAssetsOptions = .{
+    const example_embed_opts: buildtools.embed.EmbedAssetsOptions = .{
         .assets_dir = "example_embed_assets/",
         .import_name = "example_embedded",
     };
 
-    const example_embed_assets_mod = embed.addEmbeddedAssetsModule(b, target, optimize, mod, example_embed_opts) catch |err| {
+    const example_embed_assets_mod = buildtools.embed.addEmbeddedAssetsModule(b, target, optimize, mod, example_embed_opts) catch |err| {
         std.debug.panic("Failed to add example embedded assets module: {s}\n", .{@errorName(err)});
     };
 
@@ -96,7 +93,7 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
 
-    buildtools.examples.setupExamples(b, &[_]std.Build.Module.Import{
+    _ = buildtools.examples.setupExamples(b, &.{
         .{ .name = "raylib", .module = raylib_dep.module("raylib") },
         .{ .name = "raygui", .module = raylib_dep.module("raygui") },
         .{ .name = "zevy_raylib", .module = mod },
