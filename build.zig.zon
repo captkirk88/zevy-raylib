@@ -12,8 +12,8 @@
     // internet connectivity.
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#547002ca83be5771f43e153cee30b9f92ed85b15",
-            .hash = "zevy_ecs-1.56.0-VoL9mfcHBwDq-_ABAuWuZboWnpcolpMqWaUU-12hUIqK",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#42d60ef5132b4e49f25d483a9e0bf3cc381011c4",
+            .hash = "zevy_ecs-1.56.0-VoL9mfcHBwC2yi_OpqH7utw9PuTC7NafZszTiHfwaf1X",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",
@@ -34,8 +34,8 @@
             .ignore = true,
         },
         .zevy_reflect = .{
-            .url = "git+https://github.com/captkirk88/zevy-reflect#b462121eee4e1e6aaa18e13c32068078e7a4f34b",
-            .hash = "zevy_reflect-0.1.1-8SzYxv-DAgDBq3rKMb8v3znl3ivFWYInQ-sA0ayi4Gkd",
+            .url = "git+https://github.com/captkirk88/zevy-reflect#e67338b3af4a349fc28405e067aeeb4fc6ebecee",
+            .hash = "zevy_reflect-0.1.1-8SzYxp-EAgBh15o08H-D0pQr947iCr2L4ykj7WrUutrw",
         },
         .zevy_mem = .{
             .url = "git+https://github.com/captkirk88/zevy-mem#25828047262ad07974ee2a70f3785fe5e8615eea",
