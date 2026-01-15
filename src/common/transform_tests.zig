@@ -2,6 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const common = @import("components.zig");
 const zevy_ecs = @import("zevy_ecs");
+const tutil = @import("test_utils.zig");
 
 test "Transform init position is zero" {
     var manager = try zevy_ecs.Manager.init(std.testing.allocator);
@@ -55,20 +56,8 @@ test "initFromPosRotScale preserves translation and composes transforms" {
         // Rotation should be identity for zero rotation
         const q = transform.getRotation();
         const expected_q = rl.Quaternion.fromMatrix(rl.Matrix.rotateXYZ(rot));
-        // Quaternions have a sign ambiguity (q and -q represent the same rotation).
-        const dot = q.x * expected_q.x + q.y * expected_q.y + q.z * expected_q.z + q.w * expected_q.w;
-        const sign: f32 = if (dot < 0.0) -1.0 else 1.0;
-        const eqx = expected_q.x * sign;
-        const eqy = expected_q.y * sign;
-        const eqz = expected_q.z * sign;
-        const eqw = expected_q.w * sign;
-        const eps_q: f32 = 1e-4;
-        std.debug.print("initFrom: q = {any}, {any}, {any}, {any}\n", .{ q.x, q.y, q.z, q.w });
-        std.debug.print("initFrom: expected = {any}, {any}, {any}, {any}\n", .{ eqx, eqy, eqz, eqw });
-        try std.testing.expect(q.x - eqx >= -eps_q and q.x - eqx <= eps_q);
-        try std.testing.expect(q.y - eqy >= -eps_q and q.y - eqy <= eps_q);
-        try std.testing.expect(q.z - eqz >= -eps_q and q.z - eqz <= eps_q);
-        try std.testing.expect(q.w - eqw >= -eps_q and q.w - eqw <= eps_q);
+        const eps_q: f32 = tutil.DEFAULT_EPS;
+        try tutil.expectQuatEqual(q, expected_q, eps_q);
 
         // Translate again to ensure composition works
         transform.translate(rl.Vector3{ .x = 1.0, .y = 1.0, .z = 1.0 });
@@ -192,5 +181,113 @@ test "Transform getEulerDegrees returns degrees" {
         const dot = q_from.x * q_expected.x + q_from.y * q_expected.y + q_from.z * q_expected.z + q_from.w * q_expected.w;
         const eps_dot: f32 = 5e-3;
         try std.testing.expect(dot >= 1.0 - eps_dot or dot <= -1.0 + eps_dot);
+    } else try std.testing.expect(false);
+}
+
+test "Transform rotation with tolerance" {
+    // radians within tolerance -> true
+    try std.testing.expect(common.isRotationInRadians(rl.Vector3{ .x = 6.5, .y = 0.0, .z = 0.0 }, 1.1));
+
+    // degrees within tolerance -> false
+    try std.testing.expect(!common.isRotationInRadians(rl.Vector3{ .x = 350.0, .y = 0.0, .z = 0.0 }, 1.05));
+
+    // large values beyond degrees range -> true
+    try std.testing.expect(common.isRotationInRadians(rl.Vector3{ .x = 400.0, .y = 0.0, .z = 0.0 }, 1.0));
+}
+
+test "Transform rotateDegrees" {
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    defer manager.deinit();
+
+    const e = manager.create(.{common.Transform.init()});
+    const t = try manager.getComponent(e, common.Transform);
+    if (t) |transform| {
+        // Avoid gimbal-singularity by not using 90° pitch
+        const rot_deg = rl.Vector3{ .x = 45.0, .y = 90.0, .z = 180.0 };
+        transform.rotateDegrees(rot_deg);
+        const factor: f32 = @as(f32, std.math.pi) / 180.0;
+        const expected_rad = rl.Vector3{ .x = rot_deg.x * factor, .y = rot_deg.y * factor, .z = rot_deg.z * factor };
+        const mat_expected = rl.Matrix.rotateXYZ(expected_rad);
+        const expected_q = rl.Quaternion.fromMatrix(mat_expected);
+        const actual_q = transform.getRotation();
+        const dot = actual_q.x * expected_q.x + actual_q.y * expected_q.y + actual_q.z * expected_q.z + actual_q.w * expected_q.w;
+        const eps_dot: f32 = 5e-3;
+        try std.testing.expect(dot >= 1.0 - eps_dot or dot <= -1.0 + eps_dot);
+    } else try std.testing.expect(false);
+}
+
+test "Transform local/world and direction" {
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    defer manager.deinit();
+
+    const pos = rl.Vector3{ .x = 5.0, .y = -3.0, .z = 2.0 };
+    const rot = rl.Vector3{ .x = 0.3, .y = 0.5, .z = -0.2 };
+    const scale = rl.Vector3{ .x = 2.0, .y = 3.0, .z = 4.0 };
+
+    const e = manager.create(.{common.Transform.initFromPosRotScale(pos, rot, scale)});
+    const t = try manager.getComponent(e, common.Transform);
+    if (t) |transform| {
+        const local = rl.Vector3{ .x = 1.0, .y = 2.0, .z = -1.0 };
+        const world = transform.toWorldPoint(local);
+        const local_back = transform.toLocalPoint(world);
+        const eps: f32 = tutil.DEFAULT_EPS;
+        try tutil.expectVec3AlmostEqual(local_back, local, eps);
+
+        // transformDirection should ignore translation
+        const dir = rl.Vector3{ .x = 0.0, .y = 0.0, .z = 1.0 };
+        const world_dir = transform.transformDirection(dir);
+        try std.testing.expect(!(world_dir.x == transform.getPosition().x and world_dir.y == transform.getPosition().y and world_dir.z == transform.getPosition().z));
+    } else try std.testing.expect(false);
+}
+
+test "Transform rotateAround" {
+    // rotate a point at (2,0,0) around pivot (1,0,0) by 90° about Z -> ends at (1,1,0)
+    var t = common.Transform.initFromPosRotScale(rl.Vector3{ .x = 2.0, .y = 0.0, .z = 0.0 }, rl.Vector3{ .x = 0.0, .y = 0.0, .z = 0.0 }, rl.Vector3{ .x = 1.0, .y = 1.0, .z = 1.0 });
+    t.rotateAround(rl.Vector3{ .x = 1.0, .y = 0.0, .z = 0.0 }, rl.Vector3{ .x = 0.0, .y = 0.0, .z = @as(f32, std.math.pi) / 2.0 });
+    const p = t.getPosition();
+    const eps: f32 = 1e-4;
+    try std.testing.expect(p.x - 1.0 >= -eps and p.x - 1.0 <= eps);
+    try std.testing.expect(p.y - 1.0 >= -eps and p.y - 1.0 <= eps);
+    try std.testing.expect(p.z - 0.0 >= -eps and p.z - 0.0 <= eps);
+
+    var t2 = common.Transform.initFromPosRotScale(rl.Vector3{ .x = 2.0, .y = 0.0, .z = 0.0 }, rl.Vector3{ .x = 0.0, .y = 0.0, .z = 0.0 }, rl.Vector3{ .x = 1.0, .y = 1.0, .z = 1.0 });
+    t2.rotateAroundDegrees(rl.Vector3{ .x = 1.0, .y = 0.0, .z = 0.0 }, rl.Vector3{ .x = 0.0, .y = 0.0, .z = 90.0 });
+    const p2 = t2.getPosition();
+    try std.testing.expect(p2.x - 1.0 >= -eps and p2.x - 1.0 <= eps);
+    try std.testing.expect(p2.y - 1.0 >= -eps and p2.y - 1.0 <= eps);
+    try std.testing.expect(p2.z - 0.0 >= -eps and p2.z - 0.0 <= eps);
+}
+
+test "Transform toWorldPoint Vector4" {
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    defer manager.deinit();
+
+    const pos = rl.Vector3{ .x = 4.0, .y = -2.0, .z = 1.0 };
+    const rot = rl.Vector3{ .x = 0.2, .y = 0.1, .z = -0.3 };
+    const scale = rl.Vector3{ .x = 1.5, .y = 0.5, .z = 2.0 };
+
+    const e = manager.create(.{common.Transform.initFromPosRotScale(pos, rot, scale)});
+    const t = try manager.getComponent(e, common.Transform);
+    if (t) |transform| {
+        // point (w = 1) should be same as toWorldPoint(Vector3)
+        const local_point4 = rl.Vector4{ .x = 1.0, .y = 2.0, .z = -1.0, .w = 1.0 };
+        const local_point3 = rl.Vector3{ .x = 1.0, .y = 2.0, .z = -1.0 };
+        const world3 = transform.toWorldPoint(local_point3);
+        const world4 = transform.toWorldPoint4(local_point4);
+        const eps: f32 = tutil.DEFAULT_EPS;
+        try tutil.expectVec3AlmostEqual(rl.Vector3{ .x = world4.x, .y = world4.y, .z = world4.z }, world3, eps);
+        try std.testing.expect(world4.w == 1.0);
+
+        // direction (w = 0) should match transformDirection and preserve w=0
+        const local_dir4 = rl.Vector4{ .x = 0.0, .y = 0.0, .z = 1.0, .w = 0.0 };
+        const local_dir3 = rl.Vector3{ .x = 0.0, .y = 0.0, .z = 1.0 };
+        const world_dir3 = transform.transformDirection(local_dir3);
+        const world_dir4 = transform.toWorldPoint4(local_dir4);
+        try tutil.expectVec3AlmostEqual(rl.Vector3{ .x = world_dir4.x, .y = world_dir4.y, .z = world_dir4.z }, world_dir3, eps);
+        try std.testing.expect(world_dir4.w == 0.0);
+
+        // round-trip toLocalPoint4
+        const local_rt = transform.toLocalPoint4(world4);
+        try tutil.expectVec4AlmostEqual(local_rt, local_point4, eps);
     } else try std.testing.expect(false);
 }

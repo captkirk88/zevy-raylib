@@ -9,7 +9,7 @@ const style = @import("style.zig");
 const Assets = @import("../io/assets.zig").Assets;
 const ui_resources = @import("resources.zig");
 
-const SKIP_IN_DEBUG = false;
+const SKIP_IN_DEBUG = true;
 
 const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
