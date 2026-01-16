@@ -1,6 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
-const common = @import("components.zig");
+const common = @import("components/transform.zig");
 const zevy_ecs = @import("zevy_ecs");
 const tutil = @import("test_utils.zig");
 
@@ -289,5 +289,80 @@ test "Transform toWorldPoint Vector4" {
         // round-trip toLocalPoint4
         const local_rt = transform.toLocalPoint4(world4);
         try tutil.expectVec4AlmostEqual(local_rt, local_point4, eps);
+    } else try std.testing.expect(false);
+}
+
+test "Transform getScale returns per-axis scales" {
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    defer manager.deinit();
+
+    const pos = rl.Vector3{ .x = 0.0, .y = 0.0, .z = 0.0 };
+    // Use identity rotation so basis lengths equal the supplied scale vector
+    const rot = rl.Vector3{ .x = 0.0, .y = 0.0, .z = 0.0 };
+    const scale = rl.Vector3{ .x = 2.0, .y = 3.0, .z = 4.0 };
+
+    const e = manager.create(.{common.Transform.initFromPosRotScale(pos, rot, scale)});
+    const t = try manager.getComponent(e, common.Transform);
+    if (t) |transform| {
+        const s = transform.getScale();
+        const eps: f32 = tutil.DEFAULT_EPS;
+        try tutil.expectVec3AlmostEqual(s, scale, eps);
+    } else try std.testing.expect(false);
+}
+
+test "Transform scale preserves translation and multiplies basis" {
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    defer manager.deinit();
+
+    const pos = rl.Vector3{ .x = 1.0, .y = 2.0, .z = 3.0 };
+    const rot = rl.Vector3{ .x = 0.2, .y = 0.1, .z = -0.3 };
+    const scale0 = rl.Vector3{ .x = 1.5, .y = 0.5, .z = 2.0 };
+    const scale1 = rl.Vector3{ .x = 2.0, .y = 3.0, .z = 0.5 };
+
+    const e = manager.create(.{common.Transform.initFromPosRotScale(pos, rot, scale0)});
+    const t = try manager.getComponent(e, common.Transform);
+    if (t) |transform| {
+        const s_before = transform.getScale();
+        transform.scale(scale1);
+        // position should be unchanged
+        const p = transform.getPosition();
+        try std.testing.expectEqual(p.x, pos.x);
+        try std.testing.expectEqual(p.y, pos.y);
+        try std.testing.expectEqual(p.z, pos.z);
+
+        // scale should be multiplied element-wise by the applied local-scale factors
+        const s = transform.getScale();
+        const expected = rl.Vector3{ .x = s_before.x * scale1.x, .y = s_before.y * scale1.y, .z = s_before.z * scale1.z };
+        const eps: f32 = tutil.DEFAULT_EPS;
+        try tutil.expectVec3AlmostEqual(s, expected, eps);
+    } else try std.testing.expect(false);
+}
+
+test "Transform setScale sets absolute scale and preserves rotation/translation" {
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    defer manager.deinit();
+
+    const pos = rl.Vector3{ .x = -1.0, .y = 0.5, .z = 2.0 };
+    const rot = rl.Vector3{ .x = 0.3, .y = -0.4, .z = 0.2 };
+    const scale0 = rl.Vector3{ .x = 1.0, .y = 1.0, .z = 1.0 };
+    const target = rl.Vector3{ .x = 0.5, .y = 2.0, .z = 3.0 };
+
+    const e = manager.create(.{common.Transform.initFromPosRotScale(pos, rot, scale0)});
+    const t = try manager.getComponent(e, common.Transform);
+    if (t) |transform| {
+        const q_before = transform.getRotation();
+        transform.setScale(target);
+        const p_after = transform.getPosition();
+        try std.testing.expectEqual(p_after.x, pos.x);
+        try std.testing.expectEqual(p_after.y, pos.y);
+        try std.testing.expectEqual(p_after.z, pos.z);
+
+        const s_after = transform.getScale();
+        const eps: f32 = tutil.DEFAULT_EPS;
+        try tutil.expectVec3AlmostEqual(s_after, target, eps);
+
+        const q_after = transform.getRotation();
+        const dot = q_before.x * q_after.x + q_before.y * q_after.y + q_before.z * q_after.z + q_before.w * q_after.w;
+        try std.testing.expect(dot >= 1.0 - 1e-3 or dot <= -1.0 + 1e-3);
     } else try std.testing.expect(false);
 }

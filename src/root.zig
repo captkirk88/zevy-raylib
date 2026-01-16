@@ -5,6 +5,10 @@ const plugins = @import("plugins");
 const io = @import("io/root.zig");
 pub const input = @import("input/input.zig");
 
+pub const components = struct {
+    pub const Transform = @import("common/components/transform.zig").Transform;
+};
+
 pub const ui = @import("gui/ui.zig");
 
 const app_plugin = @import("app.plugin.zig");
