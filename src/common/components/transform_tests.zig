@@ -1,8 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
-const common = @import("components/transform.zig");
+const common = @import("transform.zig");
 const zevy_ecs = @import("zevy_ecs");
-const tutil = @import("test_utils.zig");
+const tutil = @import("../test_utils.zig");
 
 test "Transform init position is zero" {
     var manager = try zevy_ecs.Manager.init(std.testing.allocator);

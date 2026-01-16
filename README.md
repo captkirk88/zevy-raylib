@@ -6,6 +6,9 @@ Zevy Raylib is an integration layer that connects the Zevy ECS with the Raylib g
 
 [![][license]](https://github.com/captkirk88/zevy-raylib/blob/main/LICENSE)
 
+> [!WARNING]
+> This is entirely experimental and mostly for testing zevy-ecs in a more robust way.
+
 ### Requirements
 
 - Zig 0.15.1

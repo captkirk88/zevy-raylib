@@ -7,6 +7,7 @@ pub const input = @import("input/input.zig");
 
 pub const components = struct {
     pub const Transform = @import("common/components/transform.zig").Transform;
+    pub const Name = @import("common/components/name.zig").Name;
 };
 
 pub const ui = @import("gui/ui.zig");
@@ -87,7 +88,7 @@ test {
     std.testing.refAllDeclsRecursive(@import("io/root.zig"));
     std.testing.refAllDecls(@import("input/tests.zig"));
     std.testing.refAllDecls(@import("input/render_tests.zig"));
-    std.testing.refAllDecls(@import("common/transform_tests.zig"));
+    std.testing.refAllDecls(@import("common/root_tests.zig"));
     std.testing.refAllDeclsRecursive(io);
     std.testing.refAllDeclsRecursive(input);
     std.testing.refAllDeclsRecursive(ui);
