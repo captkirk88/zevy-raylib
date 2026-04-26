@@ -9,14 +9,20 @@ pub const params = input.params;
 /// Adds input handling capabilities to the ECS manager.
 pub fn InputPlugin(comptime ParamRegistry: type) type {
     return struct {
+        const Name: []const u8 = "InputPlugin";
         const Self = @This();
 
-        pub fn build(self: *Self, e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
+        pub fn build(self: *Self, e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) anyerror!void {
             _ = self;
             _ = plugin_manager;
-            _ = try e.addResource(input.InputManager, input.InputManager.init(e.allocator));
-            const scheduler = e.getResource(zevy_ecs.schedule.Scheduler) orelse try e.addResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator));
-            scheduler.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), inputUpdateSystem, ParamRegistry);
+            const input_ref = try e.addResource(input.InputManager, input.InputManager.init(e.allocator));
+            defer input_ref.deinit();
+
+            const scheduler_ref = try e.getOrAddResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator), null);
+            defer scheduler_ref.deinit();
+            var scheduler_guard = scheduler_ref.lockWrite();
+            defer scheduler_guard.deinit();
+            scheduler_guard.get().addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), inputUpdateSystem, ParamRegistry);
         }
 
         pub fn deinit(self: *Self, _: std.mem.Allocator, e: *zevy_ecs.Manager) anyerror!void {
@@ -27,7 +33,7 @@ pub fn InputPlugin(comptime ParamRegistry: type) type {
     };
 }
 
-fn inputUpdateSystem(commands: *zevy_ecs.params.Commands, input_manager: *params.Bindings) !void {
+fn inputUpdateSystem(commands: zevy_ecs.params.Commands, input_manager: zevy_ecs.params.ResMut(input.InputManager)) !void {
     _ = commands;
-    try input_manager.update();
+    try input_manager.get().update();
 }

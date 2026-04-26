@@ -2,7 +2,7 @@ const std = @import("std");
 const strings = @import("./strings.zig");
 
 test "equals - unicode casefold for ß" {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.testing.allocator;
     const a = "straße";
     const b = "STRASSE";
 
@@ -10,7 +10,7 @@ test "equals - unicode casefold for ß" {
 }
 
 test "startsWith - ligature fi" {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.testing.allocator;
     // encode the U+FB01 ligature using explicit UTF-8 bytes (EF AC 81) to avoid
     // depending on file encoding when running tests.
     const a = "\xEF\xAC\x81" ++ "le"; // "ﬁle"
@@ -22,7 +22,7 @@ test "startsWith - ligature fi" {
 }
 
 test "indexOf - ß -> ss mapping" {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.testing.allocator;
     const hay = "AßB";
     const needle = "ss";
 

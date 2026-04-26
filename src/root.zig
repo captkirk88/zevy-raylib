@@ -27,47 +27,24 @@ pub const params = struct {
     pub const Bindings = input.params.Bindings;
 };
 
-pub const ParamRegistry = zevy_ecs.MergedSystemParamRegistry(&[_]type{
-    zevy_ecs.DefaultParamRegistry,
-    input.params.InputBindingsParam,
-});
+pub const RaylibParamRegistry = zevy_ecs.DefaultParamRegistry;
 
 /// Registers all plugins defined in this package
 pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager, headless: bool) anyerror!void {
     _ = allocator;
     _ = ecs;
-    try plugs.add(RaylibPlugin(ParamRegistry), .{
+    try plugs.add(RaylibPlugin(RaylibParamRegistry), .{
         .title = "Zevy Raylib App",
         .width = 1280,
         .height = 720,
         .headless = headless,
     });
     try plugs.add(AssetsPlugin, .{});
-    try plugs.add(InputPlugin(ParamRegistry), .{});
-    try plugs.add(UIPlugin(ParamRegistry), .{});
+    try plugs.add(InputPlugin(RaylibParamRegistry), .{});
+    try plugs.add(UIPlugin(RaylibParamRegistry), .{});
 }
 
 test "zevy_raylib" {
-    const TestPlugin = struct {
-        pub fn build(self: *@This(), e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
-            _ = self;
-            _ = e;
-            try std.testing.expect(plugin_manager.has(RaylibPlugin(ParamRegistry)));
-            try std.testing.expect(plugin_manager.has(AssetsPlugin));
-
-            if (plugin_manager.get(RaylibPlugin(ParamRegistry))) |raylib_plug| {
-                try std.testing.expect(std.mem.eql(u8, raylib_plug.title, "Zevy Raylib App"));
-            } else {
-                try std.testing.expect(false);
-            }
-        }
-
-        pub fn deinit(self: *@This(), _: std.mem.Allocator, e: *zevy_ecs.Manager) !void {
-            _ = self;
-            _ = e;
-        }
-    };
-
     const allocator = std.testing.allocator;
     var ecs = try zevy_ecs.Manager.init(allocator);
     var plugs = plugins.PluginManager.init(allocator);
@@ -76,20 +53,43 @@ test "zevy_raylib" {
         ecs.deinit();
     }
     try plug(allocator, &plugs, &ecs, true);
-    try plugs.add(TestPlugin, .{});
 
-    try std.testing.expect(plugs.get(RaylibPlugin(ParamRegistry)) != null);
+    try std.testing.expect(plugs.get(RaylibPlugin(RaylibParamRegistry)) != null);
     try std.testing.expect(plugs.get(AssetsPlugin) != null);
+    try std.testing.expect(plugs.get(InputPlugin(RaylibParamRegistry)) != null);
+    try std.testing.expect(plugs.get(UIPlugin(RaylibParamRegistry)) != null);
 
+    if (plugs.get(RaylibPlugin(RaylibParamRegistry))) |raylib_plug| {
+        try std.testing.expect(std.mem.eql(u8, raylib_plug.title, "Zevy Raylib App"));
+        try std.testing.expect(raylib_plug.headless);
+    } else {
+        try std.testing.expect(false);
+    }
+}
+
+test "zevy_raylib builds plugins headless" {
+    const allocator = std.testing.allocator;
+    var ecs = try zevy_ecs.Manager.init(allocator);
+    var plugs = plugins.PluginManager.init(allocator);
+    defer {
+        _ = plugs.deinit(&ecs);
+        ecs.deinit();
+    }
+
+    try plug(allocator, &plugs, &ecs, true);
     try plugs.build(&ecs);
+
+    try std.testing.expect(ecs.hasResource(zevy_ecs.schedule.Scheduler));
+    try std.testing.expect(ecs.hasResource(input.InputManager));
+    try std.testing.expect(ecs.hasResource(Assets));
 }
 
 test {
-    std.testing.refAllDeclsRecursive(@import("io/root.zig"));
+    std.testing.refAllDecls(@import("io/root.zig"));
     std.testing.refAllDecls(@import("input/tests.zig"));
     std.testing.refAllDecls(@import("input/render_tests.zig"));
     std.testing.refAllDecls(@import("common/root_tests.zig"));
-    std.testing.refAllDeclsRecursive(io);
-    std.testing.refAllDeclsRecursive(input);
-    std.testing.refAllDeclsRecursive(ui);
+    std.testing.refAllDecls(io);
+    std.testing.refAllDecls(input);
+    std.testing.refAllDecls(ui);
 }

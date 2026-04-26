@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const builtin = @import("builtin");
 const zevy_ecs = @import("zevy_ecs");
 const ui = @import("ui.zig");
 const layouts = ui.layout;
@@ -10,11 +11,78 @@ const Assets = @import("../io/assets.zig").Assets;
 const ui_resources = @import("resources.zig");
 
 const SKIP_IN_DEBUG = true;
-
 const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
 const TEST_SKIP_TIMEOUT_SECS = 10;
+const TEST_TIMEOUT_POLL_MS: u64 = 100;
+
+fn sleepForTimeoutPoll(ms: u64) void {
+    switch (builtin.os.tag) {
+        .windows => {
+            const delay_interval: std.os.windows.LARGE_INTEGER =
+                -@as(std.os.windows.LARGE_INTEGER, @intCast(ms)) * (std.time.ns_per_ms / 100);
+            _ = std.os.windows.ntdll.NtDelayExecution(.TRUE, &delay_interval);
+        },
+        else => {
+            const sec_type = @typeInfo(std.posix.timespec).@"struct".fields[0].type;
+            const nsec_type = @typeInfo(std.posix.timespec).@"struct".fields[1].type;
+
+            var timespec = std.posix.timespec{
+                .sec = @as(sec_type, @intCast(@divFloor(ms, std.time.ms_per_s))),
+                .nsec = @as(nsec_type, @intCast(@mod(ms, std.time.ms_per_s) * std.time.ns_per_ms)),
+            };
+
+            _ = std.posix.system.nanosleep(&timespec, &timespec);
+        },
+    }
+}
+
+const TimeoutGuard = struct {
+    stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    thread: ?std.Thread = null,
+    
+
+    fn start(self: *TimeoutGuard, test_name: []const u8) !void {
+        self.thread = try std.Thread.spawn(.{}, watchdogMain, .{ &self.stop, test_name });
+    }
+
+    fn deinit(self: *TimeoutGuard) void {
+        self.stop.store(true, .release);
+        if (self.thread) |thread| thread.join();
+        self.thread = null;
+    }
+
+    fn watchdogMain(stop: *std.atomic.Value(bool), test_name: []const u8) void {
+        var remaining_ms: u64 = TEST_SKIP_TIMEOUT_SECS * std.time.ms_per_s;
+
+        while (!stop.load(.acquire) and remaining_ms > 0) {
+            const sleep_ms = @min(remaining_ms, TEST_TIMEOUT_POLL_MS);
+            sleepForTimeoutPoll(sleep_ms);
+            remaining_ms -= sleep_ms;
+        }
+
+        if (!stop.load(.acquire)) {
+            std.debug.panic("UI render test timed out after {d}s: {s}", .{ TEST_SKIP_TIMEOUT_SECS, test_name });
+        }
+    }
+};
+
+fn addChildRelation(ecs: *zevy_ecs.Manager, child: zevy_ecs.Entity, parent: zevy_ecs.Entity) !void {
+    const rel_ref = ecs.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
+    defer rel_ref.deinit();
+    var rel_guard = rel_ref.lockWrite();
+    defer rel_guard.deinit();
+    try rel_guard.get().add(ecs, child, parent, zevy_ecs.relations.kinds.Child);
+}
+
+fn runSchedulerStages(ecs: *zevy_ecs.Manager, start_stage: zevy_ecs.schedule.StageId, end_stage: zevy_ecs.schedule.StageId) !void {
+    const scheduler_ref = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return error.ResourceNotFound;
+    defer scheduler_ref.deinit();
+    var scheduler_guard = scheduler_ref.lockWrite();
+    defer scheduler_guard.deinit();
+    try scheduler_guard.get().runStages(ecs, start_stage, end_stage);
+}
 
 fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Manager {
     if (should_skip) return error.SkipZigTest;
@@ -22,6 +90,7 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
     const allocator = std.testing.allocator;
 
     rl.initWindow(800, 600, name);
+    rl.setTargetFPS(60);
 
     var ecs = try zevy_ecs.Manager.init(allocator);
 
@@ -33,21 +102,31 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
         });
     }
     const input_mgr_res = try ecs.addResource(input.InputManager, .init(allocator));
+    defer input_mgr_res.deinit();
+    var input_mgr_guard = input_mgr_res.lockWrite();
+    defer input_mgr_guard.deinit();
     // Register default UI input bindings for tests (Enter/Space/Gamepad A/etc.)
-    ui.input.setupUIInputBindings(input_mgr_res, allocator) catch |err| {
+    ui.input.setupUIInputBindings(input_mgr_guard.get(), allocator) catch |err| {
         std.debug.print("Failed to setup UI input bindings in test: {s}\n", .{@errorName(err)});
         return err;
     };
 
     // Setup Assets for loading the icon atlas
     const assets = try ecs.addResource(Assets, Assets.init(allocator));
+    defer assets.deinit();
+    var assets_guard = assets.lockWrite();
+    defer assets_guard.deinit();
 
     // Load the icon atlas
-    ui.systems.registerIconAtlasFromAssets(&ecs, assets, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
+    ui.systems.registerIconAtlasFromAssets(&ecs, assets_guard.get(), "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
 
     var sch = try ecs.addResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(ecs.allocator));
+    defer sch.deinit();
+    var sch_guard = sch.lockWrite();
+    defer sch_guard.deinit();
+    const scheduler = sch_guard.get();
 
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup),
         ui.systems.startupUiSystem,
@@ -55,7 +134,7 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
     );
 
     // Ensure the InputManager is updated each frame before UI interaction detection
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate),
         testInputUpdateSystem,
@@ -63,43 +142,43 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
     );
 
     // UI interaction detection relies on InputManager having been updated
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate),
         ui.input.uiInteractionDetectionSystem,
         zevy_ecs.DefaultParamRegistry,
     );
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
         ui.systems.anchorLayoutSystem,
         zevy_ecs.DefaultParamRegistry,
     );
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
         ui.systems.flexLayoutSystem,
         zevy_ecs.DefaultParamRegistry,
     );
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
         ui.systems.gridLayoutSystem,
         zevy_ecs.DefaultParamRegistry,
     );
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
         ui.systems.dockLayoutSystem,
         zevy_ecs.DefaultParamRegistry,
     );
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
         ui.systems.uiRenderSystem,
         zevy_ecs.DefaultParamRegistry,
     );
-    sch.addSystem(
+    scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
         ui.systems.uiInputKeyRenderSystem,
@@ -110,39 +189,34 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
 }
 
 fn deinitTest(ecs: *zevy_ecs.Manager) void {
-    const scheduler = ecs.getResource(zevy_ecs.schedule.Scheduler);
-    if (scheduler) |sched| {
-        sched.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last)) catch {};
-    }
+    runSchedulerStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last)) catch {};
     ecs.deinit();
     rl.closeWindow();
 }
 
-fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: *zevy_ecs.params.Commands) void) anyerror!void {
-    const scheduler = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return;
-
+fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: zevy_ecs.params.Commands) void) anyerror!void {
     // Run startup stage once before the loop
-    try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup));
+    try runSchedulerStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup));
 
-    const start = std.time.milliTimestamp();
+    const start = @as(i64, @intFromFloat(rl.getTime() * @as(f64, @floatFromInt(std.time.ms_per_s))));
 
     const max_duration_ms = TEST_SKIP_TIMEOUT_SECS * std.time.ms_per_s; // Run for 10 seconds
     while (!rl.windowShouldClose()) {
         if (!rl.isWindowReady()) break;
-        const now = std.time.milliTimestamp();
+        const now = @as(i64, @intFromFloat(rl.getTime() * @as(f64, @floatFromInt(std.time.ms_per_s))));
         if (now - start >= max_duration_ms) break;
 
-        var cmds = try zevy_ecs.params.Commands.init(ecs.allocator, ecs);
-        update_fn(&cmds);
+        const cmds = try zevy_ecs.commands.CommandsInner.init(ecs.allocator, ecs);
         defer cmds.deinit();
+        update_fn(cmds);
 
-        try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostUpdate));
+        try runSchedulerStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostUpdate));
 
         rl.beginDrawing();
         rl.clearBackground(rl.Color.black);
         rl.drawFPS(0, 0);
 
-        try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last));
+        try runSchedulerStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last));
 
         rl.endDrawing();
     }
@@ -150,25 +224,25 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: *zevy_ecs.params.Co
 
 // Small helper system used only in tests to ensure InputManager.update() is called
 fn testInputUpdateSystem(
-    manager: *zevy_ecs.params.Commands,
-    input_mgr: zevy_ecs.params.Res(input.InputManager),
+    manager: zevy_ecs.params.Commands,
+    input_mgr: zevy_ecs.params.ResMut(input.InputManager),
     style_res: zevy_ecs.params.Res(style.UIStyle),
 ) !void {
     _ = manager;
     _ = style_res;
-    try input_mgr.ptr.update();
+    try input_mgr.get().update();
 }
 
 // Debug draw system used only in these tests: draw a rectangle around focused elements
 fn focusDebugDrawSystem(
-    manager: *zevy_ecs.params.Commands,
+    manager: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: comps.UIRect,
         focus: comps.UIFocus,
         visible: ?comps.UIVisible,
         enabled: ?comps.UIEnabled,
-    }, .{}),
+    }),
     style_res: zevy_ecs.params.Res(style.UIStyle),
 ) void {
     _ = manager;
@@ -191,6 +265,10 @@ fn focusDebugDrawSystem(
 }
 
 test "Render Button default" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Button default");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Button default", null);
     defer {
         deinitTest(&ecs);
@@ -204,7 +282,7 @@ test "Render Button default" {
     });
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -212,6 +290,10 @@ test "Render Button default" {
 }
 
 test "Render Button flat" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Button flat");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Button flat", null);
     defer {
         deinitTest(&ecs);
@@ -223,15 +305,14 @@ test "Render Button flat" {
     });
 
     // Attach an input-key child so the renderer/system can show the prompt
-    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const icon_child = ecs.create(.{
         comps.UIRect.init(0, 0, 16, 16),
         comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, icon_child, btn);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -239,6 +320,10 @@ test "Render Button flat" {
 }
 
 test "Render Button toggle" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Button toggle");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Button toggle", null);
     defer {
         deinitTest(&ecs);
@@ -250,15 +335,14 @@ test "Render Button toggle" {
     });
 
     // Attach an input-key child so the renderer/system can show the prompt
-    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const icon_child = ecs.create(.{
         comps.UIRect.init(0, 0, 16, 16),
         comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_child, btn, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, icon_child, btn);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -266,6 +350,10 @@ test "Render Button toggle" {
 }
 
 test "Render Flex Layout" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Flex Layout");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Flex Layout", null);
     defer {
         deinitTest(&ecs);
@@ -279,18 +367,17 @@ test "Render Flex Layout" {
         layouts.UIContainer.init("flex_container"),
     });
     const titles = [_]?[:0]const u8{ "Panel 1", "Panel 2", "Panel 3", null };
-    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     for (0..4) |i| {
         const child = ecs.create(.{
             comps.UIRect.init(0, 0, 380, 50),
             comps.UIPanel.init(titles[i]),
             //comps.UIText.init("Panel {d}", .{i + 1}).withFontSize(16),
         });
-        try rel.add(&ecs, child, flex_container, zevy_ecs.relations.kinds.Child);
+        try addChildRelation(&ecs, child, flex_container);
     }
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -298,6 +385,10 @@ test "Render Flex Layout" {
 }
 
 test "Render Grid Layout" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Grid Layout");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Grid Layout", null);
     defer {
         deinitTest(&ecs);
@@ -309,18 +400,17 @@ test "Render Grid Layout" {
         layouts.UIContainer.init("grid_container"),
     });
 
-    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const titles = [_][:0]const u8{ "Grid Item 0", "Grid Item 1", "Grid Item 2", "Grid Item 3", "Grid Item 4", "Grid Item 5" };
     for (titles) |title| {
         const child = ecs.create(.{
             comps.UIRect.init(0, 0, 190, 190),
             comps.UIPanel.init(title),
         });
-        try rel.add(&ecs, child, grid_container, zevy_ecs.relations.kinds.Child);
+        try addChildRelation(&ecs, child, grid_container);
     }
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -328,6 +418,10 @@ test "Render Grid Layout" {
 }
 
 test "Render Anchor Layout" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Anchor Layout");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Anchor Layout", null);
     defer {
         deinitTest(&ecs);
@@ -341,23 +435,22 @@ test "Render Anchor Layout" {
         layouts.UIContainer.init("anchor_container"),
     });
 
-    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
     const top_left = ecs.create(.{
         comps.UIRect.init(0, 0, 100, 50),
         comps.UIPanel.init("Top Left"),
         layouts.AnchorLayout.init(.top_left),
     });
-    try rel.add(&ecs, top_left, anchor_container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, top_left, anchor_container);
 
     const bottom_right = ecs.create(.{
         comps.UIRect.init(0, 0, 100, 50),
         comps.UIPanel.init("Bottom Right"),
         layouts.AnchorLayout.init(.bottom_right),
     });
-    try rel.add(&ecs, bottom_right, anchor_container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, bottom_right, anchor_container);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
             // Update logic can be added here if needed
         }
@@ -365,6 +458,10 @@ test "Render Anchor Layout" {
 }
 
 test "Render Dock Layout" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Dock Layout");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Dock Layout", null);
     defer {
         deinitTest(&ecs);
@@ -379,15 +476,13 @@ test "Render Dock Layout" {
         layouts.UIContainer.init("dock_container"),
     });
 
-    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
-
     // Left docked panel
     const left = ecs.create(.{
         comps.UIRect.init(0, 0, 150, @floatFromInt(screen_height)),
         comps.UIPanel.init("Left"),
         layouts.DockLayout.init(.left),
     });
-    try rel.add(&ecs, left, dock_container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, left, dock_container);
 
     // Top docked panel
     const top = ecs.create(.{
@@ -395,7 +490,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Top"),
         layouts.DockLayout.init(.top),
     });
-    try rel.add(&ecs, top, dock_container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, top, dock_container);
 
     // Right docked panel
     const right = ecs.create(.{
@@ -403,7 +498,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Right"),
         layouts.DockLayout.init(.right),
     });
-    try rel.add(&ecs, right, dock_container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, right, dock_container);
 
     // Bottom docked panel
     const bottom = ecs.create(.{
@@ -411,7 +506,7 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Bottom"),
         layouts.DockLayout.init(.bottom),
     });
-    try rel.add(&ecs, bottom, dock_container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, bottom, dock_container);
 
     // Fill the remaining area with a panel
     const fill = ecs.create(.{
@@ -419,10 +514,10 @@ test "Render Dock Layout" {
         comps.UIPanel.init("Fill"),
         layouts.DockLayout.init(.fill),
     });
-    try rel.add(&ecs, fill, dock_container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, fill, dock_container);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
             // No per-frame logic required for this test
         }
@@ -430,10 +525,12 @@ test "Render Dock Layout" {
 }
 
 test "Render Two Buttons Same Input" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Two Buttons Same Input");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("Render Two Buttons Same Input", "Press [Enter/Return]");
     defer deinitTest(&ecs);
-
-    const rel = ecs.getResource(zevy_ecs.relations.RelationManager).?;
 
     const btn_a = ecs.create(.{
         comps.UIRect.init(200, 200, 140, 50),
@@ -450,26 +547,33 @@ test "Render Two Buttons Same Input" {
         comps.UIRect.init(0, 0, 16, 16),
         comps.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_a, btn_a, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, icon_a, btn_a);
 
     const icon_b = ecs.create(.{
         comps.UIRect.init(0, 0, 16, 16),
         comps.UIInputKey.initSingle(.{ .keyboard = input.KeyCode.key_enter }),
     });
-    try rel.add(&ecs, icon_b, btn_b, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&ecs, icon_b, btn_b);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
         }
     }.run);
 }
 
 test "UI Focus Navigation Demo" {
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("UI Focus Navigation Demo");
+    defer timeout_guard.deinit();
+
     var ecs = try initTest("UI Focus Navigation Demo", "Use [Tab]");
     defer deinitTest(&ecs);
 
     const sch = ecs.getResource(zevy_ecs.schedule.Scheduler).?;
+    defer sch.deinit();
+    var sch_guard = sch.lockWrite();
+    defer sch_guard.deinit();
 
     // Create three focusable buttons laid out horizontally
     const btn1 = ecs.create(.{
@@ -498,12 +602,12 @@ test "UI Focus Navigation Demo" {
     _ = btn3;
 
     // Register the focus navigation system for this test so Tab will cycle focus
-    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
+    sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
     // Add our debug draw system so focused element is outlined
-    sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
+    sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
 
     try testLoop(&ecs, struct {
-        fn run(e: *zevy_ecs.params.Commands) void {
+        fn run(e: zevy_ecs.params.Commands) void {
             _ = e;
         }
     }.run);

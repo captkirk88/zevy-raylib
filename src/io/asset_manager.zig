@@ -58,7 +58,9 @@ fn resolveAbsolutePath(allocator: std.mem.Allocator, file_path: []const u8) ![]u
         return try allocator.dupe(u8, file_path);
     } else {
         // For relative paths, resolve against current working directory
-        const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
+        var threaded = std.Io.Threaded.init_single_threaded;
+        const io = threaded.io();
+        const cwd = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", allocator);
         defer allocator.free(cwd);
         const resolved = try std.fs.path.join(allocator, &[_][]const u8{ cwd, file_path });
 
@@ -79,11 +81,13 @@ fn fileResolverResolvePath(resolver: *const @import("loader.zig").FileResolver, 
 }
 
 fn fileResolverPathExists(resolver: *const @import("loader.zig").FileResolver, relative_path: []const u8) bool {
-    const full_path = std.fs.path.join(std.heap.page_allocator, &[_][]const u8{ resolver.base_dir, relative_path }) catch return false;
-    defer std.heap.page_allocator.free(full_path);
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+    var dir = std.Io.Dir.openDirAbsolute(io, resolver.base_dir, .{}) catch return false;
+    defer dir.close(io);
 
-    const file = std.fs.openFileAbsolute(full_path, .{}) catch return false;
-    file.close();
+    const file = dir.openFile(io, relative_path, .{ .mode = .read_only }) catch return false;
+    file.close(io);
     return true;
 }
 

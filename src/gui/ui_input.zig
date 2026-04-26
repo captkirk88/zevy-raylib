@@ -226,28 +226,28 @@ pub fn setupUIInputBindings(input_mgr: *input.InputManager, allocator: std.mem.A
 /// Detects clicks, hovers, and interactions with all UI components
 /// This system should run in the Update stage, after InputManager.update()
 pub fn uiInteractionDetectionSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     input_mgr: zevy_ecs.params.Res(input.InputManager),
     click_writer: zevy_ecs.params.EventWriter(UIClickEvent),
     hover_writer: zevy_ecs.params.EventWriter(UIHoverEvent),
     // Local persistent storage: last hovered entity and previous pressed keys
-    last_hover: *zevy_ecs.params.Local(zevy_ecs.Entity),
-    prev_pressed: *zevy_ecs.params.Local(PrevPressed),
+    last_hover: zevy_ecs.params.Local(zevy_ecs.Entity),
+    prev_pressed: zevy_ecs.params.Local(PrevPressed),
 
     // Query for button.paramss
-    rel: *zevy_ecs.params.Relations,
+    rel: zevy_ecs.params.Relations,
     button_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         button: components.UIButton,
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
-    }, .{}),
+    }),
     // Query yielding currently-focused entities so we can clear focus on click
     focus_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         focus: components.UIFocus,
-    }, .{}),
+    }),
 ) anyerror!void {
 
     // Get input position (handles mouse/touch automatically)
@@ -257,15 +257,16 @@ pub fn uiInteractionDetectionSystem(
     // ('ui_click') from confirm (keyboard/gamepad, 'ui_confirm') so we can
     // avoid double-toggling when raygui already handles mouse toggles during
     // rendering.
-    const click_triggered_click = input_mgr.ptr.wasActionTriggered("ui_click");
-    const click_triggered_confirm = input_mgr.ptr.wasActionTriggered("ui_confirm");
+    const input_mgr_ptr = input_mgr.get();
+    const click_triggered_click = input_mgr_ptr.wasActionTriggered("ui_click");
+    const click_triggered_confirm = input_mgr_ptr.wasActionTriggered("ui_confirm");
 
     // Local params are provided as pointers; use them directly
     var last_hover_mut = last_hover;
     var prev_pressed_mut = prev_pressed;
 
     // Build a small list of newly-pressed keys compared to the previous frame
-    const current_keys = input_mgr.ptr.getCurrentState().getPressed();
+    const current_keys = input_mgr_ptr.getCurrentState().getPressed();
     var newly_pressed: [12]input.InputKey = undefined;
     var newly_len: usize = 0;
 
@@ -335,7 +336,7 @@ pub fn uiInteractionDetectionSystem(
             const children = rel.getChildren(item.entity, zevy_ecs.relations.kinds.Child);
             for (children) |child| {
                 if (activated_by_keypress) break;
-                if (commands.getComponent(child, components.UIInputKey) catch null) |ik| {
+                if (commands.manager().getComponent(child, components.UIInputKey) catch null) |ik| {
                     const slice = ik.asSlice();
                     for (slice) |k| {
                         var j: usize = 0;
@@ -359,7 +360,7 @@ pub fn uiInteractionDetectionSystem(
             const children2 = rel.getChildren(item.entity, zevy_ecs.relations.kinds.Child);
             for (children2) |child| {
                 if (activated_by_keypress) break;
-                if (commands.getComponent(child, components.UIInputKey) catch null) |ik| {
+                if (commands.manager().getComponent(child, components.UIInputKey) catch null) |ik| {
                     const slice = ik.asSlice();
                     for (slice) |k| {
                         for (current_keys) |ck| {
@@ -392,12 +393,12 @@ pub fn uiInteractionDetectionSystem(
             //try commands.flush(commands.manager); // Ensure focus removal is applied immediately
 
             // Add UIFocus to this entity (if focusable)
-            if (commands.getComponent(item.entity, components.UIFocusable) catch null) |ff| {
+            if (commands.manager().getComponent(item.entity, components.UIFocusable) catch null) |ff| {
                 _ = ff;
                 _ = commands.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
             } else {
                 // Consider common interactive components focusable by default
-                if (commands.getComponent(item.entity, components.UIButton) catch null) |b| {
+                if (commands.manager().getComponent(item.entity, components.UIButton) catch null) |b| {
                     _ = b;
                     _ = commands.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
                 }
@@ -434,38 +435,39 @@ pub fn uiInteractionDetectionSystem(
 /// `ui_focus_next` action is triggered. Focus is represented by adding
 /// or removing the `UIFocus` component on entities.
 pub fn uiFocusNavigationSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     input_mgr: zevy_ecs.params.Res(input.InputManager),
-    rel: *zevy_ecs.params.Relations,
-    last_hover: *zevy_ecs.params.Local(zevy_ecs.Entity),
+    rel: zevy_ecs.params.Relations,
+    last_hover: zevy_ecs.params.Local(zevy_ecs.Entity),
     focus_writer: zevy_ecs.params.EventWriter(UIFocusEvent),
     focus_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         focusable: components.UIFocusable,
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
-    }, .{}),
+    }),
 ) !void {
     // manager is used below; no discard needed
 
     // If no focus action was pressed, nothi.paramsng to do
-    const next_pressed = input_mgr.ptr.wasActionTriggered("ui_focus_next");
-    const prev_pressed = input_mgr.ptr.wasActionTriggered("ui_focus_prev");
+    const input_mgr_ptr = input_mgr.get();
+    const next_pressed = input_mgr_ptr.wasActionTriggered("ui_focus_next");
+    const prev_pressed = input_mgr_ptr.wasActionTriggered("ui_focus_prev");
     if (!next_pressed and !prev_pressed) return;
 
     // (helper moved to top-level) use `isFocusable(manager, e)` below
 
     // Build ordered list of focusable entities (children of parent first)
-    var candidates = try std.ArrayList(zevy_ecs.Entity).initCapacity(commands.allocator, 64);
-    defer candidates.deinit(commands.allocator);
+    var candidates = try std.ArrayList(zevy_ecs.Entity).initCapacity(commands.allocator(), 64);
+    defer candidates.deinit(commands.allocator());
 
     // If there's a currently focused entity, prefer siblings (children of its parent)
     var focused_parent: ?zevy_ecs.Entity = null;
     // Find current focused entity
     var current_focused: ?zevy_ecs.Entity = null;
     // Consume the focus_query once and collect all focusable entities.
-    var all_focusables = try std.ArrayList(zevy_ecs.Entity).initCapacity(commands.allocator, 64);
-    defer all_focusables.deinit(commands.allocator);
+    var all_focusables = try std.ArrayList(zevy_ecs.Entity).initCapacity(commands.allocator(), 64);
+    defer all_focusables.deinit(commands.allocator());
     while (focus_query.next()) |item| {
         // Skip invisible or explicitly disabled focusable entities
         if (item.visible) |v| {
@@ -475,21 +477,21 @@ pub fn uiFocusNavigationSystem(
             if (en.state == false) continue;
         }
 
-        try all_focusables.append(commands.allocator, item.entity);
-        if (commands.getComponent(item.entity, components.UIFocus) catch null) |f| {
+        try all_focusables.append(commands.allocator(), item.entity);
+        if (commands.manager().getComponent(item.entity, components.UIFocus) catch null) |f| {
             _ = f;
             current_focused = item.entity;
         }
     }
 
     if (current_focused) |cf| {
-        if (rel.getParent(commands.manager, cf, zevy_ecs.relations.kinds.Child) catch null) |p| {
+        if (rel.getParent(commands.manager(), cf, zevy_ecs.relations.kinds.Child) catch null) |p| {
             focused_parent = p;
         }
     } else {
         // No focused entity — prefer the parent of the last-hovered entity
         if (last_hover.value()) |lh| {
-            if (rel.getParent(commands.manager, lh, zevy_ecs.relations.kinds.Child) catch null) |p2| {
+            if (rel.getParent(commands.manager(), lh, zevy_ecs.relations.kinds.Child) catch null) |p2| {
                 focused_parent = p2;
             }
         }
@@ -498,9 +500,9 @@ pub fn uiFocusNavigationSystem(
     if (focused_parent) |parent| {
         const children = rel.getChildren(parent, zevy_ecs.relations.kinds.Child);
         for (children) |child| {
-            if (commands.getComponent(child, components.UIFocusable) catch null) |f| {
+            if (commands.manager().getComponent(child, components.UIFocusable) catch null) |f| {
                 _ = f;
-                try candidates.append(commands.allocator, child);
+                try candidates.append(commands.allocator(), child);
             }
         }
     }
@@ -516,7 +518,7 @@ pub fn uiFocusNavigationSystem(
             }
         }
         if (exists) continue;
-        try candidates.append(commands.allocator, e);
+        try candidates.append(commands.allocator(), e);
     }
 
     if (candidates.items.len == 0) return;
@@ -530,8 +532,8 @@ pub fn uiFocusNavigationSystem(
             const b = candidates.items[sj];
             var ax: f32 = 0.0;
             var bx: f32 = 0.0;
-            if (commands.getComponent(a, components.UIRect) catch null) |r| ax = r.x;
-            if (commands.getComponent(b, components.UIRect) catch null) |r2| bx = r2.x;
+            if (commands.manager().getComponent(a, components.UIRect) catch null) |r| ax = r.x;
+            if (commands.manager().getComponent(b, components.UIRect) catch null) |r2| bx = r2.x;
             if (ax <= bx) break;
             const tmp = candidates.items[sj - 1];
             candidates.items[sj - 1] = candidates.items[sj];
@@ -543,7 +545,7 @@ pub fn uiFocusNavigationSystem(
     // Find current focused entity index
     var current_index: ?usize = null;
     for (candidates.items, 0..) |ent, i| {
-        if (commands.getComponent(ent, components.UIFocus) catch null) |f| {
+        if (commands.manager().getComponent(ent, components.UIFocus) catch null) |f| {
             _ = f;
             current_index = i;
             break;
@@ -559,7 +561,7 @@ pub fn uiFocusNavigationSystem(
             // defensive: current index no longer valid
         } else {
             const prev_ent = candidates.items[ci];
-            if (commands.manager.isAlive(prev_ent)) {
+            if (commands.manager().isAlive(prev_ent)) {
                 commands.removeComponent(prev_ent, components.UIFocus) catch {};
                 focus_writer.write(.{ .entity = prev_ent, .gained = false });
             }
@@ -586,13 +588,13 @@ pub fn sliderInteractionSystem(
         slider: components.UISlider,
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
-    }, .{}),
+    }),
 ) void {
     // Get cursor position
     const cursor_pos = input.getMousePosition() orelse return;
 
     // Check if primary input is being held down
-    const is_holding = input_mgr.ptr.isActionActive("ui_click");
+    const is_holding = input_mgr.get().isActionActive("ui_click");
 
     if (!is_holding) return;
 
@@ -646,11 +648,11 @@ pub fn toggleInteractionSystem(
         toggle: components.UIToggle,
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
-    }, .{}),
+    }),
 ) void {
     const cursor_pos = input.getMousePosition() orelse return;
-    const click_triggered = input_mgr.ptr.wasActionTriggered("ui_click") or
-        input_mgr.ptr.wasActionTriggered("ui_confirm");
+    const click_triggered = input_mgr.get().wasActionTriggered("ui_click") or
+        input_mgr.get().wasActionTriggered("ui_confirm");
 
     while (query.next()) |item| {
         if (item.visible) |v| {
@@ -694,10 +696,10 @@ pub fn spinnerInteractionSystem(
         spinner: components.UISpinner,
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
-    }, .{}),
+    }),
 ) void {
     const cursor_pos = input.getMousePosition() orelse return;
-    const click_triggered = input_mgr.ptr.wasActionTriggered("ui_click");
+    const click_triggered = input_mgr.get().wasActionTriggered("ui_click");
 
     while (query.next()) |item| {
         if (item.visible) |v| {
@@ -745,7 +747,7 @@ pub fn dropdownInteractionSystem(
         rect: components.UIRect,
         dropdown: components.UIDropdown,
         visible: ?components.UIVisible,
-    }, .{}),
+    }),
 ) void {
     _ = input_mgr;
     _ = selection_writer;
@@ -772,10 +774,10 @@ pub fn textBoxFocusSystem(
         textbox: components.UITextBox,
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
-    }, .{}),
+    }),
 ) void {
     const cursor_pos = input.getMousePosition() orelse return;
-    const click_triggered = input_mgr.ptr.wasActionTriggered("ui_click");
+    const click_triggered = input_mgr.get().wasActionTriggered("ui_click");
 
     while (query.next()) |item| {
         if (item.visible) |v| {

@@ -37,7 +37,7 @@ const BindingsFileJson = struct {
 /// Serialize input bindings to a writer
 /// Accepts std.Io.Writer type for JSON serialization
 pub fn serializeToWriter(bindings: *const InputBindings, writer: anytype, allocator: std.mem.Allocator) !void {
-    var binding_jsons = std.ArrayList(BindingJson){};
+    var binding_jsons: std.ArrayList(BindingJson) = .empty;
     defer binding_jsons.deinit(allocator);
 
     // Convert bindings to JSON structures
@@ -81,8 +81,17 @@ pub fn serializeToWriter(bindings: *const InputBindings, writer: anytype, alloca
 /// Deserialize input bindings from a reader
 /// Accepts any reader type that implements the reader interface
 pub fn deserializeFromReader(reader: anytype, allocator: std.mem.Allocator) !InputBindings {
-    // Read all content
-    const content = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
+    var writer_alloc: std.Io.Writer.Allocating = .init(allocator);
+    defer writer_alloc.deinit();
+
+    const io_reader: *std.Io.Reader = switch (@TypeOf(reader)) {
+        *std.Io.Reader => reader,
+        std.Io.Reader => &reader,
+        else => &reader.interface,
+    };
+
+    _ = try io_reader.streamRemaining(&writer_alloc.writer);
+    const content = try writer_alloc.toOwnedSlice();
     defer allocator.free(content);
 
     // Parse JSON
@@ -125,34 +134,33 @@ pub fn deserializeFromReader(reader: anytype, allocator: std.mem.Allocator) !Inp
 
 /// Convenience function to serialize to a file
 pub fn serializeToFile(bindings: *const InputBindings, file_path: []const u8, allocator: std.mem.Allocator) !void {
-    const create_flags = std.fs.File.CreateFlags{
-        .truncate = true,
-        .exclusive = true,
-    };
-    const file = try std.fs.cwd().createFile(file_path, create_flags);
-    defer file.close();
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+    var file = try std.Io.Dir.cwd().createFile(io, file_path, .{ .truncate = true });
+    defer file.close(io);
 
-    var writer = file.deprecatedWriter().any();
-    try serializeToWriter(bindings, &writer, allocator);
+    var buffer: [4096]u8 = undefined;
+    var file_writer = file.writer(io, &buffer);
+    try serializeToWriter(bindings, &file_writer.interface, allocator);
+    try file_writer.flush();
 }
 
 /// Convenience function to deserialize from a file
 pub fn deserializeFromFile(file_path: []const u8, allocator: std.mem.Allocator) !InputBindings {
-    const file = try std.fs.cwd().openFile(file_path, .{});
-    defer file.close();
-
-    var rdr = file.deprecatedReader().any();
-    return try deserializeFromReader(&rdr, allocator);
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+    const json_data = try std.Io.Dir.cwd().readFileAlloc(io, file_path, allocator, .limited(std.math.maxInt(usize)));
+    defer allocator.free(json_data);
+    return try deserializeFromSlice(json_data, allocator);
 }
 
 /// Serialize input bindings to a slice
 pub fn serializeToSlice(bindings: *const InputBindings, allocator: std.mem.Allocator) ![]u8 {
-    var string_writer = std.ArrayList(u8){};
-    defer string_writer.deinit(allocator);
+    var writer_alloc: std.Io.Writer.Allocating = .init(allocator);
+    defer writer_alloc.deinit();
 
-    var writer = string_writer.writer(allocator).any();
-    try serializeToWriter(bindings, &writer, allocator);
-    return try string_writer.toOwnedSlice(allocator);
+    try serializeToWriter(bindings, &writer_alloc.writer, allocator);
+    return try writer_alloc.toOwnedSlice();
 }
 
 /// Alias for serializeToSlice for convenience
@@ -203,7 +211,7 @@ pub fn deserializeFromSlice(json_data: []const u8, allocator: std.mem.Allocator)
 
 /// Validate that a set of bindings doesn't have conflicts
 pub fn validateBindings(bindings: *const InputBindings, allocator: std.mem.Allocator) ![]const []const u8 {
-    var conflicts = std.ArrayList([]const u8){};
+    var conflicts: std.ArrayList([]const u8) = .empty;
 
     const all_bindings = bindings.getAllBindings();
 

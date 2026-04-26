@@ -12,8 +12,12 @@ const Assets = @import("../io/assets.zig").Assets;
 const ui_resources = @import("resources.zig");
 const ui_style = @import("style.zig");
 
+comptime {
+    @setEvalBranchQuota(4000);
+}
+
 pub fn startupUiSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
 ) !void {
     rg.loadStyleDefault();
     const default_font = try rl.getFontDefault();
@@ -35,7 +39,7 @@ const ChildInfo = struct {
 /// Collects children from a parent entity, caches their UIRect and FlexItem components,
 /// and sorts them by order field for stable, deterministic layout.
 fn collectAndSortChildren(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     children: []const zevy_ecs.Entity,
     is_row: bool,
     allocator: std.mem.Allocator,
@@ -52,10 +56,10 @@ fn collectAndSortChildren(
 
     for (children) |child| {
         // Skip children without UIRect
-        if (try commands.getComponent(child, components.UIRect)) |child_rect| {
+        if (try commands.manager().getComponent(child, components.UIRect)) |child_rect| {
             // Default flex item if component missing
             var fi: layout.FlexItem = layout.FlexItem.init();
-            if (try commands.getComponent(child, layout.FlexItem)) |fptr| fi = fptr.*;
+            if (try commands.manager().getComponent(child, layout.FlexItem)) |fptr| fi = fptr.*;
 
             // Calculate base size from basis or current dimension
             const base = if (fi.basis) |b| b else if (is_row) child_rect.width else child_rect.height;
@@ -67,7 +71,7 @@ fn collectAndSortChildren(
             try child_infos.append(allocator, ChildInfo{
                 .child = child,
                 .rect = child_rect,
-                .flex_item = try commands.getComponent(child, layout.FlexItem),
+                .flex_item = try commands.manager().getComponent(child, layout.FlexItem),
                 .base = base,
                 .order = fi.order,
             });
@@ -351,21 +355,21 @@ fn positionChildren(
 }
 
 pub fn onAddedUiText(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     added: zevy_ecs.params.OnAdded(components.UIText),
     ui_style_res: zevy_ecs.params.Res(ui_style.UIStyle),
-    rel: *zevy_ecs.params.Relations,
+    rel: zevy_ecs.params.Relations,
 ) !void {
     for (added.iter()) |entry| {
-        if ((commands.manager.hasComponent(entry.entity, components.UIRect) catch false) == false) {
+        if ((commands.manager().hasComponent(entry.entity, components.UIRect) catch false) == false) {
             const comp = entry.comp;
-            const measurement = rl.measureTextEx(ui_style_res.ptr.font, comp.text, @floatFromInt(comp.font_size), 1.0);
-            if (try rel.getParent(commands.manager, entry.entity, zevy_ecs.relations.kinds.Child)) |parent| {
+            const measurement = rl.measureTextEx(ui_style_res.get().font, comp.text, @floatFromInt(comp.font_size), 1.0);
+            if (try rel.getParent(commands.manager(), entry.entity, zevy_ecs.relations.kinds.Child)) |parent| {
                 // Adjust for parent's padding if applicable
                 var pad: layout.Padding = undefined;
-                if (commands.manager.getComponent(parent, layout.FlexLayout) catch null) |fl_comp| {
+                if (commands.manager().getComponent(parent, layout.FlexLayout) catch null) |fl_comp| {
                     pad = fl_comp.padding;
-                } else if (commands.manager.getComponent(parent, layout.GridLayout) catch null) |gl_comp| {
+                } else if (commands.manager().getComponent(parent, layout.GridLayout) catch null) |gl_comp| {
                     pad = gl_comp.padding;
                 } else {
                     pad = layout.Padding.uniform(0.0);
@@ -391,6 +395,110 @@ pub fn onAddedUiText(
 /// UI Render System
 /// Renders all UI entities based on their components
 /// This system should be called during the render stage of your game loop
+const TextRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    text: components.UIText,
+    visible: ?components.UIVisible,
+});
+
+const ButtonRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    button: components.UIButton,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const ToggleRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    toggle: components.UIToggle,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const SliderRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    slider: components.UISlider,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const ProgressRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    progress: components.UIProgressBar,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const TextBoxRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    textbox: components.UITextBox,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const PanelRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    panel: components.UIPanel,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const ScrollPanelRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    scroll_panel: components.UIScrollPanel,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const DropdownRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    dropdown: components.UIDropdown,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const ImageRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    image: components.UIImage,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const SpinnerRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    spinner: components.UISpinner,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const ColorPickerRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    picker: components.UIColorPicker,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const ListViewRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    list_view: components.UIListView,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const MessageBoxRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    message_box: components.UIMessageBox,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
+const TabBarRenderQuery = zevy_ecs.params.Query(struct {
+    rect: components.UIRect,
+    tab_bar: components.UITabBar,
+    visible: ?components.UIVisible,
+    enabled: ?components.UIEnabled,
+});
+
 ///
 /// Example usage with zevy_ecs:
 /// ```zig
@@ -401,109 +509,35 @@ pub fn onAddedUiText(
 /// ```
 pub fn uiRenderSystem(
     // Query for text labels
-    text_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        text: components.UIText,
-        visible: ?components.UIVisible,
-    }, .{}),
+    text_query: TextRenderQuery,
     // Query for buttons
-    button_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        button: components.UIButton,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    button_query: ButtonRenderQuery,
     // Query for toggles
-    toggle_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        toggle: components.UIToggle,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    toggle_query: ToggleRenderQuery,
     // Query for sliders
-    slider_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        slider: components.UISlider,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    slider_query: SliderRenderQuery,
     // Query for progress bars
-    progress_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        progress: components.UIProgressBar,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    progress_query: ProgressRenderQuery,
     // Query for text boxes
-    textbox_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        textbox: components.UITextBox,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    textbox_query: TextBoxRenderQuery,
     // Query for panels
-    panel_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        panel: components.UIPanel,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    panel_query: PanelRenderQuery,
     // Query for scroll panels
-    scroll_panel_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        scroll_panel: components.UIScrollPanel,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    scroll_panel_query: ScrollPanelRenderQuery,
     // Query for dropdowns
-    dropdown_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        dropdown: components.UIDropdown,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    dropdown_query: DropdownRenderQuery,
     // Query for images
-    image_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        image: components.UIImage,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    image_query: ImageRenderQuery,
     // Query for spinners
-    spinner_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        spinner: components.UISpinner,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    spinner_query: SpinnerRenderQuery,
     // Query for color pickers
-    color_picker_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        picker: components.UIColorPicker,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    color_picker_query: ColorPickerRenderQuery,
     // Query for list views
-    list_view_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        list_view: components.UIListView,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    list_view_query: ListViewRenderQuery,
     // Query for message boxes
-    message_box_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        message_box: components.UIMessageBox,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    message_box_query: MessageBoxRenderQuery,
     // Query for tab bars
-    tab_bar_query: zevy_ecs.params.Query(struct {
-        rect: components.UIRect,
-        tab_bar: components.UITabBar,
-        visible: ?components.UIVisible,
-        enabled: ?components.UIEnabled,
-    }, .{}),
+    tab_bar_query: TabBarRenderQuery,
 ) anyerror!void {
     // Render panels first (backgrounds)
     var panel_count: usize = 0;
@@ -633,23 +667,23 @@ pub fn uiRenderSystem(
 /// );
 /// ```
 pub fn uiInputKeyRenderSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     // Query for input keys that are children
     input_key_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         input_key: components.UIInputKey,
         children: zevy_ecs.relations.Relation(zevy_ecs.relations.kinds.Child),
-    }, .{}),
+    }),
     style: zevy_ecs.params.Res(@import("style.zig").UIStyle),
     icon_atlas: zevy_ecs.params.Res(ui_resources.UIIconAtlasHandle),
 ) anyerror!void {
     while (input_key_query.next()) |q| {
         const ui_key: *components.UIInputKey = q.input_key;
         const parent: zevy_ecs.Entity = q.children.target;
-        const parent_rect_opt = commands.getComponent(parent, components.UIRect) catch continue;
+        const parent_rect_opt = commands.manager().getComponent(parent, components.UIRect) catch continue;
         const parent_rect = parent_rect_opt orelse continue;
-        const atlas_ptr = icon_atlas.ptr.atlas;
-        renderer.renderInputKeyAt(parent_rect.toRectangle(), ui_key.asSlice()[0], atlas_ptr, style.ptr);
+        const atlas_ptr = icon_atlas.get().atlas;
+        renderer.renderInputKeyAt(parent_rect.toRectangle(), ui_key.asSlice()[0], atlas_ptr, style.get());
     }
 }
 
@@ -662,7 +696,7 @@ pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, 
         std.log.err("Failed to load icon atlas from '{s}': {}", .{ path, err });
         return;
     };
-    _ = manager.addResource(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle)) catch |err| {
+    manager.addResourceRetained(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle)) catch |err| {
         std.log.err("Failed to register icon atlas resource: {}", .{err});
     };
 }
@@ -670,14 +704,14 @@ pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, 
 /// Layout calculation system for flex layouts
 /// Uses extracted helper functions for child collection, size computation, and positioning.
 pub fn flexLayoutSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     container_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         flex: layout.FlexLayout,
         container: layout.UIContainer,
-    }, .{}),
-    rel: *zevy_ecs.params.Relations,
+    }),
+    rel: zevy_ecs.params.Relations,
 ) anyerror!void {
     var container_count: usize = 0;
     while (container_query.next()) |cq| {
@@ -696,8 +730,8 @@ pub fn flexLayoutSystem(
         };
 
         // Collect and sort children
-        var collected = try collectAndSortChildren(commands, children, is_row, commands.allocator);
-        defer collected.infos.deinit(commands.allocator);
+        var collected = try collectAndSortChildren(commands, children, is_row, commands.allocator());
+        defer collected.infos.deinit(commands.allocator());
 
         if (collected.infos.items.len == 0) continue;
 
@@ -714,14 +748,14 @@ pub fn flexLayoutSystem(
 
         // Compute sizes considering grow/shrink and constraints
         var computed_sizes = try computeFlexSizes(
-            commands.allocator,
+            commands.allocator(),
             collected.infos.items,
             main_size,
             cq.flex.gap,
             collected.total_base,
             is_row,
         );
-        defer computed_sizes.deinit(commands.allocator);
+        defer computed_sizes.deinit(commands.allocator());
 
         // Position children
         positionChildren(
@@ -739,26 +773,26 @@ pub fn flexLayoutSystem(
 /// Layout calculation system for grid layouts
 /// Positions UI elements in a grid based on column/row configuration and gap settings.
 pub fn gridLayoutSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     container_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         grid: layout.GridLayout,
         container: layout.UIContainer,
-    }, .{}),
-    rel: *zevy_ecs.params.Relations,
+    }),
+    rel: zevy_ecs.params.Relations,
 ) anyerror!void {
     while (container_query.next()) |cq| {
         const children = rel.getChildren(cq.entity, zevy_ecs.relations.kinds.Child);
         if (children.len == 0) continue;
 
         // Collect children (no sorting needed for grid - order by insertion)
-        var child_infos = try std.ArrayList(ChildInfo).initCapacity(commands.allocator, children.len);
-        defer child_infos.deinit(commands.allocator);
+        var child_infos = try std.ArrayList(ChildInfo).initCapacity(commands.allocator(), children.len);
+        defer child_infos.deinit(commands.allocator());
 
         for (children) |child| {
-            if (try commands.getComponent(child, components.UIRect)) |child_rect| {
-                try child_infos.append(commands.allocator, ChildInfo{
+            if (try commands.manager().getComponent(child, components.UIRect)) |child_rect| {
+                try child_infos.append(commands.allocator(), ChildInfo{
                     .child = child,
                     .rect = child_rect,
                     .flex_item = null, // Grid doesn't use flex items
@@ -801,13 +835,13 @@ pub fn gridLayoutSystem(
 }
 
 pub fn anchorLayoutSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     container_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         container: layout.UIContainer,
-    }, .{}),
-    rel: *zevy_ecs.params.Relations,
+    }),
+    rel: zevy_ecs.params.Relations,
 ) anyerror!void {
     while (container_query.next()) |cq| {
         const container_rect = cq.rect.*;
@@ -815,8 +849,8 @@ pub fn anchorLayoutSystem(
         if (children.len == 0) continue;
 
         for (children) |child| {
-            const rect = try commands.getComponent(child, components.UIRect) orelse continue;
-            const anchor = try commands.getComponent(child, layout.AnchorLayout) orelse continue;
+            const rect = try commands.manager().getComponent(child, components.UIRect) orelse continue;
+            const anchor = try commands.manager().getComponent(child, layout.AnchorLayout) orelse continue;
 
             const cw = rect.width;
             const ch = rect.height;
@@ -863,13 +897,13 @@ pub fn anchorLayoutSystem(
 }
 
 pub fn dockLayoutSystem(
-    commands: *zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     container_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
         container: layout.UIContainer,
-    }, .{}),
-    rel: *zevy_ecs.params.Relations,
+    }),
+    rel: zevy_ecs.params.Relations,
 ) anyerror!void {
     while (container_query.next()) |cq| {
         const container_rect = cq.rect.*;
@@ -879,8 +913,8 @@ pub fn dockLayoutSystem(
         var remaining = container_rect;
 
         for (children) |child| {
-            const rect = try commands.getComponent(child, components.UIRect) orelse continue;
-            const dock = try commands.getComponent(child, layout.DockLayout) orelse continue;
+            const rect = try commands.manager().getComponent(child, components.UIRect) orelse continue;
+            const dock = try commands.manager().getComponent(child, layout.DockLayout) orelse continue;
 
             switch (dock.side) {
                 .left => {

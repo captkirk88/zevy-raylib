@@ -3,6 +3,6 @@ const transform = @import("components/transform_tests.zig");
 
 const std = @import("std");
 test {
-    std.testing.refAllDeclsRecursive(@This());
-    std.testing.refAllDeclsRecursive(transform);
+    std.testing.refAllDecls(@This());
+    std.testing.refAllDecls(transform);
 }

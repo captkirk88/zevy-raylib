@@ -305,7 +305,7 @@ pub const InputBindings = struct {
 
     /// Get all bindings that could potentially match (useful for detecting conflicts)
     pub fn getPotentialMatches(self: *const Self, pressed_keys: []const InputKey, allocator: std.mem.Allocator) ![]const *const InputBinding {
-        var matches = std.ArrayList(*const InputBinding){};
+        var matches: std.ArrayList(*const InputBinding) = .empty;
         defer matches.deinit(allocator);
 
         for (self.bindings.items) |*binding| {

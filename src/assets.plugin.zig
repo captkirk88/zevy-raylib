@@ -7,12 +7,13 @@ const ui = @import("gui/ui.zig");
 /// Assets Plugin
 /// Adds asset management capabilities to the ECS manager.
 pub const AssetsPlugin = struct {
+    const Name: []const u8 = "AssetsPlugin";
     const Self = @This();
 
-    pub fn build(self: *Self, e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
+    pub fn build(self: *Self, e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) anyerror!void {
         _ = self;
         _ = plugin_manager;
-        _ = try e.addResource(io.Assets, io.Assets.init(e.allocator));
+        try e.addResourceRetained(io.Assets, io.Assets.init(e.allocator));
     }
 
     pub fn deinit(self: *Self, _: std.mem.Allocator, e: *zevy_ecs.Manager) anyerror!void {

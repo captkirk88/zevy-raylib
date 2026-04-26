@@ -2,26 +2,64 @@ const std = @import("std");
 const builtin = @import("builtin");
 const known_folders = @import("known_folders");
 
+fn globalIoAndEnv(allocator: std.mem.Allocator) !struct {
+    threaded: std.Io.Threaded,
+    io: std.Io,
+    env_map: std.process.Environ.Map,
+} {
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+    const env_map = std.process.Environ.createMap(.{ .block = .global }, allocator) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.ParseError,
+    };
+    return .{
+        .threaded = threaded,
+        .io = io,
+        .env_map = env_map,
+    };
+}
+
 pub fn cacheDir(allocator: std.mem.Allocator) error{ ParseError, OutOfMemory }![]const u8 {
-    const path = try known_folders.getPath(allocator, .cache);
+    var ctx = try globalIoAndEnv(allocator);
+    defer ctx.env_map.deinit();
+    const path = known_folders.getPath(ctx.io, allocator, &ctx.env_map, .cache) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.ParseError,
+    };
     if (path) |p| return p;
     return try allocator.dupe(u8, ".");
 }
 
 pub fn homeDir(allocator: std.mem.Allocator) error{ ParseError, OutOfMemory }![]const u8 {
-    const path = try known_folders.getPath(allocator, .home);
+    var ctx = try globalIoAndEnv(allocator);
+    defer ctx.env_map.deinit();
+    const path = known_folders.getPath(ctx.io, allocator, &ctx.env_map, .home) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.ParseError,
+    };
     if (path) |p| return p;
     return try allocator.dupe(u8, ".");
 }
 
 pub fn configDir(allocator: std.mem.Allocator) error{ ParseError, OutOfMemory }![]const u8 {
-    const path = try known_folders.getPath(allocator, .local_configuration);
+    var ctx = try globalIoAndEnv(allocator);
+    defer ctx.env_map.deinit();
+    const path = known_folders.getPath(ctx.io, allocator, &ctx.env_map, .local_configuration) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.ParseError,
+    };
     if (path) |p| return p;
     return try allocator.dupe(u8, ".");
 }
 
 pub fn dataDir(allocator: std.mem.Allocator) error{ ParseError, OutOfMemory }![]const u8 {
-    const path = try known_folders.getPath(allocator, .data);
+    var ctx = try globalIoAndEnv(allocator);
+    defer ctx.env_map.deinit();
+    const path = known_folders.getPath(ctx.io, allocator, &ctx.env_map, .data) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.ParseError,
+    };
     if (path) |p| return p;
     return try allocator.dupe(u8, ".");
 }
@@ -79,7 +117,10 @@ pub fn getDirectoryUri(path: []const u8) []const u8 {
 pub fn isDirectory(path: []const u8) !bool {
     if (path.len == 0) return false;
 
-    const stat = std.fs.cwd().statFile(path) catch |err| switch (err) {
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return false,
         error.AccessDenied => return false,
         error.IsDir => return true, // On Windows, statFile fails for directories with IsDir
@@ -92,7 +133,10 @@ pub fn isDirectory(path: []const u8) !bool {
 pub fn isFile(path: []const u8) !bool {
     if (path.len == 0) return false;
 
-    const stat = std.fs.cwd().statFile(path) catch |err| switch (err) {
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return false,
         error.AccessDenied => return false,
         error.IsDir => return false, // Not a file if it's a directory
@@ -105,6 +149,9 @@ pub fn isFile(path: []const u8) !bool {
 pub fn exists(path: []const u8) bool {
     if (path.len == 0) return false;
 
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+
     // Check for obviously invalid characters that could cause issues
     for (path) |c| {
         if (c == 0) return false; // Null byte
@@ -116,13 +163,13 @@ pub fn exists(path: []const u8) bool {
     if (std.mem.startsWith(u8, path, "://")) return false; // Malformed URI without scheme
     if (std.mem.indexOf(u8, path, "://") != null and path.len < 4) return false; // Very short scheme
 
-    const testf = std.fs.cwd().openFile(path, .{ .mode = .read_only }) catch |err| switch (err) {
+    const testf = std.Io.Dir.cwd().openFile(io, path, .{ .mode = .read_only }) catch |err| switch (err) {
         error.FileNotFound => return false,
         error.AccessDenied => return true, // Exists but no access
         error.IsDir => return true, // Exists and is a directory
         else => return true, // Other errors imply existence
     };
-    testf.close();
+    testf.close(io);
     return true;
 }
 
@@ -145,7 +192,10 @@ pub const PathType = enum {
 pub fn getPathType(path: []const u8) ?PathType {
     if (path.len == 0) return null;
 
-    const stat = std.fs.cwd().statFile(path) catch |err| switch (err) {
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch |err| switch (err) {
         error.IsDir => return .directory, // Handle Windows IsDir error
         else => return null,
     };
@@ -300,44 +350,50 @@ pub fn randomFileName(allocator: std.mem.Allocator, length: usize, extension: []
 }
 
 pub fn writeTempFile(allocator: std.mem.Allocator, prefix: []const u8, extension: []const u8, data: []const u8) anyerror![]const u8 {
-    const tmp_dir_path = known_folders.getPath(allocator, .cache) catch return error.IOError;
-    defer if (tmp_dir_path) |td| allocator.free(td);
+    const tmp_dir_path = cacheDir(allocator) catch return error.IOError;
+    defer allocator.free(tmp_dir_path);
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
 
     const temp_file_name = try randomFileName(allocator, 8, extension);
     defer allocator.free(temp_file_name);
 
-    const temp_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path.?, prefix, temp_file_name });
+    const temp_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path, prefix, temp_file_name });
     errdefer allocator.free(temp_path);
 
-    var tmp_dir = try std.fs.openDirAbsolute(tmp_dir_path.?, .{});
-    defer tmp_dir.close();
-    var temp_file = try tmp_dir.createFile(temp_path, .{ .read = true });
-    defer temp_file.close();
+    var tmp_dir = try std.Io.Dir.openDirAbsolute(io, tmp_dir_path, .{});
+    defer tmp_dir.close(io);
+    var temp_file = try tmp_dir.createFile(io, temp_file_name, .{ .read = true });
+    defer temp_file.close(io);
 
-    _ = try temp_file.write(data);
+    try temp_file.writeStreamingAll(io, data);
 
     return temp_path;
 }
 
 /// Write a temporary file with a specific filename (no random generation)
 pub fn writeTempFileNamed(allocator: std.mem.Allocator, filename: []const u8, data: []const u8) anyerror![]const u8 {
-    const tmp_dir_path = known_folders.getPath(allocator, .cache) catch return error.IOError;
-    defer if (tmp_dir_path) |td| allocator.free(td);
+    const tmp_dir_path = cacheDir(allocator) catch return error.IOError;
+    defer allocator.free(tmp_dir_path);
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
 
-    var tmp_dir = try std.fs.openDirAbsolute(tmp_dir_path.?, .{});
-    defer tmp_dir.close();
-    var temp_file = try tmp_dir.createFile(filename, .{ .read = true });
-    defer temp_file.close();
+    var tmp_dir = try std.Io.Dir.openDirAbsolute(io, tmp_dir_path, .{});
+    defer tmp_dir.close(io);
+    var temp_file = try tmp_dir.createFile(io, filename, .{ .read = true });
+    defer temp_file.close(io);
 
-    _ = try temp_file.write(data);
+    try temp_file.writeStreamingAll(io, data);
 
     // Return the absolute path to the temp file
-    const abs_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path.?, filename });
+    const abs_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path, filename });
     return abs_path;
 }
 
 pub fn deleteFile(path: []const u8) bool {
-    std.fs.deleteFileAbsolute(path) catch return false;
+    var threaded = std.Io.Threaded.init_single_threaded;
+    const io = threaded.io();
+    std.Io.Dir.cwd().deleteFile(io, path) catch return false;
     return true;
 }
 

@@ -2,6 +2,14 @@ const std = @import("std");
 const ui = @import("ui.zig");
 const zevy_ecs = @import("zevy_ecs");
 
+fn addChildRelation(manager: *zevy_ecs.Manager, child: zevy_ecs.Entity, parent: zevy_ecs.Entity) !void {
+    const rel_ref = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
+    defer rel_ref.deinit();
+    var rel_guard = rel_ref.lockWrite();
+    defer rel_guard.deinit();
+    try rel_guard.get().add(manager, child, parent, zevy_ecs.relations.kinds.Child);
+}
+
 test "flex layout basic row start" {
     var manager = try zevy_ecs.Manager.init(std.testing.allocator);
     defer manager.deinit();
@@ -19,10 +27,9 @@ test "flex layout basic row start" {
     const c3 = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0) });
 
     // Add indexed Child relations
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager).?;
-    try rel.add(&manager, c1, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c2, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c3, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, c1, container);
+    try addChildRelation(&manager, c2, container);
+    try addChildRelation(&manager, c3, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -50,10 +57,9 @@ test "flex layout grow distribution" {
     const c2 = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0).withGrow(3.0) });
     const c3 = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0) });
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
-    try rel.add(&manager, c1, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c2, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c3, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, c1, container);
+    try addChildRelation(&manager, c2, container);
+    try addChildRelation(&manager, c3, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -99,11 +105,10 @@ test "flex layout order sorting" {
     const c2 = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0).withOrder(1) });
     const c3 = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0).withOrder(2) });
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
     // Add them in a different order to ensure ordering is applied by the system
-    try rel.add(&manager, c1, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c2, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c3, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, c1, container);
+    try addChildRelation(&manager, c2, container);
+    try addChildRelation(&manager, c3, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -130,9 +135,8 @@ test "flex layout min/max constraints" {
     const big = manager.create(.{ ui.components.UIRect.init(0, 0, 50.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0).withGrow(1.0).withConstraints(ui.layout.SizeConstraints.init().withMaxWidth(150.0)) });
     const small = manager.create(.{ ui.components.UIRect.init(0, 0, 50.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0).withGrow(1.0) });
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
-    try rel.add(&manager, big, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, small, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, big, container);
+    try addChildRelation(&manager, small, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -167,11 +171,10 @@ test "flex layout order negative and stable tie" {
     const b = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0).withOrder(-1) });
     const c = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 10.0), ui.layout.FlexItem.init().withBasis(100.0).withOrder(0) });
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
     // Add them in A, B, C order to test stability of ties
-    try rel.add(&manager, a, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, b, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, a, container);
+    try addChildRelation(&manager, b, container);
+    try addChildRelation(&manager, c, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -201,9 +204,8 @@ test "flex layout align_self override" {
     const c1 = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 20.0), ui.layout.FlexItem.init() });
     const c2 = manager.create(.{ ui.components.UIRect.init(0, 0, 100.0, 40.0), ui.layout.FlexItem.init().withAlignSelf(ui.layout.FlexItemAlign.start) });
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
-    try rel.add(&manager, c1, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c2, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, c1, container);
+    try addChildRelation(&manager, c2, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.flexLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -236,11 +238,10 @@ test "grid layout 2x2 basic" {
     const c3 = manager.create(.{ui.components.UIRect.init(0, 0, 10.0, 10.0)});
     const c4 = manager.create(.{ui.components.UIRect.init(0, 0, 10.0, 10.0)});
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
-    try rel.add(&manager, c1, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c2, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c3, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c4, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, c1, container);
+    try addChildRelation(&manager, c2, container);
+    try addChildRelation(&manager, c3, container);
+    try addChildRelation(&manager, c4, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.gridLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -293,8 +294,7 @@ test "anchor layout center" {
         ui.layout.AnchorLayout.init(.center),
     });
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
-    try rel.add(&manager, child, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, child, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.anchorLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -328,10 +328,9 @@ test "dock layout basic" {
         ui.layout.DockLayout.init(.fill),
     });
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
-    try rel.add(&manager, left, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, top, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, fill, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, left, container);
+    try addChildRelation(&manager, top, container);
+    try addChildRelation(&manager, fill, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.dockLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);
@@ -384,11 +383,10 @@ test "grid layout gaps and padding" {
     const c3 = manager.create(.{ui.components.UIRect.init(0, 0, 10.0, 10.0)});
     const c4 = manager.create(.{ui.components.UIRect.init(0, 0, 10.0, 10.0)});
 
-    const rel = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
-    try rel.add(&manager, c1, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c2, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c3, container, zevy_ecs.relations.kinds.Child);
-    try rel.add(&manager, c4, container, zevy_ecs.relations.kinds.Child);
+    try addChildRelation(&manager, c1, container);
+    try addChildRelation(&manager, c2, container);
+    try addChildRelation(&manager, c3, container);
+    try addChildRelation(&manager, c4, container);
 
     const system = zevy_ecs.ToSystem(ui.systems.gridLayoutSystem, zevy_ecs.DefaultParamRegistry);
     _ = try system.run(&manager, system.ctx);

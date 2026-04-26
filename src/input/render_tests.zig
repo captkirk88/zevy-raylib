@@ -21,7 +21,7 @@ fn deinitTest(assets: *Assets) void {
 }
 
 fn testRenderLoop(_: *Assets, prompt_atlas: *icons.IconAtlas, title: [:0]const u8) anyerror!void {
-    const start = std.time.milliTimestamp();
+    const start = @as(i64, @intFromFloat(rl.getTime() * @as(f64, @floatFromInt(std.time.ms_per_s))));
     const max_duration_ms = 5 * std.time.ms_per_s; // Run for 5 seconds
     var frame_text_buffer: [64:0]u8 = undefined;
     var debug_buffer: [128:0]u8 = undefined;
@@ -36,7 +36,7 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.IconAtlas, title: [:0]const u
     };
 
     while (!rl.windowShouldClose()) {
-        const now = std.time.milliTimestamp();
+        const now = @as(i64, @intFromFloat(rl.getTime() * @as(f64, @floatFromInt(std.time.ms_per_s))));
 
         // Handle camera panning with mouse
         if (input.getMousePosition() != null and rl.isMouseButtonDown(.left)) {

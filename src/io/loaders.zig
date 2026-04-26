@@ -220,10 +220,14 @@ pub const XmlDocumentLoader = struct {
         _ = _settings;
         _ = _file_resolver;
         const allocator = std.heap.page_allocator;
-        const file = try std.fs.openFileAbsolute(absolute_path, .{});
-        defer file.close();
+        var threaded = std.Io.Threaded.init_single_threaded;
+        const io = threaded.io();
+        const dir_path = std.fs.path.dirname(absolute_path) orelse ".";
+        const base_name = std.fs.path.basename(absolute_path);
+        var dir = try std.Io.Dir.openDirAbsolute(io, dir_path, .{});
+        defer dir.close(io);
 
-        const data = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+        const data = try dir.readFileAlloc(io, base_name, allocator, .limited(10 * 1024 * 1024));
         // XmlDocument will take ownership of `data` and free it on deinit
         return try @import("../io/xml.zig").XmlDocument.initFromSlice(allocator, data, .{});
     }
@@ -246,15 +250,19 @@ pub const InputIconsLoader = struct {
 
         const allocator = std.heap.page_allocator;
         const resolver = file_resolver orelse return error.RequiresFileResolver;
+        var threaded = std.Io.Threaded.init_single_threaded;
+        const io = threaded.io();
+        const dir_path = std.fs.path.dirname(absolute_path) orelse ".";
+        const base_name = std.fs.path.basename(absolute_path);
+        var dir = try std.Io.Dir.openDirAbsolute(io, dir_path, .{});
+        defer dir.close(io);
 
         // Read XML file into memory
-        const file = try std.fs.openFileAbsolute(absolute_path, .{});
-        defer file.close();
-        const stat = try file.stat();
+        const stat = try dir.statFile(io, base_name, .{});
         if (stat.size > 10 * 1024 * 1024) {
             return error.FileTooLarge;
         }
-        const data = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10 MB limit
+        const data = try dir.readFileAlloc(io, base_name, allocator, .limited(10 * 1024 * 1024));
 
         // Parse XML using XmlDocument and the reusable helper
         const XmlDocument = xml_mod.XmlDocument;

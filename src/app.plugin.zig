@@ -10,11 +10,15 @@ const ui = @import("gui/ui.zig");
 const assets_plugin = @import("assets.plugin.zig");
 
 /// Event emitted when the application is going to exit
-pub const ExitAppEvent = struct {};
+pub const ExitAppEvent = enum(u8) {
+    Success = 0,
+    Error = 1,
+};
 
 /// Raylib plugin for Zevy ECS
 pub fn RaylibPlugin(comptime ParamRegistry: type) type {
     return struct {
+        const Name: []const u8 = "RaylibPlugin";
         const Self = @This();
         /// Window title
         title: [:0]const u8,
@@ -31,9 +35,13 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
         /// Raylib log callback that redirects to zevy_raylib scoped logger
         raylib_logcallback: *const fn (c_int, [*c]const u8, [*c]u8) callconv(.c) void = raylib_log_callback.callback,
 
-        pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) !void {
+        pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) anyerror!void {
             const log = std.log.scoped(.zevy_raylib);
-            const sch = try e.getOrAddResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator), null);
+            const sch_ref = try e.getOrAddResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator), null);
+            defer sch_ref.deinit();
+            var sch_guard = sch_ref.lockWrite();
+            defer sch_guard.deinit();
+            const sch = sch_guard.get();
 
             try sch.registerEvent(
                 e,
@@ -58,15 +66,23 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
             }
         }
 
-        pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) void {
+        pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) anyerror!void {
             // Do not manually deinit ECS-managed resources here unless they have a different func name for deinit: the ECS manager owns resource lifetimes and will deinit them during `Manager.deinit()`.
             const log = std.log.scoped(.zevy_raylib);
             _ = ecs;
             if (!self.headless) {
                 rl.closeAudioDevice();
-                if (!rl.isAudioDeviceReady()) log.info("Audio device closed", .{}) else log.err("Audio device failed to close", .{});
+                if (!rl.isAudioDeviceReady()) {
+                    log.info("Audio device closed", .{});
+                } else {
+                    log.err("Audio device failed to close", .{});
+                }
                 rl.closeWindow();
-                if (!rl.isWindowReady()) log.info("Window closed", .{}) else log.err("Window failed to close", .{});
+                if (!rl.isWindowReady()) {
+                    log.info("Window closed", .{});
+                } else {
+                    log.err("Window failed to close", .{});
+                }
             }
         }
     };
@@ -85,10 +101,12 @@ const raylib_log_callback = struct {
         @cInclude("stdio.h");
     });
 
+    extern fn vsnprintf(dst: [*c]u8, n: usize, format: [*c]const u8, args: c_stdio.va_list) callconv(.c) c_int;
+
     fn callback(log_level: c_int, format: [*c]const u8, args: c_stdio.va_list) callconv(.c) void {
         if (format == null) return;
         var buf: [1024:0]u8 = undefined;
-        _ = c_stdio.vsprintf(&buf, format, args);
+        _ = vsnprintf(&buf, buf.len, format, args);
         const message = std.mem.span(@as([*:0]const u8, &buf));
 
         const raylib_log_level: rl.TraceLogLevel = @enumFromInt(log_level);

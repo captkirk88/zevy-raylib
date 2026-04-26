@@ -67,6 +67,8 @@ The input layer provides the following:
 
 `InputManager` is designed to be added to the ECS via the `InputPlugin` and optionally polled directly from systems. It supports event handlers and action checking API:
 
+In ECS systems, access it through the default Zevy ECS resource params, for example `zevy_ecs.params.ResMut(zevy_raylib.input.InputManager)` when the system updates input state.
+
 - `isActionActive("action_name")` — check if action is currently active
 - `wasActionTriggered("action_name")` — check a press event this frame
 - `addEventHandler` — subscribe to input events

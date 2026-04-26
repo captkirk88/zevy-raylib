@@ -47,30 +47,37 @@ pub const XmlDocument = struct {
     };
 
     const WriterState = struct {
-        file: std.fs.File,
+        io: std.Io,
+        file: std.Io.File,
         buffer: []u8,
-        file_writer: std.fs.File.Writer,
+        file_writer: std.Io.File.Writer,
         writer: xml.Writer,
 
         fn deinit(self: *WriterState, allocator: std.mem.Allocator) void {
             self.writer.deinit();
             allocator.free(self.buffer);
-            self.file.close();
+            self.file.close(self.io);
             self.* = undefined;
         }
     };
 
     pub fn openReader(allocator: std.mem.Allocator, path: []const u8, options: ReaderOptions) !XmlDocument {
-        var file = try std.fs.cwd().openFile(path, .{});
-        errdefer file.close();
-        return initReader(allocator, file, options) catch |err| {
-            file.close();
+        var threaded = std.Io.Threaded.init_single_threaded;
+        const io = threaded.io();
+        var file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        errdefer file.close(io);
+        return initReader(allocator, io, file, options) catch |err| {
+            file.close(io);
             return err;
         };
     }
 
-    pub fn initReader(allocator: std.mem.Allocator, file: std.fs.File, options: ReaderOptions) !XmlDocument {
-        const data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    pub fn initReader(allocator: std.mem.Allocator, io: std.Io, file: std.Io.File, options: ReaderOptions) !XmlDocument {
+        const buffer = try allocator.alloc(u8, options.buffer_size);
+        defer allocator.free(buffer);
+
+        var file_reader = file.reader(io, buffer);
+        const data = try file_reader.interface.allocRemaining(allocator, .limited(std.math.maxInt(usize)));
         errdefer allocator.free(data);
 
         const static_reader: xml.Reader.Static = xml.Reader.Static.init(allocator, data, options.xml);
@@ -82,7 +89,7 @@ pub const XmlDocument = struct {
         };
 
         // we read the file contents into `data` so we can close the file here
-        _ = file.close();
+        file.close(io);
 
         return .{
             .allocator = allocator,
@@ -110,20 +117,23 @@ pub const XmlDocument = struct {
     }
 
     pub fn openWriter(allocator: std.mem.Allocator, path: []const u8, options: WriterOptions) !XmlDocument {
-        var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-        errdefer file.close();
-        return initWriter(allocator, file, options) catch |err| {
-            file.close();
+        var threaded = std.Io.Threaded.init_single_threaded;
+        const io = threaded.io();
+        var file = try std.Io.Dir.cwd().createFile(io, path, .{ .truncate = true });
+        errdefer file.close(io);
+        return initWriter(allocator, io, file, options) catch |err| {
+            file.close(io);
             return err;
         };
     }
 
-    pub fn initWriter(allocator: std.mem.Allocator, file: std.fs.File, options: WriterOptions) !XmlDocument {
+    pub fn initWriter(allocator: std.mem.Allocator, io: std.Io, file: std.Io.File, options: WriterOptions) !XmlDocument {
         const buffer = try allocator.alloc(u8, options.buffer_size);
         errdefer allocator.free(buffer);
-        const file_writer = file.writer(buffer);
+        const file_writer = file.writer(io, buffer);
 
         var state: WriterState = .{
+            .io = io,
             .file = file,
             .buffer = buffer,
             .file_writer = file_writer,
@@ -184,7 +194,6 @@ pub const XmlDocument = struct {
         const raw = try self.requireAttributeValue(name);
         return std.fmt.parseInt(T, raw, 10) catch return error.InvalidIntegerValue;
     }
-
 };
 
 pub fn unescapeXmlEntities(allocator: std.mem.Allocator, in: []const u8) ![]u8 {

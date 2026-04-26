@@ -1,49 +1,48 @@
 .{
     .name = .zevy_raylib,
 
-    .version = "0.0.1",
+    .version = "0.1.0",
 
     .fingerprint = 0x73e22ea89041ce9, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.15.1",
-    // This field is optional.
-    // Each dependency must either provide a `url` and `hash`, or a `path`.
-    // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
-    // Once all dependencies are fetched, `zig build` no longer requires
-    // internet connectivity.
+    .minimum_zig_version = "0.16.0",
+
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#42d60ef5132b4e49f25d483a9e0bf3cc381011c4",
-            .hash = "zevy_ecs-1.56.0-VoL9mfcHBwC2yi_OpqH7utw9PuTC7NafZszTiHfwaf1X",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#f896588c697247d98d068f992cbe82cf5f1e5ce9",
+            .hash = "zevy_ecs-2.5.0-VoL9mTiGCABi3l8aO_zyOr5bDTtFHPPFRnvuM2kvPFhA",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",
         // },
         .raylib_zig = .{
-            .url = "git+https://github.com/raylib-zig/raylib-zig#3cd4d3179d967fc8b931514603fdbc4a43a1d771",
-            .hash = "raylib_zig-5.6.0-dev-KE8REE1LBQCL7lia-DwUkusWI1G4kJmhtatLh2kNsuiE",
+            .url = "git+https://github.com/raylib-zig/raylib-zig#4b6a05cd102d51f00523dd5c5e18e628df359d20",
+            .hash = "raylib_zig-5.6.0-dev-KE8REKNmBQDek2Sz27ULioxYpY9IYR0K0CeIC-iJRLCI",
             .ignore = true,
         },
         .known_folders = .{
-            .url = "git+https://github.com/ziglibs/known-folders#83d39161eac2ed6f37ad3cb4d9dd518696ce90bb",
-            .hash = "known_folders-0.0.0-Fy-PJv3LAAABBRVoZWVrKZdyLoUfl5VRY5fqRRRdnF5L",
+            .url = "git+https://github.com/ziglibs/known-folders#5865fd0f1bc5241de8355fcf2066692bf1b0ea02",
+            .hash = "known_folders-0.0.0-Fy-PJpLKAAAmMEnwre7fFcfsxBGULd24N8Bp2pWEu3sf",
             .ignore = true,
         },
         .xml = .{
-            .url = "git+https://github.com/ianprime0509/zig-xml#8874de5b846f4e3e806a062cd11a01b2bb90fc7a",
-            .hash = "xml-0.2.0-ZTbP3wE6AgCsnyZut_plzxi6WB2tzzh3kFRBOp3AL7n9",
+            .url = "git+https://github.com/ianprime0509/zig-xml#b97f2ab4868ae3cac9902b33a40d3f31d2df739d",
+            .hash = "xml-0.2.0-ZTbP3yI6AgB9Rpd2hQrueO63ib0Bm6mQiL_WB1t7JAmP",
             .ignore = true,
         },
         .zevy_reflect = .{
-            .url = "git+https://github.com/captkirk88/zevy-reflect#e67338b3af4a349fc28405e067aeeb4fc6ebecee",
-            .hash = "zevy_reflect-0.1.1-8SzYxp-EAgBh15o08H-D0pQr947iCr2L4ykj7WrUutrw",
+            .url = "git+https://github.com/captkirk88/zevy-reflect#ff340d60c5103e401bfabc3e3d88190b7b05a582",
+            .hash = "zevy_reflect-1.3.0-Ob80cL4lAwAxtbOO5oAqqpmwCAXLmb1NJyjcHz78iJ8B",
         },
         .zevy_mem = .{
-            .url = "git+https://github.com/captkirk88/zevy-mem#25828047262ad07974ee2a70f3785fe5e8615eea",
-            .hash = "zevy_mem-0.0.1-jK9L0bEyAwBCQAlAvIs637HC6Ks_FI7hPKooaPx7PQFa",
+            .url = "git+https://github.com/captkirk88/zevy-mem#e94c598f8e60ca413a41ac1fde64569d5c932c8e",
+            .hash = "zevy_mem-1.2.1-jK9L0ak8AwA_fFzDRbCmoqGwoRhRkMC5HEEaRCYVlfWG",
         },
+        // .zevy_buildtools = .{
+        //     .path = "../zevy-buildtools",
+        // },
         .zevy_buildtools = .{
-            .url = "git+https://github.com/captkirk88/zevy-buildtools#561ed918d436408d0d2e41ec7d779a2aae3827ed",
-            .hash = "zevy_buildtools-0.0.0-So808V6LAAAVAZIE09gpma9MunuIWcGA5ElEK4i9K406",
+            .url = "git+https://github.com/captkirk88/zevy-buildtools#05641c88d798956ce32b29d28cce22063d7f8ab0",
+            .hash = "zevy_buildtools-1.3.1-AG3r_BgMAQDR1ZMxA86vSPXobEnPLWE2--8gxLRGyqYI",
         },
     },
     .paths = .{

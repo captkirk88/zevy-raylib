@@ -18,28 +18,38 @@ pub const input = @import("ui_input.zig");
 
 pub fn UIPlugin(comptime ParamRegistry: type) type {
     return struct {
-        pub fn build(self: *@This(), e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) !void {
+        const Name: []const u8 = "UIPlugin";
+
+        pub fn build(self: *@This(), e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) anyerror!void {
             _ = self;
             _ = plugin_manager;
 
-            const input_manager = e.getResource(_input.InputManager) orelse
+            const input_manager_ref = e.getResource(_input.InputManager) orelse
                 return error.MissingInputManager;
+            defer input_manager_ref.deinit();
 
-            input.setupUIInputBindings(input_manager, e.allocator) catch |err| {
+            var input_manager_guard = input_manager_ref.lockWrite();
+            defer input_manager_guard.deinit();
+
+            input.setupUIInputBindings(input_manager_guard.get(), e.allocator) catch |err| {
                 std.log.err("Failed to setup UI input bindings: {}", .{err});
                 return err;
             };
 
-            const assets = e.getResource(_assets.Assets) orelse
+            const assets_ref = e.getResource(_assets.Assets) orelse
                 return error.MissingAssetsResource;
-            _ = assets;
+            defer assets_ref.deinit();
 
-            const scheduler = e.getResource(
+            const scheduler_ref = e.getResource(
                 zevy_ecs.schedule.Scheduler,
             ) orelse try e.addResource(
                 zevy_ecs.schedule.Scheduler,
                 try zevy_ecs.schedule.Scheduler.init(e.allocator),
             );
+            defer scheduler_ref.deinit();
+            var scheduler_guard = scheduler_ref.lockWrite();
+            defer scheduler_guard.deinit();
+            const scheduler = scheduler_guard.get();
 
             try scheduler.registerEvent(e, input.UIClickEvent, ParamRegistry);
             try scheduler.registerEvent(e, input.UIHoverEvent, ParamRegistry);
@@ -108,15 +118,7 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
             scheduler.addSystem(
                 e,
                 zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
-                systems.uiRenderSystem,
-                ParamRegistry,
-            );
-
-            // Input key rendering system
-            scheduler.addSystem(
-                e,
-                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw),
-                systems.uiInputKeyRenderSystem,
+                zevy_ecs.chain(.{ systems.uiRenderSystem, systems.uiInputKeyRenderSystem }),
                 ParamRegistry,
             );
         }
@@ -129,7 +131,7 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
 }
 
 test {
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
     std.testing.refAllDecls(@import("ui_tests.zig"));
     std.testing.refAllDecls(@import("ui_render_tests.zig"));
 }

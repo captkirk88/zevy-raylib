@@ -79,7 +79,7 @@ pub const InputEvent = struct {
         return InputEvent{
             .action = action,
             .chord = chord,
-            .timestamp = std.time.microTimestamp(),
+            .timestamp = @as(i64, @intFromFloat(rl.getTime() * @as(f64, @floatFromInt(std.time.us_per_s)))),
         };
     }
 };
@@ -227,16 +227,19 @@ pub const InputManager = struct {
         // Check gamepad buttons (check up to 4 gamepads)
         if (self.raylib.is_gamepad_available != null and self.raylib.is_gamepad_button_down != null) {
             if (self.raylib.is_gamepad_available) |gamepad_available_fn| {
-                for (0..4) |gamepad_id| {
-                    if (gamepad_available_fn(@intCast(gamepad_id))) {
-                        const buttons_to_check = std.enums.values(input_types.GamepadButton);
+                if (self.raylib.is_gamepad_button_down) |is_gamepad_button_down_fn| {
+                    for (0..4) |gamepad_id| {
+                        if (gamepad_available_fn(@intCast(gamepad_id))) {
+                            const buttons_to_check = std.enums.values(input_types.GamepadButton);
 
-                        for (buttons_to_check) |button| {
-                            if (self.raylib.is_gamepad_button_down.?(@intCast(gamepad_id), @intFromEnum(button))) {
-                                try self.current_state.add(InputKey{ .gamepad = .{
-                                    .gamepad_id = @intCast(gamepad_id),
-                                    .button = button,
-                                } });
+                            for (buttons_to_check) |button| {
+                                if (button == .any) continue;
+                                if (is_gamepad_button_down_fn(@intCast(gamepad_id), @intFromEnum(button))) {
+                                    try self.current_state.add(InputKey{ .gamepad = .{
+                                        .gamepad_id = @intCast(gamepad_id),
+                                        .button = button,
+                                    } });
+                                }
                             }
                         }
                     }
@@ -377,7 +380,7 @@ pub const InputManager = struct {
 
     /// Get debug information about current input state
     pub fn getDebugInfo(self: *const InputManager, allocator: std.mem.Allocator) ![]u8 {
-        var result = std.ArrayList(u8){};
+        var result: std.ArrayList(u8) = .empty;
         defer result.deinit(allocator);
 
         try result.appendSlice(allocator, "Current Input State:\n");

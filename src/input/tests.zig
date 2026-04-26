@@ -308,14 +308,14 @@ test "Binding validation" {
 
     // Add conflicting bindings (same chord, different actions)
     {
-        var chord = InputChord{ .keys = std.ArrayList(InputKey){} };
+        var chord = InputChord{ .keys = .empty };
         try chord.add(allocator, InputKey{ .keyboard = .key_space });
         const action = try InputAction.init(allocator, "jump", "Jump action");
         try bindings.addBinding(InputBinding.init(chord, action));
     }
 
     {
-        var chord = InputChord{ .keys = std.ArrayList(InputKey){} };
+        var chord = InputChord{ .keys = .empty };
         try chord.add(allocator, InputKey{ .keyboard = .key_space });
         const action = try InputAction.init(allocator, "fire", "Fire weapon");
         try bindings.addBinding(InputBinding.init(chord, action));

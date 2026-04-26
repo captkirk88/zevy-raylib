@@ -3,21 +3,18 @@ const input = @import("input.zig");
 const zevy_ecs = @import("zevy_ecs");
 
 pub const Bindings = input.InputManager;
+const BindingsParam = *Bindings;
 
 pub const InputBindingsParam = struct {
-    pub fn analyze(comptime T: type) ?type {
-        const type_info = @typeInfo(T);
-        if (type_info == .pointer) {
-            const Child = type_info.pointer.child;
-            return analyze(Child);
-        }
-        if (T == Bindings) {
-            return T;
-        }
-        return null;
+    pub fn matches(comptime T: type) bool {
+        return T == BindingsParam;
     }
 
-    pub fn apply(e: *zevy_ecs.Manager, comptime _: type) anyerror!*Bindings {
+    pub fn apply(e: *zevy_ecs.Manager, comptime T: type) anyerror!T {
+        if (T != BindingsParam) {
+            @compileError("InputBindingsParam only supports *Bindings system parameters");
+        }
+
         if (e.hasResource(Bindings) == false) {
             const rel_mgr = Bindings.init(e.allocator);
             return try e.addResource(Bindings, rel_mgr);

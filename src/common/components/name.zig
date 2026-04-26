@@ -7,6 +7,8 @@
 const std = @import("std");
 
 pub const Name = struct {
+    pub const empty: Name = .{};
+
     /// Maximum number of bytes stored for a name (not including an implicit
     /// null terminator). Chosen to fit common use-cases while keeping the
     /// component's memory footprint small.
@@ -34,7 +36,7 @@ pub const Name = struct {
     pub fn set(self: *Name, s: []const u8) void {
         const tocopy = if (s.len < Name.MAX_LEN) s.len else Name.MAX_LEN;
         // Copy bytes (no allocation); remaining bytes beyond `len` are unspecified.
-        std.mem.copy(u8, self.buf[0..tocopy], s[0..tocopy]);
+        @memmove(self.buf[0..tocopy], s[0..tocopy]);
         self.len = @as(u8, tocopy);
     }
 

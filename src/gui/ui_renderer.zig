@@ -330,17 +330,17 @@ pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void 
     const bounds = rect.toRectangle();
 
     // Convert string slices to null-terminated pointers for raygui
-    var tab_ptrs: [32][*:0]const u8 = undefined;
+    var tab_ptrs: [32][*:0]u8 = undefined;
     const tab_count = @min(tab_bar.tabs.len, 32);
     for (tab_bar.tabs[0..tab_count], 0..) |tab, i| {
-        tab_ptrs[i] = tab.ptr;
+        tab_ptrs[i] = @constCast(tab.ptr);
     }
 
     _ = rg.tabBar(bounds, tab_ptrs[0..tab_count], &tab_bar.active);
 }
 
 /// Render input key icon/text for a UI element.
-pub fn renderInputKeyAt(bounds: rl.Rectangle, key: input.InputKey, atlas: ?*const io_types.IconAtlas, style: *style_mod.UIStyle) void {
+pub fn renderInputKeyAt(bounds: rl.Rectangle, key: input.InputKey, atlas: ?*const io_types.IconAtlas, style: *const style_mod.UIStyle) void {
     const st = style.input_icon;
 
     const x: f32 = bounds.x + 4.0;
