@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const rl = @import("raylib");
 const input = @import("../input/input.zig");
 const icons = @import("icons.zig");
@@ -9,8 +10,69 @@ const SKIP_IN_DEBUG = true;
 const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
+/// Watchdog timeout: panic if a test takes longer than this many seconds.
+const TEST_SKIP_TIMEOUT_SECS = 15;
+const TEST_TIMEOUT_POLL_MS: u64 = 100;
+
+fn sleepForTimeoutPoll(ms: u64) void {
+    switch (builtin.os.tag) {
+        .windows => {
+            const delay_interval: std.os.windows.LARGE_INTEGER =
+                -@as(std.os.windows.LARGE_INTEGER, @intCast(ms)) * (std.time.ns_per_ms / 100);
+            _ = std.os.windows.ntdll.NtDelayExecution(.TRUE, &delay_interval);
+        },
+        else => {
+            const sec_type = @typeInfo(std.posix.timespec).@"struct".fields[0].type;
+            const nsec_type = @typeInfo(std.posix.timespec).@"struct".fields[1].type;
+
+            var timespec = std.posix.timespec{
+                .sec = @as(sec_type, @intCast(@divFloor(ms, std.time.ms_per_s))),
+                .nsec = @as(nsec_type, @intCast(@mod(ms, std.time.ms_per_s) * std.time.ns_per_ms)),
+            };
+
+            _ = std.posix.system.nanosleep(&timespec, &timespec);
+        },
+    }
+}
+
+/// Watchdog guard: spawns a background thread that panics if the test does not
+/// complete (i.e. call `deinit`) within TEST_SKIP_TIMEOUT_SECS seconds.
+/// This prevents render-loop bugs or GPU stalls from hanging the test suite
+/// forever.
+const TimeoutGuard = struct {
+    stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    thread: ?std.Thread = null,
+
+    fn start(self: *TimeoutGuard, test_name: []const u8) !void {
+        self.thread = try std.Thread.spawn(.{}, watchdogMain, .{ &self.stop, test_name });
+    }
+
+    fn deinit(self: *TimeoutGuard) void {
+        self.stop.store(true, .release);
+        if (self.thread) |thread| thread.join();
+        self.thread = null;
+    }
+
+    fn watchdogMain(stop: *std.atomic.Value(bool), test_name: []const u8) void {
+        var remaining_ms: u64 = TEST_SKIP_TIMEOUT_SECS * std.time.ms_per_s;
+
+        while (!stop.load(.acquire) and remaining_ms > 0) {
+            const sleep_ms = @min(remaining_ms, TEST_TIMEOUT_POLL_MS);
+            sleepForTimeoutPoll(sleep_ms);
+            remaining_ms -= sleep_ms;
+        }
+
+        if (!stop.load(.acquire)) {
+            std.debug.panic("Render test timed out after {d}s: {s}", .{ TEST_SKIP_TIMEOUT_SECS, test_name });
+        }
+    }
+};
+
 fn initTest(name: [:0]const u8) anyerror!Assets {
     rl.initWindow(1200, 800, name);
+    // Disable ESC-closes-window so a key press in a previous test does not
+    // cause windowShouldClose() to return true immediately in the next test.
+    rl.setExitKey(.null);
     const allocator = std.testing.allocator;
     return Assets.init(allocator);
 }
@@ -22,10 +84,9 @@ fn deinitTest(assets: *Assets) void {
 
 fn testRenderLoop(_: *Assets, prompt_atlas: *icons.IconAtlas, title: [:0]const u8) anyerror!void {
     const start = @as(i64, @intFromFloat(rl.getTime() * @as(f64, @floatFromInt(std.time.ms_per_s))));
-    const max_duration_ms = 5 * std.time.ms_per_s; // Run for 5 seconds
+    const max_duration_ms = 5 * std.time.ms_per_s; // Run for at most 5 seconds from start
     var frame_text_buffer: [64:0]u8 = undefined;
     var debug_buffer: [128:0]u8 = undefined;
-    var last_activity_time = start;
 
     // Setup camera for panning
     var camera: rl.Camera2D = .{
@@ -36,18 +97,19 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.IconAtlas, title: [:0]const u
     };
 
     while (!rl.windowShouldClose()) {
+        if (!rl.isWindowReady()) break;
         const now = @as(i64, @intFromFloat(rl.getTime() * @as(f64, @floatFromInt(std.time.ms_per_s))));
+
+        // Absolute timeout from start — ensures the loop always exits in bounded
+        // time regardless of mouse/keyboard state carried over from a previous test.
+        if (now - start >= max_duration_ms) break;
 
         // Handle camera panning with mouse
         if (input.getMousePosition() != null and rl.isMouseButtonDown(.left)) {
-            last_activity_time = now;
             const mouse_delta = rl.getMouseDelta();
             camera.target.x -= mouse_delta.x / camera.zoom;
             camera.target.y -= mouse_delta.y / camera.zoom;
         }
-
-        // Check if enough time has passed without activity
-        if (now - last_activity_time >= max_duration_ms) break;
 
         rl.beginDrawing();
         rl.clearBackground(rl.Color.black);
@@ -93,7 +155,7 @@ fn testRenderLoop(_: *Assets, prompt_atlas: *icons.IconAtlas, title: [:0]const u
 
             const text_width: i32 = rl.measureText(name_z, @intCast(label_font_size));
             const cell_width: i32 = @max(frame_size, text_width) + cell_padding * 2;
-            const label_x = x + @divExact(cell_width - text_width, 2);
+            const label_x = x + @divTrunc(cell_width - text_width, 2);
             rl.drawText(name_z, label_x, y + frame_size + 4, @intCast(label_font_size), rl.Color.gray);
 
             frame_index += 1;
@@ -116,11 +178,18 @@ test "Render Keyboard & Mouse Icons" {
         return error.SkipZigTest;
     }
 
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Keyboard & Mouse Icons");
+    defer timeout_guard.deinit();
+
     var assets = try initTest("Keyboard & Mouse Icons");
     defer deinitTest(&assets);
 
-    const uri = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
-    var atlas = try icons.parseKeyboardMouse(assets.allocator, uri, &assets);
+    var atlas = try icons.parseKeyboardMouse(
+        assets.allocator,
+        "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml",
+        &assets,
+    );
     defer atlas.deinit();
     try atlas.populateKeyboardMappings();
 
@@ -132,11 +201,18 @@ test "Render Xbox Icons" {
         return error.SkipZigTest;
     }
 
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Xbox Icons");
+    defer timeout_guard.deinit();
+
     var assets = try initTest("Xbox Icons");
     defer deinitTest(&assets);
 
-    const uri = "embedded://Xbox Series/xbox-series_sheet_default.xml";
-    var atlas = try icons.parseXbox(assets.allocator, uri, &assets);
+    var atlas = try icons.parseXbox(
+        assets.allocator,
+        "embedded://Xbox Series/xbox-series_sheet_default.xml",
+        &assets,
+    );
     defer atlas.deinit();
 
     try testRenderLoop(&assets, &atlas, "Xbox Icons");
@@ -147,11 +223,18 @@ test "Render PlayStation Icons" {
         return error.SkipZigTest;
     }
 
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render PlayStation Icons");
+    defer timeout_guard.deinit();
+
     var assets = try initTest("PlayStation Icons");
     defer deinitTest(&assets);
 
-    const uri = "embedded://PlayStation Series/playstation-series_sheet_default.xml";
-    var atlas = try icons.parsePlaystation(assets.allocator, uri, &assets);
+    var atlas = try icons.parsePlaystation(
+        assets.allocator,
+        "embedded://PlayStation Series/playstation-series_sheet_default.xml",
+        &assets,
+    );
     defer atlas.deinit();
 
     try testRenderLoop(&assets, &atlas, "PlayStation Icons");
@@ -162,11 +245,18 @@ test "Render Nintendo Switch Icons" {
         return error.SkipZigTest;
     }
 
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Nintendo Switch Icons");
+    defer timeout_guard.deinit();
+
     var assets = try initTest("Nintendo Switch Icons");
     defer deinitTest(&assets);
 
-    const uri = "embedded://Nintendo Switch 2/nintendo-switch-2_sheet_default.xml";
-    var atlas = try icons.parseNintendoSwitch(assets.allocator, uri, &assets);
+    var atlas = try icons.parseNintendoSwitch(
+        assets.allocator,
+        "embedded://Nintendo Switch 2/nintendo-switch-2_sheet_default.xml",
+        &assets,
+    );
     defer atlas.deinit();
 
     try testRenderLoop(&assets, &atlas, "Nintendo Switch Icons");
@@ -177,11 +267,18 @@ test "Render Steam Deck Icons" {
         return error.SkipZigTest;
     }
 
+    var timeout_guard: TimeoutGuard = .{};
+    try timeout_guard.start("Render Steam Deck Icons");
+    defer timeout_guard.deinit();
+
     var assets = try initTest("Steam Deck Icons");
     defer deinitTest(&assets);
 
-    const uri = "embedded://Steam Deck/steam-deck_sheet_default.xml";
-    var atlas = try icons.parseSteamDeck(assets.allocator, uri, &assets);
+    var atlas = try icons.parseSteamDeck(
+        assets.allocator,
+        "embedded://Steam Deck/steam-deck_sheet_default.xml",
+        &assets,
+    );
     defer atlas.deinit();
 
     try testRenderLoop(&assets, &atlas, "Steam Deck Icons");

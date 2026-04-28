@@ -203,11 +203,16 @@ pub fn AssetManagerWithProcessor(comptime AssetType: type, comptime LoaderType: 
         }
 
         pub fn loadAsset(self: *Self, file: []const u8, settings: anytype) error{ InvalidPath, OutOfMemory }!AssetHandle {
-
-            // Check if already loaded using direct string comparison
+            // Check if already loaded — must hold the mutex here to avoid a
+            // data race: another thread may concurrently call process() which
+            // writes to self.assets.  (loadAssetNow uses the same pattern.)
+            self.mutex.lock();
             if (self.assets.get(file)) |entry| {
-                return entry.id;
+                const existing = entry.id;
+                self.mutex.unlock();
+                return existing;
             }
+            self.mutex.unlock();
 
             const id = generateHandle(file);
 
@@ -221,7 +226,6 @@ pub fn AssetManagerWithProcessor(comptime AssetType: type, comptime LoaderType: 
             defer self.mutex.unlock();
             self.queue.append(self.allocator, req) catch {
                 self.allocator.free(req.file); // Free the owned file string on failure
-                //self.mutex.unlock();
                 return error.OutOfMemory;
             };
 

@@ -41,7 +41,6 @@ fn sleepForTimeoutPoll(ms: u64) void {
 const TimeoutGuard = struct {
     stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     thread: ?std.Thread = null,
-    
 
     fn start(self: *TimeoutGuard, test_name: []const u8) !void {
         self.thread = try std.Thread.spawn(.{}, watchdogMain, .{ &self.stop, test_name });
@@ -90,6 +89,9 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
     const allocator = std.testing.allocator;
 
     rl.initWindow(800, 600, name);
+    // Disable ESC-closes-window so a key press in a previous test does not
+    // cause windowShouldClose() to return true immediately in the next test.
+    rl.setExitKey(.null);
     rl.setTargetFPS(60);
 
     var ecs = try zevy_ecs.Manager.init(allocator);
@@ -141,10 +143,13 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
         zevy_ecs.DefaultParamRegistry,
     );
 
-    // UI interaction detection relies on InputManager having been updated
+    // UI interaction detection relies on InputManager having been updated (PreUpdate).
+    // Must run at Update (after PreUpdate completes) so the concurrent async dispatch
+    // within a stage cannot race: uiInteractionDetectionSystem acquiring lockRead before
+    // testInputUpdateSystem acquires lockWrite would read stale input state.
     scheduler.addSystem(
         &ecs,
-        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate),
+        zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
         ui.input.uiInteractionDetectionSystem,
         zevy_ecs.DefaultParamRegistry,
     );
@@ -189,7 +194,9 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
 }
 
 fn deinitTest(ecs: *zevy_ecs.Manager) void {
-    runSchedulerStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last)) catch {};
+    // Run from Last → Exit/Max so cleanup systems (e.g. event store cleanup)
+    // actually execute.
+    runSchedulerStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit)) catch {};
     ecs.deinit();
     rl.closeWindow();
 }
@@ -224,12 +231,8 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: zevy_ecs.params.Com
 
 // Small helper system used only in tests to ensure InputManager.update() is called
 fn testInputUpdateSystem(
-    manager: zevy_ecs.params.Commands,
     input_mgr: zevy_ecs.params.ResMut(input.InputManager),
-    style_res: zevy_ecs.params.Res(style.UIStyle),
 ) !void {
-    _ = manager;
-    _ = style_res;
     try input_mgr.get().update();
 }
 
@@ -570,41 +573,43 @@ test "UI Focus Navigation Demo" {
     var ecs = try initTest("UI Focus Navigation Demo", "Use [Tab]");
     defer deinitTest(&ecs);
 
-    const sch = ecs.getResource(zevy_ecs.schedule.Scheduler).?;
-    defer sch.deinit();
-    var sch_guard = sch.lockWrite();
-    defer sch_guard.deinit();
+    {
+        const sch = ecs.getResource(zevy_ecs.schedule.Scheduler).?;
+        defer sch.deinit();
+        var sch_guard = sch.lockWrite();
+        defer sch_guard.deinit();
 
-    // Create three focusable buttons laid out horizontally
-    const btn1 = ecs.create(.{
-        comps.UIRect.init(160, 240, 160, 48),
-        comps.UIButton.init("First"),
-        comps.UIFocusable{},
-    });
+        // Create three focusable buttons laid out horizontally
+        const btn1 = ecs.create(.{
+            comps.UIRect.init(160, 240, 160, 48),
+            comps.UIButton.init("First"),
+            comps.UIFocusable{},
+        });
 
-    const btn2 = ecs.create(.{
-        comps.UIRect.init(340, 240, 160, 48),
-        comps.UIButton.init("Second"),
-        comps.UIFocusable{},
-    });
+        const btn2 = ecs.create(.{
+            comps.UIRect.init(340, 240, 160, 48),
+            comps.UIButton.init("Second"),
+            comps.UIFocusable{},
+        });
 
-    const btn3 = ecs.create(.{
-        comps.UIRect.init(520, 240, 160, 48),
-        comps.UIButton.init("Third"),
-        comps.UIFocusable{},
-    });
+        const btn3 = ecs.create(.{
+            comps.UIRect.init(520, 240, 160, 48),
+            comps.UIButton.init("Third"),
+            comps.UIFocusable{},
+        });
 
-    // Give initial focus to the first button so navigation has a starting point
-    // Add initial UIFocus
-    try ecs.addComponent(btn1, comps.UIFocus, .{});
-    // Silence unused-variable warnings for the other entities
-    _ = btn2;
-    _ = btn3;
+        // Give initial focus to the first button so navigation has a starting point
+        // Add initial UIFocus
+        try ecs.addComponent(btn1, comps.UIFocus, .{});
+        // Silence unused-variable warnings for the other entities
+        _ = btn2;
+        _ = btn3;
 
-    // Register the focus navigation system for this test so Tab will cycle focus
-    sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
-    // Add our debug draw system so focused element is outlined
-    sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
+        // Register the focus navigation system for this test so Tab will cycle focus
+        sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
+        // Add our debug draw system so focused element is outlined
+        sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
+    }
 
     try testLoop(&ecs, struct {
         fn run(e: zevy_ecs.params.Commands) void {
