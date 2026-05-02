@@ -63,7 +63,7 @@ fn movementSystem(
     }
 }
 
-// Example system that renders sprites
+// Example system that renders circles based on their Position and Sprite components
 fn renderSystem(
     manager: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { pos: Position, sprite: Sprite }),
@@ -114,10 +114,25 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
     const dt_ptr = try ecs.addResource(DeltaTime, fixed_dt);
     defer dt_ptr.deinit();
 
-    try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).subtract(1));
+    var eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First).subtract(1));
+    if (eg.hasErrors()) {
+        std.log.err("Errors during PreStartup -> First stage:", .{});
+        var iter = eg.iterator();
+        while (iter.next()) |err| {
+            std.log.err("- {s}", .{@errorName(err)});
+        }
+    }
+
     var exit_app_event: zevy_raylib.ExitAppEvent = .Success;
     while (!rl.windowShouldClose()) {
-        try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).subtract(1));
+        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).subtract(1));
+        if (eg.hasErrors()) {
+            std.log.err("Errors during First -> PreUpdate stage:", .{});
+            var iter = eg.iterator();
+            while (iter.next()) |err| {
+                std.log.err("- {s}", .{@errorName(err)});
+            }
+        }
         {
             if (ecs.getResource(zevy_ecs.EventStore(zevy_raylib.ExitAppEvent))) |exit_app_event_store_ptr| {
                 defer exit_app_event_store_ptr.deinit();
@@ -144,7 +159,14 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
             }
 
             // Run PreUpdate stage (input updates happen here)
-            try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).subtract(1));
+            eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).subtract(1));
+            if (eg.hasErrors()) {
+                std.log.err("Errors during PreUpdate -> PreDraw stage:", .{});
+                var iter = eg.iterator();
+                while (iter.next()) |err| {
+                    std.log.err("- {s}", .{@errorName(err)});
+                }
+            }
 
             updates += 1;
             if (updates > 5) break; // avoid too many catch-up updates per frame
@@ -157,7 +179,14 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
         rl.clearBackground(rl.Color.black);
 
         // Run render systems (extended to include UI stage at PostDraw + 1000)
-        try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).subtract(1));
+        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).subtract(1));
+        if (eg.hasErrors()) {
+            std.log.err("Errors during PreDraw -> Last stage:", .{});
+            var iter = eg.iterator();
+            while (iter.next()) |err| {
+                std.log.err("- {s}", .{@errorName(err)});
+            }
+        }
 
         // Display FPS
         rl.drawFPS(10, 10);
@@ -170,7 +199,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
             10,
             rl.getScreenHeight() - 30,
             16,
-            rl.Color.yellow,
+            rl.Color.black,
         );
         rl.drawText("Zevy Raylib Plugin Integration Example", 10, 40, 20, rl.Color.lime);
         rl.drawText("Press ESC to exit", 10, 70, 16, rl.Color.light_gray);
@@ -180,7 +209,14 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
         rl.drawText(entity_count, 10, 100, 16, rl.Color.white);
     }
 
-    try scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Max).subtract(1));
+    eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Max));
+    if (eg.hasErrors()) {
+        std.log.err("Errors during Exit -> Max stage:", .{});
+        var iter = eg.iterator();
+        while (iter.next()) |err| {
+            std.log.err("- {s}", .{@errorName(err)});
+        }
+    }
 
     return exit_app_event;
 }
