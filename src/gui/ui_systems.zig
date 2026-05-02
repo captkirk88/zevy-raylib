@@ -19,6 +19,9 @@ comptime {
 pub fn startupUiSystem(
     commands: zevy_ecs.params.Commands,
 ) !void {
+    // Raylib UI startup requires a render device.
+    if (!rl.isWindowReady()) return;
+
     rg.loadStyleDefault();
     const default_font = try rl.getFontDefault();
     rg.setFont(default_font);
@@ -539,6 +542,9 @@ pub fn uiRenderSystem(
     // Query for tab bars
     tab_bar_query: TabBarRenderQuery,
 ) anyerror!void {
+    // Early out if window not ready to avoid unnecessary processing
+    if (!rl.isWindowReady()) return;
+
     // Render panels first (backgrounds)
     var panel_count: usize = 0;
     while (panel_query.next()) |q| {
@@ -677,6 +683,9 @@ pub fn uiInputKeyRenderSystem(
     style: zevy_ecs.params.Res(@import("style.zig").UIStyle),
     icon_atlas: zevy_ecs.params.Res(ui_resources.UIIconAtlasHandle),
 ) anyerror!void {
+    // Early out if window not ready to avoid unnecessary processing
+    if (!rl.isWindowReady()) return;
+
     while (input_key_query.next()) |q| {
         const ui_key: *components.UIInputKey = q.input_key;
         const parent: zevy_ecs.Entity = q.children.target;
@@ -791,7 +800,9 @@ pub fn gridLayoutSystem(
         defer child_infos.deinit(commands.allocator());
 
         for (children) |child| {
-            if (try commands.manager().getComponent(child, components.UIRect)) |child_rect| {
+            var ent_cmds = try commands.entity(child);
+            defer ent_cmds.deinit();
+            if (try ent_cmds.get(components.UIRect)) |child_rect| {
                 try child_infos.append(commands.allocator(), ChildInfo{
                     .child = child,
                     .rect = child_rect,
@@ -849,8 +860,10 @@ pub fn anchorLayoutSystem(
         if (children.len == 0) continue;
 
         for (children) |child| {
-            const rect = try commands.manager().getComponent(child, components.UIRect) orelse continue;
-            const anchor = try commands.manager().getComponent(child, layout.AnchorLayout) orelse continue;
+            var ent_cmds = try commands.entity(child);
+            defer ent_cmds.deinit();
+            const rect = try ent_cmds.get(components.UIRect) orelse continue;
+            const anchor = try ent_cmds.get(layout.AnchorLayout) orelse continue;
 
             const cw = rect.width;
             const ch = rect.height;

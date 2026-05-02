@@ -17,10 +17,10 @@ pub const FileResolver = struct {
     scheme_registry: ?*schemes.SchemeRegistry = null,
 
     /// Resolve a relative path to an absolute path within the base directory
-    resolve_path: *const fn (self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) std.mem.Allocator.Error![]u8,
+    resolve_path: *const fn (self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) std.mem.Allocator.Error![]u8 = null,
 
     /// Check if a relative path exists within the base directory
-    path_exists: *const fn (self: *const FileResolver, relative_path: []const u8) bool,
+    path_exists: *const fn (self: *const FileResolver, relative_path: []const u8) bool = null,
     /// Pointer to the Loaders registry so a loader can request other
     /// asset types (via a small, typed API) without importing concrete managers.
     loaders: *Loaders,
@@ -42,7 +42,11 @@ pub const FileResolver = struct {
             }
         }
         // Fall back to filesystem-based resolution
-        return self.resolve_path(self, allocator, relative_path);
+        if (self.resolve_path) |resolve_path_fn| {
+            return resolve_path_fn(self, allocator, relative_path);
+        } else {
+            return error.PathResolutionNotSupported;
+        }
     }
 
     /// Check if a relative path exists, using scheme registry if original_uri has a scheme
@@ -69,7 +73,11 @@ pub const FileResolver = struct {
             }
         }
         // Fall back to filesystem-based check
-        return self.path_exists(self, relative_path);
+        if (self.path_exists) |path_exists_fn| {
+            return path_exists_fn(self, relative_path);
+        } else {
+            return false;
+        }
     }
 };
 

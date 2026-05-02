@@ -81,8 +81,8 @@ pub const LoadContext = struct {
         return std.mem.concat(allocator, u8, &[_][]const u8{ parent_uri, relative_path });
     }
 
-    /// Load a related asset (e.g., texture referenced by atlas)
-    pub fn loadRelated(self: *const LoadContext, comptime T: type, relative_path: []const u8) !*T {
+    /// Load a asset of the given type using the same base URI for resolving relative paths
+    pub fn loadDependency(self: *const LoadContext, comptime T: type, relative_path: []const u8) !*T {
         const full_uri = try self.resolveRelative(self.allocator, relative_path);
         defer self.allocator.free(full_uri);
         const assets_ptr: *Assets = @ptrCast(@alignCast(self.assets));
@@ -303,11 +303,6 @@ pub const Assets = struct {
         return std.fs.path.join(self.allocator, &[_][]const u8{ cwd, uri });
     }
 
-    /// Process queued loads (no-op in simplified version)
-    pub fn process(self: *Assets) !void {
-        _ = self;
-    }
-
     // ===== SCHEME MANAGEMENT =====
 
     pub fn registerScheme(self: *Assets, scheme: []const u8, resolver: schemes.SchemeResolver) !void {
@@ -351,6 +346,9 @@ pub const TextureLoader = struct {
     pub const LoadSettings = struct {};
 
     pub fn load(_: *TextureLoader, ctx: *const LoadContext, _: ?*const LoadSettings) anyerror!rl.Texture {
+        // Raylib requires a render device to load fonts, so we must check this before attempting to load
+        if (!rl.isWindowReady()) return error.NoRenderDevice;
+
         var resolved = try ctx.scheme_registry.resolve(ctx.allocator, ctx.uri);
         defer resolved.deinit(ctx.allocator);
 
@@ -389,6 +387,9 @@ pub const SoundLoader = struct {
     pub const LoadSettings = struct {};
 
     pub fn load(_: *SoundLoader, ctx: *const LoadContext, _: ?*const LoadSettings) anyerror!rl.Sound {
+        // Raylib requires an audio device to load sounds, so we must check this before attempting to load
+        if (!rl.isAudioDeviceReady()) return error.NoAudioDevice;
+
         var resolved = try ctx.scheme_registry.resolve(ctx.allocator, ctx.uri);
         defer resolved.deinit(ctx.allocator);
 
@@ -424,6 +425,9 @@ pub const MusicLoader = struct {
     pub const LoadSettings = struct {};
 
     pub fn load(_: *MusicLoader, ctx: *const LoadContext, _: ?*const LoadSettings) anyerror!rl.Music {
+        // Raylib requires an audio device to load music, so we must check this before attempting to load
+        if (!rl.isAudioDeviceReady()) return error.NoAudioDevice;
+
         var resolved = try ctx.scheme_registry.resolve(ctx.allocator, ctx.uri);
         defer resolved.deinit(ctx.allocator);
 
@@ -459,6 +463,9 @@ pub const FontLoader = struct {
     pub const LoadSettings = struct {};
 
     pub fn load(_: *FontLoader, ctx: *const LoadContext, _: ?*const LoadSettings) anyerror!rl.Font {
+        // Raylib requires a render device to load fonts, so we must check this before attempting to load
+        if (!rl.isWindowReady()) return error.NoRenderDevice;
+
         var resolved = try ctx.scheme_registry.resolve(ctx.allocator, ctx.uri);
         defer resolved.deinit(ctx.allocator);
 
@@ -496,6 +503,9 @@ pub const ShaderLoader = struct {
     };
 
     pub fn load(_: *ShaderLoader, ctx: *const LoadContext, settings: ?*const LoadSettings) anyerror!rl.Shader {
+        // Raylib requires a render device to load fonts, so we must check this before attempting to load
+        if (!rl.isWindowReady()) return error.NoRenderDevice;
+
         var resolved = try ctx.scheme_registry.resolve(ctx.allocator, ctx.uri);
         defer resolved.deinit(ctx.allocator);
 
@@ -566,6 +576,11 @@ pub const IconAtlasLoader = struct {
     pub const LoadSettings = struct {};
 
     pub fn load(_: *IconAtlasLoader, ctx: *const LoadContext, _: ?*const LoadSettings) anyerror!types.IconAtlas {
+        // Raylib requires a render device to load fonts, so we must check this before attempting to load
+        if (!rl.isWindowReady()) {
+            return error.NoRenderDevice;
+        }
+
         // Read and parse XML data
         const data = try ctx.readData();
         var doc = try xml.XmlDocument.initFromSlice(ctx.allocator, data, .{});
@@ -577,7 +592,7 @@ pub const IconAtlasLoader = struct {
 
         // Load texture using relative path resolution - KEY FIX!
         // ctx.loadRelated uses the parent URI's scheme
-        const texture = try ctx.loadRelated(rl.Texture, rel_image_path);
+        const texture = try ctx.loadDependency(rl.Texture, rel_image_path);
 
         // Build IconAtlas and populate mappings
         var atlas = types.IconAtlas.init(ctx.allocator, texture, parsed.frames, false);
@@ -673,13 +688,6 @@ test "Assets unknown scheme" {
     var assets = Assets.init(testing.allocator);
     defer assets.deinit();
 
-    const result = assets.loadAssetNow(rl.Texture, "unknown://test.png", null);
+    const result = assets.scheme_registry.resolve(testing.allocator, "unknown://file.txt");
     try testing.expectError(error.UnknownScheme, result);
-}
-
-test "Assets process no-op" {
-    const testing = std.testing;
-    var assets = Assets.init(testing.allocator);
-    defer assets.deinit();
-    try assets.process();
 }
