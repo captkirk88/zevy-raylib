@@ -148,7 +148,6 @@ pub fn renderTextBox(rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) voi
     textbox.edit_mode = rg.textBox(
         bounds,
         textbox.buffer[0..textbox.buffer.len :0],
-        @intCast(textbox.buffer.len),
         textbox.edit_mode,
     );
 

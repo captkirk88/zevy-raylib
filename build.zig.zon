@@ -15,14 +15,12 @@
         //     .path = "../zevy-ecs",
         // },
         .raylib_zig = .{
-            .url = "git+https://github.com/raylib-zig/raylib-zig#4b6a05cd102d51f00523dd5c5e18e628df359d20",
-            .hash = "raylib_zig-5.6.0-dev-KE8REKNmBQDek2Sz27ULioxYpY9IYR0K0CeIC-iJRLCI",
-            .ignore = true,
+            .url = "git+https://github.com/raylib-zig/raylib-zig#58f3c0fa328fc9ff48d17c2c3771ab9c5114aaa6",
+            .hash = "raylib_zig-6.0.0-KE8REMNkBQCpxwqT9ubVNf5aEOcWRUVIaH2sgt_sDDoZ",
         },
         .known_folders = .{
             .url = "git+https://github.com/ziglibs/known-folders#5865fd0f1bc5241de8355fcf2066692bf1b0ea02",
             .hash = "known_folders-0.0.0-Fy-PJpLKAAAmMEnwre7fFcfsxBGULd24N8Bp2pWEu3sf",
-            .ignore = true,
         },
         .xml = .{
             .url = "git+https://github.com/ianprime0509/zig-xml#b97f2ab4868ae3cac9902b33a40d3f31d2df739d",
