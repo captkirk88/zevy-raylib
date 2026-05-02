@@ -53,36 +53,24 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
             rl.setTraceLogLevel(self.log_level);
             if (!self.headless) {
                 rl.initWindow(self.width, self.height, self.title);
-                log.info("Initialized window: {s} ({d}x{d})", .{ self.title, self.width, self.height });
                 rl.initAudioDevice();
-                if (rl.isAudioDeviceReady()) {
-                    log.info("Audio device initialized", .{});
-                } else {
-                    log.err("Failed to initialize audio device", .{});
-                }
 
                 if (self.target_fps < 30) self.target_fps = 30;
+                rl.setTargetFPS(self.target_fps);
+            } else {
+                log.info("Running in headless mode: window and audio device initialization skipped", .{});
+                if (self.target_fps < 1) self.target_fps = 1;
+                // In headless mode, we can still use Raylib's timing functions for a consistent update loop, even though we won't be rendering or producing audio.
                 rl.setTargetFPS(self.target_fps);
             }
         }
 
         pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) anyerror!void {
             // Do not manually deinit ECS-managed resources here unless they have a different func name for deinit: the ECS manager owns resource lifetimes and will deinit them during `Manager.deinit()`.
-            const log = std.log.scoped(.zevy_raylib);
             _ = ecs;
             if (!self.headless) {
                 rl.closeAudioDevice();
-                if (!rl.isAudioDeviceReady()) {
-                    log.info("Audio device closed", .{});
-                } else {
-                    log.err("Audio device failed to close", .{});
-                }
                 rl.closeWindow();
-                if (!rl.isWindowReady()) {
-                    log.info("Window closed", .{});
-                } else {
-                    log.err("Window failed to close", .{});
-                }
             }
         }
     };
@@ -115,10 +103,10 @@ const raylib_log_callback = struct {
             .info => .info,
             .warning => .warn,
             .err, .fatal => .err,
-            else => .info,
+            else => .debug,
         };
 
-        const log = std.log.scoped(.zevy_raylib);
+        const log = std.log.scoped(.raylib);
         switch (level) {
             .debug => log.debug("{s}", .{message}),
             .info => log.info("{s}", .{message}),

@@ -80,7 +80,8 @@ fn runSchedulerStages(ecs: *zevy_ecs.Manager, start_stage: zevy_ecs.schedule.Sta
     defer scheduler_ref.deinit();
     var scheduler_guard = scheduler_ref.lockWrite();
     defer scheduler_guard.deinit();
-    try scheduler_guard.get().runStages(ecs, start_stage, end_stage);
+    const eg = scheduler_guard.get().runStages(ecs, start_stage, end_stage);
+    try eg.throw();
 }
 
 fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Manager {
