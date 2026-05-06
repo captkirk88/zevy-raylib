@@ -8,8 +8,8 @@
 
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#9072fcffdf00797463075230d5d3d92962001084",
-            .hash = "zevy_ecs-2.6.0-VoL9mbzZCAAXril87rKCnxkMahEkM4HIZDQm_ygvUWIe",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#ea076522877d8875776d160a8e6a2532ffd8a03b",
+            .hash = "zevy_ecs-2.6.1-VoL9mVbeCABLb0T37suSquexlut03Rc9at6UgSa_GAYj",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",
@@ -19,8 +19,8 @@
             .hash = "raylib_zig-6.0.0-KE8REMNkBQCpxwqT9ubVNf5aEOcWRUVIaH2sgt_sDDoZ",
         },
         .known_folders = .{
-            .url = "git+https://github.com/ziglibs/known-folders#5865fd0f1bc5241de8355fcf2066692bf1b0ea02",
-            .hash = "known_folders-0.0.0-Fy-PJpLKAAAmMEnwre7fFcfsxBGULd24N8Bp2pWEu3sf",
+            .url = "git+https://github.com/ziglibs/known-folders#207c34a16e4365edc20d92c7892f962b3bed46e8",
+            .hash = "known_folders-0.0.0-Fy-PJsbKAACbDh9bBxR0MMThxZSS6A9RH4apWphNHY70",
         },
         .xml = .{
             .url = "git+https://github.com/ianprime0509/zig-xml#b97f2ab4868ae3cac9902b33a40d3f31d2df739d",
@@ -39,8 +39,8 @@
         //     .path = "../zevy-buildtools",
         // },
         .zevy_buildtools = .{
-            .url = "git+https://github.com/captkirk88/zevy-buildtools#05641c88d798956ce32b29d28cce22063d7f8ab0",
-            .hash = "zevy_buildtools-1.3.1-AG3r_BgMAQDR1ZMxA86vSPXobEnPLWE2--8gxLRGyqYI",
+            .url = "git+https://github.com/captkirk88/zevy-buildtools#fbf1b28de0dceb9f77b27e0fb3dfa1f486ac8ce2",
+            .hash = "zevy_buildtools-1.3.1-AG3r_JQMAQDn590PG0rSQNcCUaIsl7DWFoRTUYbSxDG8",
         },
     },
     .paths = .{

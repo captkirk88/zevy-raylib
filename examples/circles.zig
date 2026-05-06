@@ -221,10 +221,8 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
     return exit_app_event;
 }
 
-pub fn main() !u8 {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !u8 {
+    const allocator = init.gpa;
 
     // Initialize ECS
     var ecs = try zevy_ecs.Manager.init(allocator);
