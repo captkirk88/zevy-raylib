@@ -49,5 +49,6 @@
         "src",
         "LICENSE",
         //"README.md",
+        "embedded_assets",
     },
 }

@@ -42,12 +42,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    _ = b.addModule("embed", .{
-        .root_source_file = b.path("build/embed.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
     const mod = b.addModule("zevy_raylib", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
