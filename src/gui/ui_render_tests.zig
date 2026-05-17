@@ -77,7 +77,7 @@ fn addChildRelation(ecs: *zevy_ecs.Manager, child: zevy_ecs.Entity, parent: zevy
 }
 
 fn runSchedulerStages(ecs: *zevy_ecs.Manager, start_stage: zevy_ecs.schedule.StageId, end_stage: zevy_ecs.schedule.StageId) !void {
-    const scheduler_ref = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return zevy_reflect.utils.DynamicError(std.fmt.comptimePrint("Resource_{s}", .{@typeName(zevy_ecs.schedule.Scheduler)}));
+    const scheduler_ref = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return error.MissingScheduler;
     defer scheduler_ref.deinit();
     var scheduler_guard = scheduler_ref.lockWrite();
     defer scheduler_guard.deinit();
