@@ -15,6 +15,8 @@ pub const SoundLoader = assets.SoundLoader;
 pub const MusicLoader = assets.MusicLoader;
 pub const FontLoader = assets.FontLoader;
 pub const ShaderLoader = assets.ShaderLoader;
+pub const ShaderSource = assets.ShaderSource;
+pub const ShaderSourceLoader = assets.ShaderSourceLoader;
 pub const XmlDocumentLoader = assets.XmlDocumentLoader;
 pub const IconAtlasLoader = assets.IconAtlasLoader;
 

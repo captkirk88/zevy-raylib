@@ -114,7 +114,7 @@ pub const Assets = struct {
     scheme_registry: schemes.SchemeRegistry,
     loaders: std.AutoHashMap(u64, LoaderEntry),
     /// Cached assets by URI hash
-    cache: std.AutoHashMap(u64, CacheEntry),
+    cache: std.AutoHashMap(AssetHandle, CacheEntry),
 
     const CacheEntry = struct {
         ptr: *anyopaque,
@@ -125,7 +125,7 @@ pub const Assets = struct {
         var self = Assets{
             .allocator = allocator,
             .scheme_registry = schemes.SchemeRegistry.init(allocator),
-            .loaders = std.AutoHashMap(u64, LoaderEntry).init(allocator),
+            .loaders = std.AutoHashMap(AssetHandle, LoaderEntry).init(allocator),
             .cache = std.AutoHashMap(u64, CacheEntry).init(allocator),
         };
 
@@ -138,6 +138,7 @@ pub const Assets = struct {
         self.addLoader(rl.Music, MusicLoader{}) catch @panic("Failed to add music loader");
         self.addLoader(rl.Font, FontLoader{}) catch @panic("Failed to add font loader");
         self.addLoader(rl.Shader, ShaderLoader{}) catch @panic("Failed to add shader loader");
+        self.addLoader(ShaderSource, ShaderSourceLoader{}) catch @panic("Failed to add shader source loader");
         self.addLoader(xml.XmlDocument, XmlDocumentLoader{}) catch @panic("Failed to add xml loader");
         self.addLoader(types.IconAtlas, IconAtlasLoader{}) catch @panic("Failed to add icon atlas loader");
 
@@ -274,7 +275,7 @@ pub const Assets = struct {
     }
 
     /// Get a cached asset by handle
-    pub fn get(self: *Assets, comptime AssetType: type, handle: AssetHandle) ?*const AssetType {
+    pub fn get(self: *const Assets, comptime AssetType: type, handle: AssetHandle) ?*const AssetType {
         const type_hash = std.hash_map.hashString(@typeName(AssetType));
         if (self.cache.get(handle)) |entry| {
             if (entry.type_hash == type_hash) {
@@ -555,6 +556,44 @@ pub const ShaderLoader = struct {
 
     pub fn unload(_: *ShaderLoader, shader: rl.Shader) void {
         rl.unloadShader(shader);
+    }
+};
+
+/// Raw shader source text loaded from a file or embedded asset.
+/// Use `ShaderSourceLoader` with the Assets system to load these.
+pub const ShaderSource = struct {
+    source: [:0]u8,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *ShaderSource) void {
+        self.allocator.free(self.source);
+    }
+};
+
+/// Asset loader for raw shader source text files (GLSL, HLSL, etc.).
+/// Register with Assets before loading shader sources:
+///   try assets.addLoader(ShaderSource, ShaderSourceLoader{});
+/// Then load individual vertex or fragment sources via:
+///   const handle = try assets.loadAsset(ShaderSource, "file://shaders/my.frag.glsl", null);
+pub const ShaderSourceLoader = struct {
+    pub const LoadSettings = struct {};
+
+    pub fn load(_: *ShaderSourceLoader, ctx: *const LoadContext, _: ?*const LoadSettings) anyerror!ShaderSource {
+        if (!rl.isWindowReady()) return error.NoRenderDevice;
+
+        const data = try ctx.readData();
+        defer ctx.allocator.free(data);
+
+        const source = try ctx.allocator.dupeZ(u8, data);
+        return ShaderSource{
+            .source = source,
+            .allocator = ctx.allocator,
+        };
+    }
+
+    pub fn unload(_: *ShaderSourceLoader, source: ShaderSource) void {
+        var s = source;
+        s.deinit();
     }
 };
 

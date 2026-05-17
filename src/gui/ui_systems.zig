@@ -11,6 +11,7 @@ const icons = @import("../input/icons.zig");
 const Assets = @import("../io/assets.zig").Assets;
 const ui_resources = @import("resources.zig");
 const ui_style = @import("style.zig");
+const builtin = @import("builtin");
 
 comptime {
     @setEvalBranchQuota(4000);
@@ -18,7 +19,9 @@ comptime {
 
 pub fn startupUiSystem(
     commands: zevy_ecs.params.Commands,
+    assets: zevy_ecs.params.ResMut(Assets),
 ) !void {
+    _ = assets;
     // Raylib UI startup requires a render device.
     if (!rl.isWindowReady()) return;
 
@@ -29,6 +32,15 @@ pub fn startupUiSystem(
     var style = ui_style.UIStyle.init();
     style.font = default_font;
     _ = commands.addResource(ui_style.UIStyle, style) catch {};
+
+    //const assets_ref = assets.get();
+    // Register the default icon atlas from assets. This allows UI components to use icons in their default state.
+    switch (builtin.os.tag) {
+        .windows, .linux, .macos => {
+            //registerIconAtlasFromAssets(commands.manager(), assets_ref, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
+        },
+        else => {},
+    }
 }
 
 const ChildInfo = struct {

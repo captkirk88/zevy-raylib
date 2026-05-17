@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const builtin = @import("builtin");
+const zevy_reflect = @import("zevy_reflect");
 const zevy_ecs = @import("zevy_ecs");
 const ui = @import("ui.zig");
 const layouts = ui.layout;
@@ -76,7 +77,7 @@ fn addChildRelation(ecs: *zevy_ecs.Manager, child: zevy_ecs.Entity, parent: zevy
 }
 
 fn runSchedulerStages(ecs: *zevy_ecs.Manager, start_stage: zevy_ecs.schedule.StageId, end_stage: zevy_ecs.schedule.StageId) !void {
-    const scheduler_ref = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return error.ResourceNotFound;
+    const scheduler_ref = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return zevy_reflect.utils.DynamicError(std.fmt.comptimePrint("Resource_{s}", .{@typeName(zevy_ecs.schedule.Scheduler)}));
     defer scheduler_ref.deinit();
     var scheduler_guard = scheduler_ref.lockWrite();
     defer scheduler_guard.deinit();

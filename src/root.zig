@@ -3,6 +3,7 @@ const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const io = @import("io/root.zig");
+const graphics_mod = @import("graphics/root.zig");
 pub const input = @import("input/input.zig");
 
 pub const components = struct {
@@ -20,6 +21,16 @@ pub const InputPlugin = @import("input.plugin.zig").InputPlugin;
 
 /// Assets type for managing asset loading and schemes
 pub const Assets = io.Assets;
+
+/// Asset handle type
+pub const AssetHandle = io.AssetHandle;
+
+/// Shader source asset type and loader
+pub const ShaderSource = io.ShaderSource;
+pub const ShaderSourceLoader = io.ShaderSourceLoader;
+
+/// Graphics module: shader ECS integration
+pub const graphics = graphics_mod;
 
 pub const ExitAppEvent = app_plugin.ExitAppEvent;
 

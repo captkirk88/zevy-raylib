@@ -3,11 +3,11 @@ const builtin = @import("builtin");
 const known_folders = @import("known_folders");
 
 fn globalIoAndEnv(allocator: std.mem.Allocator) !struct {
-    threaded: std.Io.Threaded,
+    threaded: *std.Io.Threaded,
     io: std.Io,
     env_map: std.process.Environ.Map,
 } {
-    var threaded = std.Io.Threaded.init_single_threaded;
+    var threaded = std.Io.Threaded.global_single_threaded;
     const io = threaded.io();
     const env_map = std.process.Environ.createMap(.{ .block = .global }, allocator) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
