@@ -1,3 +1,4 @@
+const std = @import("std");
 const rl = @import("raylib");
 const zevy_ecs = @import("zevy_ecs");
 const io = @import("../io/root.zig");
@@ -27,6 +28,53 @@ pub const ShaderComponent = struct {
     /// Do not set manually.
     resolved: ?rl.Shader = null,
 
+    uniforms: std.AutoHashMap([]const u8, ShaderUniformValue),
+
+    pub fn init(allocator: std.mem.Allocator) ShaderComponent {
+        return ShaderComponent{
+            .uniforms = .init(allocator),
+        };
+    }
+
+    pub fn initWithHandles(allocator: std.mem.Allocator, vert: ?AssetHandle, frag: ?AssetHandle) ShaderComponent {
+        return ShaderComponent{
+            .vert = vert,
+            .frag = frag,
+            .uniforms = .init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *ShaderComponent) void {
+        self.uniforms.deinit();
+    }
+
+    pub fn setUniform(self: *ShaderComponent, uniformName: []const u8, value: ShaderUniformValue) error{OutOfMemory}!void {
+        if (self.resolved) |r| {
+            const uf_loc = rl.getShaderLocation(r, uniformName);
+            if (uf_loc >= 0) {
+                switch (value) {
+                    .Float => |f| rl.setShaderValue(r, uf_loc, @ptrCast(&f), .float),
+                    .Vec2 => |v| rl.setShaderValue(r, uf_loc, @ptrCast(&v), .vec2),
+                    .Vec3 => |v| rl.setShaderValue(r, uf_loc, @ptrCast(&v), .vec3),
+                    .Vec4 => |v| rl.setShaderValue(r, uf_loc, @ptrCast(&v), .vec4),
+                    .Int => |i| rl.setShaderValue(r, uf_loc, @ptrCast(&i), .int),
+                    .IVec2 => |v| rl.setShaderValue(r, uf_loc, @ptrCast(&v), .ivec2),
+                    .IVec3 => |v| rl.setShaderValue(r, uf_loc, @ptrCast(&v), .ivec3),
+                    .IVec4 => |v| rl.setShaderValue(r, uf_loc, @ptrCast(&v), .ivec4),
+                    .Mat4 => |m| rl.setShaderValueMatrix(r, uf_loc, m),
+                    .Texture => |t| rl.setShaderValueTexture(r, uf_loc, t),
+                    else => @compileError("Unhandled ShaderUniformValue type"),
+                }
+            }
+        }
+
+        try self.uniforms.put(uniformName, value);
+    }
+
+    pub fn getUniform(self: *ShaderComponent, name: []const u8) ?ShaderUniformValue {
+        return self.uniforms.get(name);
+    }
+
     /// Returns the active custom shader for this component:
     /// - Both handles null → `null` (no shader mode should be applied).
     /// - At least one handle set → `resolved`, or `null` if not yet compiled.
@@ -34,6 +82,19 @@ pub const ShaderComponent = struct {
         if (self.vert == null and self.frag == null) return null;
         return self.resolved;
     }
+};
+
+pub const ShaderUniformValue = union(enum) {
+    Float: f32,
+    Vec2: rl.Vector2,
+    Vec3: rl.Vector3,
+    Vec4: rl.Vector4,
+    Int: i32,
+    IVec2: struct { x: i32, y: i32 },
+    IVec3: struct { x: i32, y: i32, z: i32 },
+    IVec4: struct { x: i32, y: i32, z: i32, w: i32 },
+    Mat4: rl.Matrix,
+    Texture: rl.Texture2D,
 };
 
 /// ECS system that compiles `ShaderComponent` source handles into `rl.Shader` programs and
@@ -46,9 +107,9 @@ pub const ShaderComponent = struct {
 pub fn resolveShaderSystem(
     _: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { shader: ShaderComponent }),
-    assets_res: zevy_ecs.params.Res(Assets),
+    assets_res: zevy_ecs.params.ResMut(Assets),
 ) !void {
-    const assets: *const Assets = assets_res.get();
+    const assets = assets_res.get();
 
     while (query.next()) |item| {
         const comp: *ShaderComponent = item.shader;
@@ -61,10 +122,12 @@ pub fn resolveShaderSystem(
         if (comp.vert) |h| {
             const src = assets.get(ShaderSource, h) orelse continue; // retry next frame
             vs_source = src.source;
+            assets.unload(ShaderSource, h); // source no longer needed after compilation
         }
         if (comp.frag) |h| {
             const src = assets.get(ShaderSource, h) orelse continue; // retry next frame
             fs_source = src.source;
+            assets.unload(ShaderSource, h); // source no longer needed after compilation
         }
 
         comp.resolved = try rl.loadShaderFromMemory(vs_source, fs_source);

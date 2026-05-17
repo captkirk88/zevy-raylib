@@ -274,6 +274,17 @@ pub const Assets = struct {
         return std.hash_map.hashString(resolved);
     }
 
+    pub fn unload(self: *Assets, comptime AssetType: type, handle: AssetHandle) void {
+        if (self.cache.get(handle)) |entry| {
+            if (entry.type_hash == std.hash_map.hashString(@typeName(AssetType))) {
+                if (self.loaders.get(entry.type_hash)) |loader| {
+                    loader.unload_fn(loader.ptr, entry.ptr, self.allocator);
+                }
+                _ = self.cache.remove(handle);
+            }
+        }
+    }
+
     /// Get a cached asset by handle
     pub fn get(self: *const Assets, comptime AssetType: type, handle: AssetHandle) ?*const AssetType {
         const type_hash = std.hash_map.hashString(@typeName(AssetType));
