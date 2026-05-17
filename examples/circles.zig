@@ -264,8 +264,14 @@ pub fn main(init: std.process.Init) !u8 {
     {
         var assets_ptr = ecs.getResource(zevy_raylib.Assets) orelse return error.MissingAssets;
         defer assets_ptr.deinit();
-        const assets_lock = assets_ptr.lockWrite();
+        var assets_lock = assets_ptr.lockWrite();
         defer assets_lock.deinit();
+        zevy_raylib.ui.systems.registerIconAtlasFromAssets(
+            &ecs,
+            assets_lock.get(),
+            "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml",
+            .{},
+        );
     }
 
     // Get the scheduler that was created by the plugins
