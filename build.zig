@@ -98,8 +98,4 @@ pub fn build(b: *std.Build) !void {
     }, target, optimize);
 
     try buildtools.fetch.addFetchStep(b, b.path("build.zig.zon"));
-    const prebuild_result = try buildtools.prebuild.addPrebuildStep(b, .{
-        .macros = &.{},
-    });
-    _ = prebuild_result;
 }

@@ -15,8 +15,8 @@
         //     .path = "../zevy-ecs",
         // },
         .raylib_zig = .{
-            .url = "git+https://github.com/raylib-zig/raylib-zig#58f3c0fa328fc9ff48d17c2c3771ab9c5114aaa6",
-            .hash = "raylib_zig-6.0.0-KE8REMNkBQCpxwqT9ubVNf5aEOcWRUVIaH2sgt_sDDoZ",
+            .url = "git+https://github.com/raylib-zig/raylib-zig#97be2c7ae646a2f09856604b138c427c0af1b952",
+            .hash = "raylib_zig-6.0.0-KE8REDJ4BQBu7lKwYNt6R4j5ywPeS37zqW6zrtjCcRwH",
         },
         .known_folders = .{
             .url = "git+https://github.com/ziglibs/known-folders#207c34a16e4365edc20d92c7892f962b3bed46e8",
@@ -39,8 +39,8 @@
         //     .path = "../zevy-buildtools",
         // },
         .zevy_buildtools = .{
-            .url = "git+https://github.com/captkirk88/zevy-buildtools#38f7c32543131ba83d07d0176efa456494f49b5d",
-            .hash = "zevy_buildtools-1.3.1-AG3r_IcOAQAy2B139jsxugf8u0bPEWfsnp0YZFHd9Q3U",
+            .url = "git+https://github.com/captkirk88/zevy-buildtools#ef611bb2308a577eca6c2cceba68bbdcab6e10e7",
+            .hash = "zevy_buildtools-1.3.2-AG3r_IMOAQBvTaraIbje0VPv3I9jWxz67Cqoq4cr_Z_C",
         },
     },
     .paths = .{
