@@ -192,7 +192,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
         rl.drawFPS(10, 10);
         // draw tps
         var tps_buf: [32]u8 = undefined;
-        const tps = @as(usize, @intFromFloat(@as(f32, @floatFromInt(updates)) / fixed_dt));
+        const tps = @as(usize, @intFromFloat(@as(f32, @floatFromInt(updates)) / frame_time));
         const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{tps}) catch "TPS: ?";
         rl.drawText(
             tps_text,

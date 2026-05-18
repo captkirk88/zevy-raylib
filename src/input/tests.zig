@@ -269,6 +269,7 @@ test "InputBindingBuilder" {
     // Test building a simple binding
     var binding1 = try builder
         .withKeyboard(.key_space)
+        .with(.{ .gesture = .gesture_doubletap })
         .withAction("jump", "Jump action")
         .build();
     defer binding1.deinit(allocator);
@@ -463,4 +464,39 @@ test "Touch and gesture binding processing" {
 
     // Test gesture action name
     try testing.expectEqualStrings("zoom_out", gesture_binding.action.name);
+}
+
+test "InputBindingBuilder with all InputKey variants" {
+    const allocator = testing.allocator;
+
+    var builder = input.InputBindingBuilder.init(allocator);
+    defer builder.deinit();
+
+    _ = builder
+        .with(.{ .keyboard = .key_left_control })
+        .with(.{ .mouse = .left })
+        .with(.{ .gamepad = .{ .gamepad_id = 0, .button = .left_face_up } })
+        .with(.{ .touch = .{ .touch_id = 0, .input = .touch_tap } })
+        .with(.{ .gesture = .gesture_doubletap })
+        .withAction("all_keys", "Uses every InputKey variant");
+
+    var binding = try builder.build();
+    defer binding.deinit(allocator);
+
+    const chord_str = try binding.chord.toString(allocator);
+    defer allocator.free(chord_str);
+
+    std.debug.print("\nInputBindingBuilder all InputKey variants:\n  action: {s}\n  chord:  {s}\n  keys:   {d}\n", .{
+        binding.action.name,
+        chord_str,
+        binding.chord.len(),
+    });
+
+    const parsed_chord_opt = try InputChord.fromString(chord_str, allocator);
+    try testing.expect(parsed_chord_opt != null);
+    var parsed_chord = parsed_chord_opt.?;
+    defer parsed_chord.deinit(allocator);
+
+    try testing.expect(binding.chord.matches(parsed_chord.keys.items));
+    try testing.expect(parsed_chord.matches(binding.chord.keys.items));
 }

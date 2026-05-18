@@ -36,7 +36,7 @@ const BindingsFileJson = struct {
 
 /// Serialize input bindings to a writer
 /// Accepts std.Io.Writer type for JSON serialization
-pub fn serializeToWriter(bindings: *const InputBindings, writer: anytype, allocator: std.mem.Allocator) !void {
+pub fn serializeToWriter(bindings: *const InputBindings, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
     var binding_jsons: std.ArrayList(BindingJson) = .empty;
     defer binding_jsons.deinit(allocator);
 
@@ -80,27 +80,16 @@ pub fn serializeToWriter(bindings: *const InputBindings, writer: anytype, alloca
 
 /// Deserialize input bindings from a reader
 /// Accepts any reader type that implements the reader interface
-pub fn deserializeFromReader(reader: anytype, allocator: std.mem.Allocator) !InputBindings {
+pub fn deserializeFromReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) !InputBindings {
     var writer_alloc: std.Io.Writer.Allocating = .init(allocator);
     defer writer_alloc.deinit();
 
-    const io_reader: *std.Io.Reader = switch (@TypeOf(reader)) {
-        *std.Io.Reader => reader,
-        std.Io.Reader => &reader,
-        else => &reader.interface,
-    };
-
-    _ = try io_reader.streamRemaining(&writer_alloc.writer);
+    _ = try reader.streamRemaining(&writer_alloc.writer);
     const content = try writer_alloc.toOwnedSlice();
     defer allocator.free(content);
 
     // Parse JSON
-    var parsed = std.json.parseFromSlice(BindingsFileJson, allocator, content, .{}) catch |err| {
-        switch (err) {
-            error.SyntaxError, error.UnexpectedToken => return SerializationError.InvalidFormat,
-            else => return err,
-        }
-    };
+    var parsed = try std.json.parseFromSlice(BindingsFileJson, allocator, content, .{});
     defer parsed.deinit();
 
     const file_json = parsed.value;

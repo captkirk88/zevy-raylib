@@ -12,9 +12,7 @@ pub const InputChord = struct {
 
     pub fn init(allocator: std.mem.Allocator) InputChord {
         return InputChord{
-            .keys = std.ArrayList(InputKey).initCapacity(allocator, 4) catch |err| {
-                std.debug.panic("Initializing InputChord: {s}", .{@errorName(err)});
-            },
+            .keys = std.ArrayList(InputKey).initCapacity(allocator, 4) catch @panic("OOM"),
         };
     }
 

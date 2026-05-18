@@ -329,30 +329,20 @@ pub const InputManager = struct {
     /// Check if a specific action is currently active
     pub fn isActionActive(self: *const InputManager, action_name: []const u8) bool {
         const current_keys = self.current_state.getPressed();
-
-        for (self.bindings.getAllBindings()) |*binding| {
-            if (std.mem.eql(u8, binding.action.name, action_name) and binding.matches(current_keys)) {
-                return true;
-            }
-        }
-
-        return false;
+        const binding = self.bindings.getBinding(action_name) orelse return false;
+        return binding.matches(current_keys);
     }
 
     /// Check if a specific action was just triggered (pressed this frame)
     pub fn wasActionTriggered(self: *const InputManager, action_name: []const u8) bool {
         const current_keys = self.current_state.getPressed();
         const previous_keys = self.previous_state.getPressed();
+        const binding = self.bindings.getBinding(action_name) orelse return false;
+        const matches_current = binding.matches(current_keys);
+        const matches_previous = binding.matches(previous_keys);
 
-        for (self.bindings.getAllBindings()) |*binding| {
-            if (std.mem.eql(u8, binding.action.name, action_name)) {
-                const matches_current = binding.matches(current_keys);
-                const matches_previous = binding.matches(previous_keys);
-
-                if (matches_current and !matches_previous) {
-                    return true;
-                }
-            }
+        if (matches_current and !matches_previous) {
+            return true;
         }
 
         return false;
