@@ -8,15 +8,15 @@ pub const ResolveResult = union(enum) {
     url: []const u8,
     /// Resolved to embedded data
     embedded_data: []const u8,
-    /// Custom resolver result (opaque data)
-    custom: []const u8,
+    /// Resolved to raw data (for custom schemes)
+    raw: []const u8,
 
     pub fn deinit(self: *ResolveResult, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .file_path => |path| allocator.free(path),
             .url => |url| allocator.free(url),
             .embedded_data => |data| allocator.free(data),
-            .custom => |data| allocator.free(data),
+            .raw => |data| allocator.free(data),
         }
     }
 };

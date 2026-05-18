@@ -29,6 +29,7 @@ pub const AssetHandle = io.AssetHandle;
 /// Shader source asset type and loader
 pub const ShaderSource = io.ShaderSource;
 pub const ShaderSourceLoader = io.ShaderSourceLoader;
+pub const ShaderLoader = io.ShaderLoader;
 
 /// Graphics module: shader ECS integration
 pub const graphics = graphics_mod;

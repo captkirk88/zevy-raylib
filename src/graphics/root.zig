@@ -15,6 +15,7 @@ pub const shader = struct {
     pub const ShaderSource = shader_mod.ShaderSource;
     pub const ShaderSourceLoader = shader_mod.ShaderSourceLoader;
     pub const ShaderComponent = shader_mod.ShaderComponent;
+    pub const ShaderBatcher = shader_mod.ShaderBatcher;
     pub const resolveShaderSystem = shader_mod.resolveShaderSystem;
     pub const cleanupShaderSystem = shader_mod.cleanupShaderSystem;
 };

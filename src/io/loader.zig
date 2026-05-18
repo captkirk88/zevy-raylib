@@ -270,7 +270,7 @@ pub const Loaders = struct {
                             const res = try view.load_asset_now_fn(view.ptr, url, null);
                             return @as(*AssetType, @ptrCast(@alignCast(res)));
                         },
-                        .custom => |custom| {
+                        .raw => |custom| {
                             defer self.allocator.free(custom);
                             const res = try view.load_asset_now_fn(view.ptr, custom, null);
                             return @as(*AssetType, @ptrCast(@alignCast(res)));

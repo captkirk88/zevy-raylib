@@ -271,7 +271,7 @@ pub fn uiInteractionDetectionSystem(
     var newly_len: usize = 0;
 
     var prev_slice: []const input.InputKey = current_keys[0..0];
-    if (prev_pressed_mut.value()) |pp| {
+    if (prev_pressed_mut.get()) |pp| {
         prev_slice = pp.keys[0..pp.len];
     }
 
@@ -490,7 +490,7 @@ pub fn uiFocusNavigationSystem(
         }
     } else {
         // No focused entity — prefer the parent of the last-hovered entity
-        if (last_hover.value()) |lh| {
+        if (last_hover.get()) |lh| {
             if (rel.getParent(commands.manager(), lh, zevy_ecs.relations.kinds.Child) catch null) |p2| {
                 focused_parent = p2;
             }

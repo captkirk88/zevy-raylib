@@ -57,7 +57,7 @@ pub const LoadContext = struct {
                 result.deinit(self.allocator);
                 return error.UrlNotSupported;
             },
-            .custom => {
+            .raw => {
                 result.deinit(self.allocator);
                 return error.CustomSchemeNotSupported;
             },
@@ -115,6 +115,9 @@ pub const Assets = struct {
     loaders: std.AutoHashMap(u64, LoaderEntry),
     /// Cached assets by URI hash
     cache: std.AutoHashMap(AssetHandle, CacheEntry),
+    /// Monotonic counter for handles issued by `insert`.
+    /// High bit is set to distinguish from URI-hash-based handles.
+    next_handle_id: u64 = 0,
 
     const CacheEntry = struct {
         ptr: *anyopaque,
@@ -223,6 +226,22 @@ pub const Assets = struct {
     pub fn hasLoader(self: *Assets, comptime AssetType: type) bool {
         const hash = std.hash_map.hashString(@typeName(AssetType));
         return self.loaders.contains(hash);
+    }
+
+    /// Store an already-created asset value and return a unique handle.
+    /// The asset will be unloaded via the registered loader's `unload` callback
+    /// when `unload(AssetType, handle)` is called or when `Assets.deinit` runs.
+    /// Requires that a loader for `AssetType` has been registered.
+    pub fn insert(self: *Assets, comptime AssetType: type, value: AssetType) error{OutOfMemory}!AssetHandle {
+        const type_hash = std.hash_map.hashString(@typeName(AssetType));
+        self.next_handle_id += 1;
+        // High bit set so these handles never collide with URI-derived hashes.
+        const handle: AssetHandle = 0x8000_0000_0000_0000 | self.next_handle_id;
+        const asset_ptr = try self.allocator.create(AssetType);
+        asset_ptr.* = value;
+        errdefer self.allocator.destroy(asset_ptr);
+        try self.cache.put(handle, .{ .ptr = @ptrCast(asset_ptr), .type_hash = type_hash });
+        return handle;
     }
 
     /// Load an asset synchronously and return a pointer to it
@@ -510,59 +529,57 @@ pub const FontLoader = struct {
 };
 
 pub const ShaderLoader = struct {
+    pub const Stage = enum(u32) { frag, vert };
+
+    /// Identifies which shader stage the URI points to.
+    /// Use the shorthands `LoadSettings.frag` or `LoadSettings.vert`.
     pub const LoadSettings = struct {
-        frag: ?[]const u8 = null,
+        stage: Stage,
+        /// Fragment shader — vertex defaults to raylib's built-in.
+        pub const frag: LoadSettings = .{ .stage = .frag };
+        /// Vertex shader — fragment defaults to raylib's built-in.
+        pub const vert: LoadSettings = .{ .stage = .vert };
     };
 
     pub fn load(_: *ShaderLoader, ctx: *const LoadContext, settings: ?*const LoadSettings) anyerror!rl.Shader {
-        // Raylib requires a render device to load fonts, so we must check this before attempting to load
+        const allocator = ctx.allocator;
         if (!rl.isWindowReady()) return error.NoRenderDevice;
+        const stage = if (settings) |s| s.stage else return error.ShaderLoaderSettingsRequired;
 
-        var resolved = try ctx.scheme_registry.resolve(ctx.allocator, ctx.uri);
-        defer resolved.deinit(ctx.allocator);
+        var resolved = try ctx.scheme_registry.resolve(allocator, ctx.uri);
+        defer resolved.deinit(allocator);
+        const source_z = try stageSource(allocator, resolved);
+        defer allocator.free(source_z);
 
-        const vertex_path = switch (resolved) {
-            .embedded_data => |data| blk: {
-                const ext = std.fs.path.extension(ctx.uri);
-                break :blk try io_utils.writeTempFile(ctx.allocator, "", if (ext.len > 0) ext else ".vs", data);
-            },
-            .file_path => |path| try ctx.allocator.dupe(u8, path),
-            else => return error.UnsupportedScheme,
+        return switch (stage) {
+            .frag => rl.loadShaderFromMemory(null, source_z),
+            .vert => rl.loadShaderFromMemory(source_z, null),
         };
-        defer ctx.allocator.free(vertex_path);
-
-        const frag_path = if (settings) |s| blk: {
-            if (s.frag) |frag| {
-                const frag_uri = try ctx.resolveRelative(ctx.allocator, frag);
-                defer ctx.allocator.free(frag_uri);
-                var frag_resolved = try ctx.scheme_registry.resolve(ctx.allocator, frag_uri);
-                defer frag_resolved.deinit(ctx.allocator);
-                break :blk switch (frag_resolved) {
-                    .embedded_data => |data| try io_utils.writeTempFile(ctx.allocator, "", ".fs", data),
-                    .file_path => |path| try ctx.allocator.dupe(u8, path),
-                    else => return error.UnsupportedScheme,
-                };
-            }
-            break :blk try deriveFragPath(ctx.allocator, vertex_path);
-        } else try deriveFragPath(ctx.allocator, vertex_path);
-        defer ctx.allocator.free(frag_path);
-
-        const vs_z = try std.heap.c_allocator.dupeZ(u8, vertex_path);
-        defer std.heap.c_allocator.free(vs_z);
-        const fs_z = try std.heap.c_allocator.dupeZ(u8, frag_path);
-        defer std.heap.c_allocator.free(fs_z);
-
-        const shader = try rl.loadShader(vs_z, fs_z);
-        if (!rl.isShaderValid(shader)) return error.InvalidShader;
-        return shader;
     }
 
-    fn deriveFragPath(allocator: std.mem.Allocator, vertex_path: []const u8) ![]u8 {
-        const base = std.fs.path.stem(vertex_path);
-        const dir = std.fs.path.dirname(vertex_path) orelse ".";
-        const frag_name = try std.mem.concat(allocator, u8, &[_][]const u8{ base, ".fs" });
-        defer allocator.free(frag_name);
-        return std.fs.path.join(allocator, &[_][]const u8{ dir, frag_name });
+    /// Resolve a shader stage to its null-terminated GLSL source string (caller frees).
+    /// For file paths, reads via std.Io.File. For embedded/raw, duplicates bytes directly.
+    fn stageSource(allocator: std.mem.Allocator, resolved: schemes.ResolveResult) anyerror![:0]u8 {
+        return switch (resolved) {
+            .file_path => |path| blk: {
+                const dir_path = std.fs.path.dirname(path) orelse ".";
+                const base_name = std.fs.path.basename(path);
+                var threaded = std.Io.Threaded.init_single_threaded;
+                const io = threaded.io();
+                var dir = try std.Io.Dir.openDirAbsolute(io, dir_path, .{});
+                defer dir.close(io);
+                var file = try dir.openFile(io, base_name, .{});
+                defer file.close(io);
+                var buf: [4096]u8 = undefined;
+                var reader = file.reader(io, &buf);
+                const data = try reader.interface.allocRemaining(allocator, .limited(50 * 1024 * 1024));
+                defer allocator.free(data);
+                break :blk try allocator.dupeZ(u8, data);
+            },
+            .embedded_data => |data| try allocator.dupeZ(u8, data),
+            .raw => |data| try allocator.dupeZ(u8, data),
+            else => error.UnsupportedScheme,
+        };
     }
 
     pub fn unload(_: *ShaderLoader, shader: rl.Shader) void {

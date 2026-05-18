@@ -54,7 +54,7 @@ fn parseAtlasXml(allocator: std.mem.Allocator, xml_path: []const u8, assets: ?*A
                 resolved.deinit(allocator);
                 return ParseError.UnsupportedScheme;
             },
-            .custom => {
+            .raw => {
                 resolved.deinit(allocator);
                 return ParseError.UnsupportedScheme;
             },
