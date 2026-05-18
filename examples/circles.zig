@@ -114,7 +114,7 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
     const dt_ptr = try ecs.addResource(DeltaTime, fixed_dt);
     defer dt_ptr.deinit();
 
-    var eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First).subtract(1));
+    var eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First).sub(1));
     if (eg.hasErrors()) {
         std.log.err("Errors during PreStartup -> First stage:", .{});
         var iter = eg.iterator();
@@ -125,7 +125,7 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
 
     var exit_app_event: zevy_raylib.ExitAppEvent = .Success;
     while (!zevy_raylib.shouldClose(io_ctx)) {
-        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).subtract(1));
+        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).sub(1));
         if (eg.hasErrors()) {
             std.log.err("Errors during First -> PreUpdate stage:", .{});
             var iter = eg.iterator();
@@ -154,7 +154,7 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
             }
 
             // Run PreUpdate stage (input updates happen here)
-            eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).subtract(1));
+            eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).sub(1));
             if (eg.hasErrors()) {
                 std.log.err("Errors during PreUpdate -> PreDraw stage:", .{});
                 var iter = eg.iterator();
@@ -171,7 +171,7 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
         rl.clearBackground(rl.Color.black);
 
         // Run render systems (extended to include UI stage at PostDraw + 1000)
-        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).subtract(1));
+        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).sub(1));
         if (eg.hasErrors()) {
             std.log.err("Errors during PreDraw -> Last stage:", .{});
             var iter = eg.iterator();

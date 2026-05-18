@@ -8,8 +8,8 @@
 
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#22fe2f0e0b91e17f47b7781eaaa4e57f3d43e5a8",
-            .hash = "zevy_ecs-2.6.3-VoL9mbX1CADd_NC5nsBxIqzp10FwdLOWBxvVCeTbqUdB",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#f9afc83c3e6fa4a9cb773cfec2e5566828c960b9",
+            .hash = "zevy_ecs-2.6.3-VoL9mXn4CAAGeM8K2ROdDC20987Ei3dvI-XhMo7QqaAw",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",
