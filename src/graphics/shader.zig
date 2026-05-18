@@ -96,9 +96,8 @@ pub const ShaderComponent = struct {
         }
     }
 
-    /// Returns the active custom shader for this component by looking it up in `assets`:
-    /// - Both handles null → `null` (no shader mode should be applied).
-    /// - At least one handle set → compiled shader, or `null` if not yet resolved.
+    /// Returns the active custom shader for this component by looking it up in `assets`.
+    /// if `resolved_handle` is set and the asset exists, returns the `rl.Shader`. Otherwise returns `null`.
     pub fn getShader(self: *const ShaderComponent, assets: *const Assets) ?rl.Shader {
         if (self.resolved_handle) |h| {
             return if (assets.get(rl.Shader, h)) |s| s.* else null;
