@@ -291,13 +291,13 @@ pub fn uiInteractionDetectionSystem(
 
     // Process buttons
     while (button_query.next()) |item| {
-        const rect: *components.UIRect = item.rect;
+        const ui_rect: *components.UIRect = item.rect;
         // Skip invisible elements
         if (item.visible) |v| {
             if (!v.visible) continue;
         }
 
-        const bounds = rect.toRectangle();
+        const bounds = ui_rect.rect;
         const is_hovered = rl.checkCollisionPointRec(cursor_pos, bounds);
 
         // Track hover state changes
@@ -532,8 +532,8 @@ pub fn uiFocusNavigationSystem(
             const b = candidates.items[sj];
             var ax: f32 = 0.0;
             var bx: f32 = 0.0;
-            if (commands.manager().getComponent(a, components.UIRect) catch null) |r| ax = r.x;
-            if (commands.manager().getComponent(b, components.UIRect) catch null) |r2| bx = r2.x;
+            if (commands.manager().getComponent(a, components.UIRect) catch null) |r| ax = r.rect.x;
+            if (commands.manager().getComponent(b, components.UIRect) catch null) |r2| bx = r2.rect.x;
             if (ax <= bx) break;
             const tmp = candidates.items[sj - 1];
             candidates.items[sj - 1] = candidates.items[sj];
@@ -607,8 +607,8 @@ pub fn sliderInteractionSystem(
         if (item.enabled) |en| {
             if (en.state == false) continue;
         }
-
-        const bounds = item.rect.toRectangle();
+        const ui_rect: *components.UIRect = item.rect;
+        const bounds = ui_rect.rect;
         const is_hovered = rl.checkCollisionPointRec(cursor_pos, bounds);
 
         if (is_hovered) {
@@ -644,7 +644,7 @@ pub fn toggleInteractionSystem(
     toggle_writer: zevy_ecs.params.EventWriter(UIToggleEvent),
     query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
-        rect: components.UIRect,
+        ui_rect: components.UIRect,
         toggle: components.UIToggle,
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
@@ -662,7 +662,8 @@ pub fn toggleInteractionSystem(
             if (en.state == false) continue;
         }
 
-        const bounds = item.rect.toRectangle();
+        const ui_rect: *components.UIRect = item.ui_rect;
+        const bounds = ui_rect.rect;
         const is_hovered = rl.checkCollisionPointRec(cursor_pos, bounds);
 
         if (is_hovered and click_triggered) {

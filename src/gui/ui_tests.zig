@@ -38,9 +38,9 @@ test "flex layout basic row start" {
     const r1 = try manager.getComponent(c1, ui.components.UIRect);
     const r2 = try manager.getComponent(c2, ui.components.UIRect);
     const r3 = try manager.getComponent(c3, ui.components.UIRect);
-    if (r1) |rect| try std.testing.expectEqual(@as(f32, 100), rect.width) else try std.testing.expect(false);
-    if (r2) |rect| try std.testing.expectEqual(@as(f32, 100), rect.width) else try std.testing.expect(false);
-    if (r3) |rect| try std.testing.expectEqual(@as(f32, 100), rect.width) else try std.testing.expect(false);
+    if (r1) |ui_rect| try std.testing.expectEqual(@as(f32, 100), ui_rect.rect.width) else try std.testing.expect(false);
+    if (r2) |ui_rect| try std.testing.expectEqual(@as(f32, 100), ui_rect.rect.width) else try std.testing.expect(false);
+    if (r3) |ui_rect| try std.testing.expectEqual(@as(f32, 100), ui_rect.rect.width) else try std.testing.expect(false);
 }
 
 test "flex layout grow distribution" {
@@ -70,18 +70,18 @@ test "flex layout grow distribution" {
     var diff1: f32 = 0.0;
     var diff2: f32 = 0.0;
     var diff3: f32 = 0.0;
-    if (r1) |rect| {
-        diff1 = rect.width - 175.0;
+    if (r1) |ui_rect| {
+        diff1 = ui_rect.rect.width - 175.0;
     } else {
         try std.testing.expect(false);
     }
-    if (r2) |rect| {
-        diff2 = rect.width - 325.0;
+    if (r2) |ui_rect| {
+        diff2 = ui_rect.rect.width - 325.0;
     } else {
         try std.testing.expect(false);
     }
-    if (r3) |rect| {
-        diff3 = rect.width - 100.0;
+    if (r3) |ui_rect| {
+        diff3 = ui_rect.rect.width - 100.0;
     } else {
         try std.testing.expect(false);
     }
@@ -117,9 +117,9 @@ test "flex layout order sorting" {
     const r2 = try manager.getComponent(c2, ui.components.UIRect);
     const r3 = try manager.getComponent(c3, ui.components.UIRect);
 
-    if (r2) |rect| try std.testing.expectEqual(@as(f32, 0), rect.x) else try std.testing.expect(false);
-    if (r3) |rect| try std.testing.expectEqual(@as(f32, 100), rect.x) else try std.testing.expect(false);
-    if (r1) |rect| try std.testing.expectEqual(@as(f32, 200), rect.x) else try std.testing.expect(false);
+    if (r2) |ui_rect| try std.testing.expectEqual(@as(f32, 0), ui_rect.rect.x) else try std.testing.expect(false);
+    if (r3) |ui_rect| try std.testing.expectEqual(@as(f32, 100), ui_rect.rect.x) else try std.testing.expect(false);
+    if (r1) |ui_rect| try std.testing.expectEqual(@as(f32, 200), ui_rect.rect.x) else try std.testing.expect(false);
 }
 
 test "flex layout min/max constraints" {
@@ -146,13 +146,13 @@ test "flex layout min/max constraints" {
 
     // Container 400 - total base (200) = 200 left, split by grow: each gets 100 => sizes 200 each
     // but big has max width 150 so it should be clamped to 150 and small get remaining 250
-    if (big_r) |rect| {
-        std.debug.print("big rect width after layout: {any}\n", .{rect.width});
-        try std.testing.expectEqual(@as(f32, 150.0), rect.width);
+    if (big_r) |ui_rect| {
+        std.debug.print("big rect width after layout: {any}\n", .{ui_rect.rect.width});
+        try std.testing.expectEqual(@as(f32, 150.0), ui_rect.rect.width);
     } else try std.testing.expect(false);
-    if (small_r) |rect| {
-        std.debug.print("small rect width after layout: {any}\n", .{rect.width});
-        try std.testing.expectEqual(@as(f32, 250.0), rect.width);
+    if (small_r) |ui_rect| {
+        std.debug.print("small rect width after layout: {any}\n", .{ui_rect.rect.width});
+        try std.testing.expectEqual(@as(f32, 250.0), ui_rect.rect.width);
     } else try std.testing.expect(false);
 }
 
@@ -183,12 +183,12 @@ test "flex layout order negative and stable tie" {
     const rb = try manager.getComponent(b, ui.components.UIRect);
     const rc = try manager.getComponent(c, ui.components.UIRect);
 
-    if (rb) |rect| {
-        std.debug.print("rb.x after layout: {any}\n", .{rect.x});
-        try std.testing.expectEqual(@as(f32, 0), rect.x);
+    if (rb) |ui_rect| {
+        std.debug.print("rb.x after layout: {any}\n", .{ui_rect.rect.x});
+        try std.testing.expectEqual(@as(f32, 0), ui_rect.rect.x);
     } else try std.testing.expect(false);
-    if (ra) |rect| try std.testing.expectEqual(@as(f32, 100), rect.x) else try std.testing.expect(false);
-    if (rc) |rect| try std.testing.expectEqual(@as(f32, 200), rect.x) else try std.testing.expect(false);
+    if (ra) |ui_rect| try std.testing.expectEqual(@as(f32, 100), ui_rect.rect.x) else try std.testing.expect(false);
+    if (rc) |ui_rect| try std.testing.expectEqual(@as(f32, 200), ui_rect.rect.x) else try std.testing.expect(false);
 }
 
 test "flex layout align_self override" {
@@ -214,13 +214,13 @@ test "flex layout align_self override" {
     const r2 = try manager.getComponent(c2, ui.components.UIRect);
 
     // Container center is y = 50.0; c1 height 20 => centered y should be 50 - 10 = 40
-    if (r1) |rect| {
-        std.debug.print("r1.y after layout: {any}\n", .{rect.y});
-        try std.testing.expectEqual(@as(f32, 40.0), rect.y);
+    if (r1) |ui_rect| {
+        std.debug.print("r1.y after layout: {any}\n", .{ui_rect.rect.y});
+        try std.testing.expectEqual(@as(f32, 40.0), ui_rect.rect.y);
     } else try std.testing.expect(false);
 
     // c2 align_self start should set y equal to container top (0.0)
-    if (r2) |rect| try std.testing.expectEqual(@as(f32, 0.0), rect.y) else try std.testing.expect(false);
+    if (r2) |ui_rect| try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.y) else try std.testing.expect(false);
 }
 
 test "grid layout 2x2 basic" {
@@ -251,32 +251,32 @@ test "grid layout 2x2 basic" {
     const r3 = try manager.getComponent(c3, ui.components.UIRect);
     const r4 = try manager.getComponent(c4, ui.components.UIRect);
 
-    if (r1) |rect| {
-        try std.testing.expectEqual(@as(f32, 0.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 0.0), rect.y);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.width);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.height);
+    if (r1) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.y);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.width);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.height);
     } else try std.testing.expect(false);
 
-    if (r2) |rect| {
-        try std.testing.expectEqual(@as(f32, 100.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 0.0), rect.y);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.width);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.height);
+    if (r2) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.y);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.width);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.height);
     } else try std.testing.expect(false);
 
-    if (r3) |rect| {
-        try std.testing.expectEqual(@as(f32, 0.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.y);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.width);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.height);
+    if (r3) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.y);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.width);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.height);
     } else try std.testing.expect(false);
 
-    if (r4) |rect| {
-        try std.testing.expectEqual(@as(f32, 100.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.y);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.width);
-        try std.testing.expectEqual(@as(f32, 100.0), rect.height);
+    if (r4) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.y);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.width);
+        try std.testing.expectEqual(@as(f32, 100.0), ui_rect.rect.height);
     } else try std.testing.expect(false);
 }
 
@@ -300,9 +300,9 @@ test "anchor layout center" {
     _ = try system.run(&manager, system.ctx);
 
     const r = try manager.getComponent(child, ui.components.UIRect);
-    if (r) |rect| {
-        try std.testing.expectEqual(@as(f32, 75.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 80.0), rect.y);
+    if (r) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 75.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 80.0), ui_rect.rect.y);
     } else try std.testing.expect(false);
 }
 
@@ -339,25 +339,25 @@ test "dock layout basic" {
     const r_top = try manager.getComponent(top, ui.components.UIRect);
     const r_fill = try manager.getComponent(fill, ui.components.UIRect);
 
-    if (r_left) |rect| {
-        try std.testing.expectEqual(@as(f32, 0.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 0.0), rect.y);
-        try std.testing.expectEqual(@as(f32, 50.0), rect.width);
-        try std.testing.expectEqual(@as(f32, 200.0), rect.height);
+    if (r_left) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.y);
+        try std.testing.expectEqual(@as(f32, 50.0), ui_rect.rect.width);
+        try std.testing.expectEqual(@as(f32, 200.0), ui_rect.rect.height);
     } else try std.testing.expect(false);
 
-    if (r_top) |rect| {
-        try std.testing.expectEqual(@as(f32, 50.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 0.0), rect.y);
-        try std.testing.expectEqual(@as(f32, 250.0), rect.width);
-        try std.testing.expectEqual(@as(f32, 30.0), rect.height);
+    if (r_top) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 50.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 0.0), ui_rect.rect.y);
+        try std.testing.expectEqual(@as(f32, 250.0), ui_rect.rect.width);
+        try std.testing.expectEqual(@as(f32, 30.0), ui_rect.rect.height);
     } else try std.testing.expect(false);
 
-    if (r_fill) |rect| {
-        try std.testing.expectEqual(@as(f32, 50.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 30.0), rect.y);
-        try std.testing.expectEqual(@as(f32, 250.0), rect.width);
-        try std.testing.expectEqual(@as(f32, 170.0), rect.height);
+    if (r_fill) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 50.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 30.0), ui_rect.rect.y);
+        try std.testing.expectEqual(@as(f32, 250.0), ui_rect.rect.width);
+        try std.testing.expectEqual(@as(f32, 170.0), ui_rect.rect.height);
     } else try std.testing.expect(false);
 }
 
@@ -403,25 +403,25 @@ test "grid layout gaps and padding" {
     const cell_width: f32 = (available_width - total_col_gap) / 2.0;
     const cell_height: f32 = (available_height - total_row_gap) / 2.0;
 
-    if (r1) |rect| {
-        try std.testing.expectEqual(@as(f32, 10.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 10.0), rect.y);
-        try std.testing.expectEqual(cell_width, rect.width);
-        try std.testing.expectEqual(cell_height, rect.height);
+    if (r1) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 10.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 10.0), ui_rect.rect.y);
+        try std.testing.expectEqual(cell_width, ui_rect.rect.width);
+        try std.testing.expectEqual(cell_height, ui_rect.rect.height);
     } else try std.testing.expect(false);
 
-    if (r2) |rect| {
-        try std.testing.expectEqual(@as(f32, 10.0) + cell_width + 20.0, rect.x);
-        try std.testing.expectEqual(@as(f32, 10.0), rect.y);
+    if (r2) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 10.0) + cell_width + 20.0, ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 10.0), ui_rect.rect.y);
     } else try std.testing.expect(false);
 
-    if (r3) |rect| {
-        try std.testing.expectEqual(@as(f32, 10.0), rect.x);
-        try std.testing.expectEqual(@as(f32, 10.0) + cell_height + 20.0, rect.y);
+    if (r3) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 10.0), ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 10.0) + cell_height + 20.0, ui_rect.rect.y);
     } else try std.testing.expect(false);
 
-    if (r4) |rect| {
-        try std.testing.expectEqual(@as(f32, 10.0) + cell_width + 20.0, rect.x);
-        try std.testing.expectEqual(@as(f32, 10.0) + cell_height + 20.0, rect.y);
+    if (r4) |ui_rect| {
+        try std.testing.expectEqual(@as(f32, 10.0) + cell_width + 20.0, ui_rect.rect.x);
+        try std.testing.expectEqual(@as(f32, 10.0) + cell_height + 20.0, ui_rect.rect.y);
     } else try std.testing.expect(false);
 }

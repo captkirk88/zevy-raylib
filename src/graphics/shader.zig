@@ -28,7 +28,7 @@ pub const ShaderComponent = struct {
     /// Do not set manually.
     resolved: ?rl.Shader = null,
 
-    uniforms: std.AutoHashMap([]const u8, ShaderUniformValue),
+    uniforms: std.StringHashMap(ShaderUniformValue),
 
     pub fn init(allocator: std.mem.Allocator) ShaderComponent {
         return ShaderComponent{
@@ -48,7 +48,7 @@ pub const ShaderComponent = struct {
         self.uniforms.deinit();
     }
 
-    pub fn setUniform(self: *ShaderComponent, uniformName: []const u8, value: ShaderUniformValue) error{OutOfMemory}!void {
+    pub fn setUniform(self: *ShaderComponent, uniformName: [:0]const u8, value: ShaderUniformValue) error{OutOfMemory}!void {
         if (self.resolved) |r| {
             const uf_loc = rl.getShaderLocation(r, uniformName);
             if (uf_loc >= 0) {
@@ -63,7 +63,7 @@ pub const ShaderComponent = struct {
                     .IVec4 => |v| rl.setShaderValue(r, uf_loc, @ptrCast(&v), .ivec4),
                     .Mat4 => |m| rl.setShaderValueMatrix(r, uf_loc, m),
                     .Texture => |t| rl.setShaderValueTexture(r, uf_loc, t),
-                    else => @compileError("Unhandled ShaderUniformValue type"),
+                    //else => @compileError("Unhandled ShaderUniformValue type"),
                 }
             }
         }
@@ -71,7 +71,7 @@ pub const ShaderComponent = struct {
         try self.uniforms.put(uniformName, value);
     }
 
-    pub fn getUniform(self: *ShaderComponent, name: []const u8) ?ShaderUniformValue {
+    pub fn getUniform(self: *ShaderComponent, name: [:0]const u8) ?ShaderUniformValue {
         return self.uniforms.get(name);
     }
 

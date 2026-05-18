@@ -7,23 +7,27 @@ const rl = @import("raylib");
 
 /// Base rectangle component for all UI elements
 pub const UIRect = struct {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
+    rect: rl.Rectangle,
 
     /// Initialize with specific position and size
     pub fn init(x: f32, y: f32, width: f32, height: f32) UIRect {
-        return .{ .x = x, .y = y, .width = width, .height = height };
+        return .{ .rect = .init(
+            x,
+            y,
+            width,
+            height,
+        ) };
     }
 
     /// Initialize to full screen size
     pub fn initScreen() UIRect {
         return .{
-            .x = 0,
-            .y = 0,
-            .width = @floatFromInt(rl.getScreenWidth()),
-            .height = @floatFromInt(rl.getScreenHeight()),
+            .rect = .init(
+                0,
+                0,
+                @floatFromInt(rl.getScreenWidth()),
+                @floatFromInt(rl.getScreenHeight()),
+            ),
         };
     }
 
@@ -32,37 +36,35 @@ pub const UIRect = struct {
     /// **UNTESTED**
     pub fn initCamera(cam: *rl.Camera) UIRect {
         return .{
-            .x = cam.position.x,
-            .y = cam.position.y,
-            .width = cam.target.x,
-            .height = cam.target.y,
+            .rect = .init(
+                cam.position.x,
+                cam.position.y,
+                cam.target.x,
+                cam.target.y,
+            ),
         };
     }
 
     pub fn initFromPoints(x0: f32, y0: f32, x1: f32, y1: f32) UIRect {
         return .{
-            .x = x0,
-            .y = y0,
-            .width = x1 - x0,
-            .height = y1 - y0,
+            .rect = .init(
+                x0,
+                y0,
+                x1 - x0,
+                y1 - y0,
+            ),
         };
     }
 
     pub fn initFromRelative(parent: *const UIRect, rel_x: f32, rel_y: f32, rel_width: f32, rel_height: f32) UIRect {
         return .{
-            .x = parent.x + rel_x * parent.width,
-            .y = parent.y + rel_y * parent.height,
-            .width = rel_width * parent.width,
-            .height = rel_height * parent.height,
+            .rect = .init(
+                parent.x + rel_x * parent.width,
+                parent.y + rel_y * parent.height,
+                rel_width * parent.width,
+                rel_height * parent.height,
+            ),
         };
-    }
-
-    pub fn toRectangle(self: *const UIRect) rl.Rectangle {
-        return .{ .x = self.x, .y = self.y, .width = self.width, .height = self.height };
-    }
-
-    pub fn fromRectangle(rect: rl.Rectangle) UIRect {
-        return .{ .x = rect.x, .y = rect.y, .width = rect.width, .height = rect.height };
     }
 
     pub fn contains(self: *const UIRect, px: f32, py: f32) bool {
@@ -70,7 +72,7 @@ pub const UIRect = struct {
             py >= self.y and py <= self.y + self.height;
     }
 
-    pub fn center(self: *const UIRect) struct { x: f32, y: f32 } {
+    pub fn center(self: *const UIRect) rl.Vector2 {
         return .{
             .x = self.x + self.width / 2.0,
             .y = self.y + self.height / 2.0,

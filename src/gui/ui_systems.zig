@@ -77,7 +77,7 @@ fn collectAndSortChildren(
             if (try commands.manager().getComponent(child, layout.FlexItem)) |fptr| fi = fptr.*;
 
             // Calculate base size from basis or current dimension
-            const base = if (fi.basis) |b| b else if (is_row) child_rect.width else child_rect.height;
+            const base = if (fi.basis) |b| b else if (is_row) child_rect.rect.width else child_rect.rect.height;
 
             grow_sum += fi.grow;
             shrink_sum += fi.shrink;
@@ -251,9 +251,9 @@ fn positionChildren(
     is_reverse: bool,
 ) void {
     const main_size = if (is_row)
-        container_rect.width - flex.padding.getTotalHorizontal()
+        container_rect.rect.width - flex.padding.getTotalHorizontal()
     else
-        container_rect.height - flex.padding.getTotalVertical();
+        container_rect.rect.height - flex.padding.getTotalVertical();
 
     var sum_computed: f32 = 0.0;
     for (computed_sizes) |s| sum_computed += s;
@@ -261,7 +261,7 @@ fn positionChildren(
     const gaps_total = if (child_infos.len > 1) flex.gap * @as(f32, @floatFromInt(child_infos.len - 1)) else 0.0;
     const remaining_space = main_size - (sum_computed + gaps_total);
 
-    var offset: f32 = if (is_row) container_rect.x + flex.padding.left else container_rect.y + flex.padding.top;
+    var offset: f32 = if (is_row) container_rect.rect.x + flex.padding.left else container_rect.rect.y + flex.padding.top;
     var gap = flex.gap;
 
     // Apply justify_content
@@ -295,33 +295,33 @@ fn positionChildren(
             const crect = child_infos[i].rect;
 
             if (is_row) {
-                crect.x = pos - size;
-                crect.width = size;
+                crect.rect.x = pos - size;
+                crect.rect.width = size;
                 // Apply align_self or align_items
                 var item_align = flex.align_items;
                 if (child_infos[i].flex_item) |f| {
                     if (f.align_self != layout.FlexItemAlign.auto) item_align = f.align_self;
                 }
                 switch (item_align) {
-                    .auto => crect.y = container_rect.y + flex.padding.top,
-                    .start => crect.y = container_rect.y + flex.padding.top,
-                    .center => crect.y = container_rect.y + flex.padding.top + (cross_size - crect.height) / 2.0,
-                    .end => crect.y = container_rect.y + flex.padding.top + cross_size - crect.height,
-                    .stretch => crect.height = cross_size,
+                    .auto => crect.rect.y = container_rect.rect.y + flex.padding.top,
+                    .start => crect.rect.y = container_rect.rect.y + flex.padding.top,
+                    .center => crect.rect.y = container_rect.rect.y + flex.padding.top + (cross_size - crect.rect.height) / 2.0,
+                    .end => crect.rect.y = container_rect.rect.y + flex.padding.top + cross_size - crect.rect.height,
+                    .stretch => crect.rect.height = cross_size,
                 }
             } else {
-                crect.y = pos - size;
-                crect.height = size;
+                crect.rect.y = pos - size;
+                crect.rect.height = size;
                 var item_align = flex.align_items;
                 if (child_infos[i].flex_item) |f| {
                     if (f.align_self != layout.FlexItemAlign.auto) item_align = f.align_self;
                 }
                 switch (item_align) {
-                    .auto => crect.x = container_rect.x + flex.padding.left,
-                    .start => crect.x = container_rect.x + flex.padding.left,
-                    .center => crect.x = container_rect.x + flex.padding.left + (cross_size - crect.width) / 2.0,
-                    .end => crect.x = container_rect.x + flex.padding.left + cross_size - crect.width,
-                    .stretch => crect.width = cross_size,
+                    .auto => crect.rect.x = container_rect.rect.x + flex.padding.left,
+                    .start => crect.rect.x = container_rect.rect.x + flex.padding.left,
+                    .center => crect.rect.x = container_rect.rect.x + flex.padding.left + (cross_size - crect.rect.width) / 2.0,
+                    .end => crect.rect.x = container_rect.rect.x + flex.padding.left + cross_size - crect.rect.width,
+                    .stretch => crect.rect.width = cross_size,
                 }
             }
 
@@ -335,32 +335,32 @@ fn positionChildren(
             const crect = ci.rect;
 
             if (is_row) {
-                crect.x = offset;
-                crect.width = size;
+                crect.rect.x = offset;
+                crect.rect.width = size;
                 var item_align = flex.align_items;
                 if (ci.flex_item) |f| {
                     if (f.align_self != layout.FlexItemAlign.auto) item_align = f.align_self;
                 }
                 switch (item_align) {
-                    .auto => crect.y = container_rect.y + flex.padding.top,
-                    .start => crect.y = container_rect.y + flex.padding.top,
-                    .center => crect.y = container_rect.y + flex.padding.top + (cross_size - crect.height) / 2.0,
-                    .end => crect.y = container_rect.y + flex.padding.top + cross_size - crect.height,
-                    .stretch => crect.height = cross_size,
+                    .auto => crect.rect.y = container_rect.rect.y + flex.padding.top,
+                    .start => crect.rect.y = container_rect.rect.y + flex.padding.top,
+                    .center => crect.rect.y = container_rect.rect.y + flex.padding.top + (cross_size - crect.rect.height) / 2.0,
+                    .end => crect.rect.y = container_rect.rect.y + flex.padding.top + cross_size - crect.rect.height,
+                    .stretch => crect.rect.height = cross_size,
                 }
             } else {
-                crect.y = offset;
-                crect.height = size;
+                crect.rect.y = offset;
+                crect.rect.height = size;
                 var item_align = flex.align_items;
                 if (ci.flex_item) |f| {
                     if (f.align_self != layout.FlexItemAlign.auto) item_align = f.align_self;
                 }
                 switch (item_align) {
-                    .auto => crect.x = container_rect.x + flex.padding.left,
-                    .start => crect.x = container_rect.x + flex.padding.left,
-                    .center => crect.x = container_rect.x + flex.padding.left + (cross_size - crect.width) / 2.0,
-                    .end => crect.x = container_rect.x + flex.padding.left + cross_size - crect.width,
-                    .stretch => crect.width = cross_size,
+                    .auto => crect.rect.x = container_rect.rect.x + flex.padding.left,
+                    .start => crect.rect.x = container_rect.rect.x + flex.padding.left,
+                    .center => crect.rect.x = container_rect.rect.x + flex.padding.left + (cross_size - crect.rect.width) / 2.0,
+                    .end => crect.rect.x = container_rect.rect.x + flex.padding.left + cross_size - crect.rect.width,
+                    .stretch => crect.rect.width = cross_size,
                 }
             }
 
@@ -413,104 +413,104 @@ pub fn onAddedUiText(
 const TextRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     text: components.UIText,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
 });
 
 const ButtonRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     button: components.UIButton,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const ToggleRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     toggle: components.UIToggle,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const SliderRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     slider: components.UISlider,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const ProgressRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     progress: components.UIProgressBar,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const TextBoxRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     textbox: components.UITextBox,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const PanelRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     panel: components.UIPanel,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const ScrollPanelRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     scroll_panel: components.UIScrollPanel,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const DropdownRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     dropdown: components.UIDropdown,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const ImageRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     image: components.UIImage,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const SpinnerRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     spinner: components.UISpinner,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const ColorPickerRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     picker: components.UIColorPicker,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const ListViewRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     list_view: components.UIListView,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const MessageBoxRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     message_box: components.UIMessageBox,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
 const TabBarRenderQuery = zevy_ecs.params.Query(struct {
     rect: components.UIRect,
     tab_bar: components.UITabBar,
-    visible: ?components.UIVisible,
+    vis: ?components.UIVisible,
     enabled: ?components.UIEnabled,
 });
 
@@ -561,113 +561,128 @@ pub fn uiRenderSystem(
     var panel_count: usize = 0;
     while (panel_query.next()) |q| {
         panel_count += 1;
-        const vis = if (q.visible) |v| v.* else null;
-        renderer.renderPanel(q.rect, q.panel, vis);
+        const vis = if (q.vis) |v| v.* else null;
+        const rect = q.rect;
+        renderer.renderPanel(rect.*, q.panel, vis);
     }
 
     // Render scroll panels
     while (scroll_panel_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderScrollPanel(q.rect.*, q.scroll_panel, vis);
+        const rect = q.rect;
+        renderer.renderScrollPanel(rect.*, q.scroll_panel, vis);
     }
     rg.setState(@intFromEnum(rg.State.normal));
 
     // Render images
     while (image_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
-        renderer.renderImage(q.rect.*, q.image.*, vis);
+        const vis = if (q.vis) |v| v.* else null;
+        const rect = q.rect;
+        renderer.renderImage(rect.*, q.image.*, vis);
     }
 
     // Render text labels
     while (text_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
-        renderer.renderText(q.rect, q.text, vis);
+        const vis = if (q.vis) |v| v.* else null;
+        const rect = q.rect;
+        renderer.renderText(rect.*, q.text, vis);
     }
 
     // Render progress bars
     while (progress_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
-        renderer.renderProgressBar(q.rect.*, q.progress.*, vis);
+        const vis = if (q.vis) |v| v.* else null;
+        const rect = q.rect;
+        renderer.renderProgressBar(rect.*, q.progress.*, vis);
     }
 
     // Render buttons
     while (button_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderButton(q.rect.*, q.button, vis);
+        const rect = q.rect;
+        renderer.renderButton(rect.*, q.button, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render toggles
     while (toggle_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderToggle(q.rect.*, q.toggle, vis);
+        const rect = q.rect;
+        renderer.renderToggle(rect.*, q.toggle, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render sliders
     while (slider_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderSlider(q.rect.*, q.slider, vis);
+        const rect = q.rect;
+        renderer.renderSlider(rect.*, q.slider, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render text boxes
     while (textbox_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderTextBox(q.rect.*, q.textbox, vis);
+        const rect = q.rect;
+        renderer.renderTextBox(rect.*, q.textbox, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render dropdowns
     while (dropdown_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderDropdown(q.rect.*, q.dropdown, vis);
+        const rect = q.rect;
+        renderer.renderDropdown(rect.*, q.dropdown, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render spinners
     while (spinner_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderSpinner(q.rect.*, q.spinner, vis);
+        const rect = q.rect;
+        renderer.renderSpinner(rect.*, q.spinner, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render color pickers
     while (color_picker_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderColorPicker(q.rect.*, q.picker, vis);
+        const rect = q.rect;
+        renderer.renderColorPicker(rect.*, q.picker, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render list views
     while (list_view_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderListView(q.rect.*, q.list_view, vis);
+        const rect = q.rect;
+        renderer.renderListView(rect.*, q.list_view, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render tab bars
     while (tab_bar_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderTabBar(q.rect.*, q.tab_bar, vis);
+        const rect = q.rect;
+        renderer.renderTabBar(rect.*, q.tab_bar, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 
     // Render message boxes last (modal overlays)
     while (message_box_query.next()) |q| {
-        const vis = if (q.visible) |v| v.* else null;
+        const vis = if (q.vis) |v| v.* else null;
         if (q.enabled) |en| rg.setState(@intFromEnum(if (en.state == false) rg.State.disabled else rg.State.normal)) else rg.setState(@intFromEnum(rg.State.normal));
-        renderer.renderMessageBox(q.rect.*, q.message_box, vis);
+        const rect = q.rect;
+        renderer.renderMessageBox(rect.*, q.message_box, vis);
         rg.setState(@intFromEnum(rg.State.normal));
     }
 }
@@ -704,7 +719,7 @@ pub fn uiInputKeyRenderSystem(
         const parent_rect_opt = commands.manager().getComponent(parent, components.UIRect) catch continue;
         const parent_rect = parent_rect_opt orelse continue;
         const atlas_ptr = icon_atlas.get().atlas;
-        renderer.renderInputKeyAt(parent_rect.toRectangle(), ui_key.asSlice()[0], atlas_ptr, style.get());
+        renderer.renderInputKeyAt(parent_rect.*.rect, ui_key.asSlice()[0], atlas_ptr, style.get());
     }
 }
 
@@ -758,14 +773,14 @@ pub fn flexLayoutSystem(
 
         // Calculate available space
         const main_size = if (is_row)
-            cq.rect.width - flex.padding.getTotalHorizontal()
+            cq.rect.rect.width - flex.padding.getTotalHorizontal()
         else
-            cq.rect.height - flex.padding.getTotalVertical();
+            cq.rect.rect.height - flex.padding.getTotalVertical();
 
         const cross_size = if (is_row)
-            cq.rect.height - flex.padding.getTotalVertical()
+            cq.rect.rect.height - flex.padding.getTotalVertical()
         else
-            cq.rect.width - flex.padding.getTotalHorizontal();
+            cq.rect.rect.width - flex.padding.getTotalHorizontal();
 
         // Compute sizes considering grow/shrink and constraints
         var computed_sizes = try computeFlexSizes(
@@ -828,8 +843,8 @@ pub fn gridLayoutSystem(
         if (child_infos.items.len == 0) continue;
         // Calculate grid dimensions
         const grid = cq.grid;
-        const available_width = cq.rect.width - grid.padding.getTotalHorizontal();
-        const available_height = cq.rect.height - grid.padding.getTotalVertical();
+        const available_width = cq.rect.rect.width - grid.padding.getTotalHorizontal();
+        const available_height = cq.rect.rect.height - grid.padding.getTotalVertical();
 
         const num_columns = if (grid.columns > 0) grid.columns else @max(1, @as(u32, @intCast(@divFloor(@as(i32, @intCast(child_infos.items.len)) + @as(i32, @intCast(grid.rows)) - 1, @as(i32, @intCast(grid.rows))))));
         const num_rows = if (grid.rows > 0) grid.rows else @max(1, @as(u32, @intCast(@divFloor(@as(i32, @intCast(child_infos.items.len)) + @as(i32, @intCast(num_columns)) - 1, @as(i32, @intCast(num_columns))))));
@@ -846,13 +861,13 @@ pub fn gridLayoutSystem(
             const col = idx % num_columns;
             const row = @divFloor(idx, num_columns);
 
-            const x = cq.rect.x + grid.padding.left + @as(f32, @floatFromInt(col)) * (cell_width + grid.column_gap);
-            const y = cq.rect.y + grid.padding.top + @as(f32, @floatFromInt(row)) * (cell_height + grid.row_gap);
+            const x = cq.rect.rect.x + grid.padding.left + @as(f32, @floatFromInt(col)) * (cell_width + grid.column_gap);
+            const y = cq.rect.rect.y + grid.padding.top + @as(f32, @floatFromInt(row)) * (cell_height + grid.row_gap);
 
-            ci.rect.x = x;
-            ci.rect.y = y;
-            ci.rect.width = cell_width;
-            ci.rect.height = cell_height;
+            ci.rect.rect.x = x;
+            ci.rect.rect.y = y;
+            ci.rect.rect.width = cell_width;
+            ci.rect.rect.height = cell_height;
         }
     }
 }
@@ -867,21 +882,21 @@ pub fn anchorLayoutSystem(
     rel: zevy_ecs.params.Relations,
 ) anyerror!void {
     while (container_query.next()) |cq| {
-        const container_rect = cq.rect.*;
+        const container_rect: rl.Rectangle = cq.rect.*.rect;
         const children = rel.getChildren(cq.entity, zevy_ecs.relations.kinds.Child);
         if (children.len == 0) continue;
 
         for (children) |child| {
             var ent_cmds = try commands.entity(child);
             defer ent_cmds.deinit();
-            const rect = try ent_cmds.get(components.UIRect) orelse continue;
+            const child_ui_rect = try ent_cmds.get(components.UIRect) orelse continue;
             const anchor = try ent_cmds.get(layout.AnchorLayout) orelse continue;
 
-            const cw = rect.width;
-            const ch = rect.height;
+            const cw = child_ui_rect.rect.width;
+            const ch = child_ui_rect.rect.height;
 
-            var x: f32 = container_rect.x;
-            var y: f32 = container_rect.y;
+            var x = container_rect.x;
+            var y = container_rect.y;
 
             switch (anchor.anchor) {
                 .top_left => {},
@@ -915,8 +930,8 @@ pub fn anchorLayoutSystem(
                 },
             }
 
-            rect.x = x + anchor.offset_x;
-            rect.y = y + anchor.offset_y;
+            child_ui_rect.rect.x = x + anchor.offset_x;
+            child_ui_rect.rect.y = y + anchor.offset_y;
         }
     }
 }
@@ -931,48 +946,48 @@ pub fn dockLayoutSystem(
     rel: zevy_ecs.params.Relations,
 ) anyerror!void {
     while (container_query.next()) |cq| {
-        const container_rect = cq.rect.*;
+        const container_rect = cq.rect.*.rect;
         const children = rel.getChildren(cq.entity, zevy_ecs.relations.kinds.Child);
         if (children.len == 0) continue;
 
         var remaining = container_rect;
 
         for (children) |child| {
-            const rect = try commands.manager().getComponent(child, components.UIRect) orelse continue;
+            const ui_rect = try commands.manager().getComponent(child, components.UIRect) orelse continue;
             const dock = try commands.manager().getComponent(child, layout.DockLayout) orelse continue;
 
             switch (dock.side) {
                 .left => {
-                    rect.x = remaining.x;
-                    rect.y = remaining.y;
-                    rect.height = remaining.height;
-                    remaining.x += rect.width;
-                    remaining.width -= rect.width;
+                    ui_rect.rect.x = remaining.x;
+                    ui_rect.rect.y = remaining.y;
+                    ui_rect.rect.height = remaining.height;
+                    remaining.x += ui_rect.rect.width;
+                    remaining.width -= ui_rect.rect.width;
                 },
                 .right => {
-                    rect.x = remaining.x + remaining.width - rect.width;
-                    rect.y = remaining.y;
-                    rect.height = remaining.height;
-                    remaining.width -= rect.width;
+                    ui_rect.rect.x = remaining.x + remaining.width - ui_rect.rect.width;
+                    ui_rect.rect.y = remaining.y;
+                    ui_rect.rect.height = remaining.height;
+                    remaining.width -= ui_rect.rect.width;
                 },
                 .top => {
-                    rect.x = remaining.x;
-                    rect.y = remaining.y;
-                    rect.width = remaining.width;
-                    remaining.y += rect.height;
-                    remaining.height -= rect.height;
+                    ui_rect.rect.x = remaining.x;
+                    ui_rect.rect.y = remaining.y;
+                    ui_rect.rect.width = remaining.width;
+                    remaining.y += ui_rect.rect.height;
+                    remaining.height -= ui_rect.rect.height;
                 },
                 .bottom => {
-                    rect.x = remaining.x;
-                    rect.y = remaining.y + remaining.height - rect.height;
-                    rect.width = remaining.width;
-                    remaining.height -= rect.height;
+                    ui_rect.rect.x = remaining.x;
+                    ui_rect.rect.y = remaining.y + remaining.height - ui_rect.rect.height;
+                    ui_rect.rect.width = remaining.width;
+                    remaining.height -= ui_rect.rect.height;
                 },
                 .fill => {
-                    rect.x = remaining.x;
-                    rect.y = remaining.y;
-                    rect.width = remaining.width;
-                    rect.height = remaining.height;
+                    ui_rect.rect.x = remaining.x;
+                    ui_rect.rect.y = remaining.y;
+                    ui_rect.rect.width = remaining.width;
+                    ui_rect.rect.height = remaining.height;
                 },
             }
         }

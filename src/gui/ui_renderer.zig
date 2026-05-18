@@ -51,24 +51,24 @@ pub const FlexWrap = layout.FlexWrap;
 // TODO have visible handled before render removing need for extra param
 
 /// Render a UI text component
-pub fn renderText(rect: *const UIRect, text: *const UIText, visible: ?UIVisible) void {
+pub fn renderText(ui_rect: UIRect, text: *const UIText, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     // Simple label rendering using raygui
     _ = rg.label(bounds, text.text);
 }
 
 /// Render a UI button component
-pub fn renderButton(rect: UIRect, button: *UIButton, visible: ?UIVisible) void {
+pub fn renderButton(ui_rect: UIRect, button: *UIButton, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     button.pressed = switch (button.style) {
         .default => rg.button(bounds, button.text),
@@ -85,24 +85,24 @@ pub fn renderButton(rect: UIRect, button: *UIButton, visible: ?UIVisible) void {
 }
 
 /// Render a UI toggle/checkbox component
-pub fn renderToggle(rect: UIRect, toggle: *UIToggle, visible: ?UIVisible) void {
+pub fn renderToggle(ui_rect: UIRect, toggle: *UIToggle, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     _ = rg.checkBox(bounds, toggle.text, &toggle.checked);
     // UI enabled/disabled is handled by `UIEnabled` / rendering systems
 }
 
 /// Render a UI slider component
-pub fn renderSlider(rect: UIRect, slider: *UISlider, visible: ?UIVisible) void {
+pub fn renderSlider(ui_rect: UIRect, slider: *UISlider, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     _ = rg.slider(
         bounds,
@@ -115,12 +115,12 @@ pub fn renderSlider(rect: UIRect, slider: *UISlider, visible: ?UIVisible) void {
 }
 
 /// Render a UI progress bar component
-pub fn renderProgressBar(rect: UIRect, progress: UIProgressBar, visible: ?UIVisible) void {
+pub fn renderProgressBar(ui_rect: UIRect, progress: UIProgressBar, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
     var val = progress.value;
     _ = rg.progressBar(
         bounds,
@@ -133,12 +133,12 @@ pub fn renderProgressBar(rect: UIRect, progress: UIProgressBar, visible: ?UIVisi
 }
 
 /// Render a UI text input box component
-pub fn renderTextBox(rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) void {
+pub fn renderTextBox(ui_rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     // Ensure buffer is null-terminated
     if (textbox.text_len < textbox.buffer.len) {
@@ -156,12 +156,12 @@ pub fn renderTextBox(rect: UIRect, textbox: *UITextBox, visible: ?UIVisible) voi
 }
 
 /// Render a UI panel component
-pub fn renderPanel(rect: *const UIRect, panel: *const UIPanel, visible: ?UIVisible) void {
+pub fn renderPanel(ui_rect: UIRect, panel: *const UIPanel, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     if (panel.background) {
         if (panel.color) |color| {
@@ -178,12 +178,12 @@ pub fn renderPanel(rect: *const UIRect, panel: *const UIPanel, visible: ?UIVisib
 }
 
 /// Render a UI scroll panel component
-pub fn renderScrollPanel(rect: UIRect, scroll_panel: *UIScrollPanel, visible: ?UIVisible) void {
+pub fn renderScrollPanel(ui_rect: UIRect, scroll_panel: *UIScrollPanel, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
     _ = rg.scrollPanel(
         bounds,
         null,
@@ -194,12 +194,12 @@ pub fn renderScrollPanel(rect: UIRect, scroll_panel: *UIScrollPanel, visible: ?U
 }
 
 /// Render a UI dropdown/combobox component
-pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) void {
+pub fn renderDropdown(ui_rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     // Join items with semicolons for raygui
     var buffer: [1024]u8 = undefined;
@@ -222,12 +222,12 @@ pub fn renderDropdown(rect: UIRect, dropdown: *UIDropdown, visible: ?UIVisible) 
 }
 
 /// Render a UI image component
-pub fn renderImage(rect: UIRect, image: UIImage, visible: ?UIVisible) void {
+pub fn renderImage(ui_rect: UIRect, image: UIImage, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
     const source = rl.Rectangle{
         .x = 0,
         .y = 0,
@@ -246,12 +246,12 @@ pub fn renderImage(rect: UIRect, image: UIImage, visible: ?UIVisible) void {
 }
 
 /// Render a UI spinner component
-pub fn renderSpinner(rect: UIRect, spinner: *UISpinner, visible: ?UIVisible) void {
+pub fn renderSpinner(ui_rect: UIRect, spinner: *UISpinner, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     _ = rg.spinner(
         bounds,
@@ -264,23 +264,23 @@ pub fn renderSpinner(rect: UIRect, spinner: *UISpinner, visible: ?UIVisible) voi
 }
 
 /// Render a UI color picker component
-pub fn renderColorPicker(rect: UIRect, picker: *UIColorPicker, visible: ?UIVisible) void {
+pub fn renderColorPicker(ui_rect: UIRect, picker: *UIColorPicker, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     _ = rg.colorPicker(bounds, "", &picker.color);
 }
 
 /// Render a UI list view component
-pub fn renderListView(rect: UIRect, list_view: *UIListView, visible: ?UIVisible) void {
+pub fn renderListView(ui_rect: UIRect, list_view: *UIListView, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     // Join items with semicolons for raygui
     var buffer: [2048]u8 = undefined;
@@ -304,14 +304,14 @@ pub fn renderListView(rect: UIRect, list_view: *UIListView, visible: ?UIVisible)
 }
 
 /// Render a UI message box component
-pub fn renderMessageBox(rect: UIRect, msg_box: *UIMessageBox, visible: ?UIVisible) void {
+pub fn renderMessageBox(ui_rect: UIRect, msg_box: *UIMessageBox, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
     if (!msg_box.active or msg_box.result >= 0) return;
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
     msg_box.result = rg.messageBox(
         bounds,
         msg_box.title,
@@ -321,12 +321,12 @@ pub fn renderMessageBox(rect: UIRect, msg_box: *UIMessageBox, visible: ?UIVisibl
 }
 
 /// Render a UI tab bar component
-pub fn renderTabBar(rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void {
+pub fn renderTabBar(ui_rect: UIRect, tab_bar: *UITabBar, visible: ?UIVisible) void {
     if (visible) |v| {
         if (!v.visible) return;
     }
 
-    const bounds = rect.toRectangle();
+    const bounds = ui_rect.rect;
 
     // Convert string slices to null-terminated pointers for raygui
     var tab_ptrs: [32][*:0]u8 = undefined;

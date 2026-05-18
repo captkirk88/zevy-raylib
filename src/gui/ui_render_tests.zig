@@ -253,7 +253,7 @@ fn focusDebugDrawSystem(
     _ = manager;
     _ = style_res;
     while (query.next()) |item| {
-        const rect: *comps.UIRect = item.rect;
+        const ui_rect: *comps.UIRect = item.rect;
         const visible: ?*comps.UIVisible = item.visible;
         const enabled: ?*comps.UIEnabled = item.enabled;
         if (visible) |v| {
@@ -264,7 +264,7 @@ fn focusDebugDrawSystem(
             if (en.state == false) continue;
         }
 
-        const b = rect.toRectangle();
+        const b = ui_rect.rect;
         rl.drawRectangleLinesEx(b, 2, rl.Color.magenta);
     }
 }
