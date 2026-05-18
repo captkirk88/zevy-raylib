@@ -1,4 +1,7 @@
-//! Example showcasing headless mode in the RaylibPlugin, which allows running the application without creating a window or initializing the graphics/audio devices. This is useful for server-side applications, automated testing, or any scenario where you want to use the ECS and plugin systems without rendering or audio output.
+//! Example showcasing headless mode in the RaylibPlugin, which allows running the
+//! application without creating a window or initializing graphics/audio devices.
+//! Useful for server-side apps, automated testing, and non-rendering workloads.
+//!
 //! Pretty much the same as the circles example but with headless mode enabled.
 
 const std = @import("std");
@@ -105,13 +108,13 @@ fn buttonClickedSystem(
 }
 
 // Main game loop system
-fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !zevy_raylib.ExitAppEvent {
-    var accumulator: f32 = 0.0;
+fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !zevy_raylib.ExitAppEvent {
     const fixed_dt: f32 = 1.0 / 60.0; // 1/60 for physics/logic updates
+    var accum = zevy_raylib.FixedTimestepAccumulator.init(fixed_dt);
     const dt_ptr = try ecs.addResource(DeltaTime, fixed_dt);
     defer dt_ptr.deinit();
 
-    var eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First).subtract(1));
+    var eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First).sub(1));
     if (eg.hasErrors()) {
         std.log.err("Errors during PreStartup -> First stage:", .{});
         var iter = eg.iterator();
@@ -121,8 +124,8 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
     }
 
     var exit_app_event: zevy_raylib.ExitAppEvent = .Success;
-    while (!rl.windowShouldClose()) {
-        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).subtract(1));
+    while (!zevy_raylib.shouldClose(io_ctx)) {
+        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).sub(1));
         if (eg.hasErrors()) {
             std.log.err("Errors during First -> PreUpdate stage:", .{});
             var iter = eg.iterator();
@@ -141,14 +144,9 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
                 }
             }
         }
-        const frame_time = rl.getFrameTime();
-        var clamped_frame_time = frame_time;
-        if (clamped_frame_time > 0.25) clamped_frame_time = 0.25; // clamp to avoid spiral of death
-
-        accumulator += clamped_frame_time;
         // Run game logic updates in fixed timesteps for consistency
-        var updates: usize = 0;
-        while (accumulator >= fixed_dt) : (accumulator -= fixed_dt) {
+        accum.beginFrame();
+        while (accum.consumeTick()) {
             {
                 const dt_lock = dt_ptr.lockWrite();
                 dt_lock.get().* = fixed_dt;
@@ -156,7 +154,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
             }
 
             // Run PreUpdate stage (input updates happen here)
-            eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).subtract(1));
+            eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).sub(1));
             if (eg.hasErrors()) {
                 std.log.err("Errors during PreUpdate -> PreDraw stage:", .{});
                 var iter = eg.iterator();
@@ -164,9 +162,6 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
                     std.log.err("- {s}", .{@errorName(err)});
                 }
             }
-
-            updates += 1;
-            if (updates > 5) break; // avoid too many catch-up updates per frame
         }
 
         // Render
@@ -176,7 +171,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
         rl.clearBackground(rl.Color.black);
 
         // Run render systems (extended to include UI stage at PostDraw + 1000)
-        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).subtract(1));
+        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).sub(1));
         if (eg.hasErrors()) {
             std.log.err("Errors during PreDraw -> Last stage:", .{});
             var iter = eg.iterator();
@@ -189,8 +184,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
         rl.drawFPS(10, 10);
         // draw tps
         var tps_buf: [32]u8 = undefined;
-        const tps = @as(usize, @intFromFloat(@as(f32, @floatFromInt(updates)) / fixed_dt));
-        const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{tps}) catch "TPS: ?";
+        const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{zevy_raylib.getTPS(&accum)}) catch "TPS: ?";
         rl.drawText(
             tps_text,
             10,
@@ -218,10 +212,8 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
     return exit_app_event;
 }
 
-pub fn main() !u8 {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !u8 {
+    const allocator = init.arena.allocator();
 
     // Initialize ECS
     var ecs = try zevy_ecs.Manager.init(allocator);
@@ -261,11 +253,18 @@ pub fn main() !u8 {
     try plugin_manager.build(&ecs);
 
     // Load the icon atlas
-    var assets_ptr = ecs.getResource(zevy_raylib.Assets) orelse return error.MissingAssets;
-    defer assets_ptr.deinit();
-    const assets_lock = assets_ptr.lockWrite();
-    defer assets_lock.deinit();
-    //zevy_raylib.ui.systems.registerIconAtlasFromAssets(&ecs, assets_lock.get(), "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
+    {
+        var assets_ptr = ecs.getResource(zevy_raylib.Assets) orelse return error.MissingAssets;
+        defer assets_ptr.deinit();
+        var assets_lock = assets_ptr.lockWrite();
+        defer assets_lock.deinit();
+        zevy_raylib.ui.systems.registerIconAtlasFromAssets(
+            &ecs,
+            assets_lock.get(),
+            "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml",
+            .{},
+        );
+    }
 
     // Get the scheduler that was created by the plugins
     const scheduler = blk: {
@@ -337,10 +336,10 @@ pub fn main() !u8 {
         try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.kinds.Child);
     }
 
-    std.log.info("Starting game loop...", .{});
+    std.log.info("Starting game loop... Press Ctrl+C to exit.", .{});
 
     // Run the game loop
-    const exit_code: u8 = @intFromEnum(try gameLoop(&ecs, scheduler));
+    const exit_code: u8 = @intFromEnum(try gameLoop(init.io, &ecs, scheduler));
 
     std.log.info("Shutting down...", .{});
 

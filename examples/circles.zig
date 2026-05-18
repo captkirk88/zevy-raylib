@@ -108,9 +108,9 @@ fn buttonClickedSystem(
 }
 
 // Main game loop system
-fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !zevy_raylib.ExitAppEvent {
-    var accumulator: f32 = 0.0;
+fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !zevy_raylib.ExitAppEvent {
     const fixed_dt: f32 = 1.0 / 60.0; // 1/60 for physics/logic updates
+    var accum = zevy_raylib.FixedTimestepAccumulator.init(fixed_dt);
     const dt_ptr = try ecs.addResource(DeltaTime, fixed_dt);
     defer dt_ptr.deinit();
 
@@ -124,7 +124,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
     }
 
     var exit_app_event: zevy_raylib.ExitAppEvent = .Success;
-    while (!rl.windowShouldClose()) {
+    while (!zevy_raylib.shouldClose(io_ctx)) {
         eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).subtract(1));
         if (eg.hasErrors()) {
             std.log.err("Errors during First -> PreUpdate stage:", .{});
@@ -144,14 +144,9 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
                 }
             }
         }
-        const frame_time = rl.getFrameTime();
-        var clamped_frame_time = frame_time;
-        if (clamped_frame_time > 0.25) clamped_frame_time = 0.25; // clamp to avoid spiral of death
-
-        accumulator += clamped_frame_time;
         // Run game logic updates in fixed timesteps for consistency
-        var updates: usize = 0;
-        while (accumulator >= fixed_dt) : (accumulator -= fixed_dt) {
+        accum.beginFrame();
+        while (accum.consumeTick()) {
             {
                 const dt_lock = dt_ptr.lockWrite();
                 dt_lock.get().* = fixed_dt;
@@ -167,9 +162,6 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
                     std.log.err("- {s}", .{@errorName(err)});
                 }
             }
-
-            updates += 1;
-            if (updates > 5) break; // avoid too many catch-up updates per frame
         }
 
         // Render
@@ -192,8 +184,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
         rl.drawFPS(10, 10);
         // draw tps
         var tps_buf: [32]u8 = undefined;
-        const tps = @as(usize, @intFromFloat(@as(f32, @floatFromInt(updates)) / frame_time));
-        const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{tps}) catch "TPS: ?";
+        const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{zevy_raylib.getTPS(&accum)}) catch "TPS: ?";
         rl.drawText(
             tps_text,
             10,
@@ -222,7 +213,7 @@ fn gameLoop(ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !ze
 }
 
 pub fn main(init: std.process.Init) !u8 {
-    const allocator = init.gpa;
+    const allocator = init.arena.allocator();
 
     // Initialize ECS
     var ecs = try zevy_ecs.Manager.init(allocator);
@@ -347,7 +338,7 @@ pub fn main(init: std.process.Init) !u8 {
     std.log.info("Starting game loop...", .{});
 
     // Run the game loop
-    const exit_code: u8 = @intFromEnum(try gameLoop(&ecs, scheduler));
+    const exit_code: u8 = @intFromEnum(try gameLoop(init.io, &ecs, scheduler));
 
     std.log.info("Shutting down...", .{});
 

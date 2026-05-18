@@ -54,15 +54,12 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
             if (!self.headless) {
                 rl.initWindow(self.width, self.height, self.title);
                 rl.initAudioDevice();
-
                 if (self.target_fps < 30) self.target_fps = 30;
-                rl.setTargetFPS(self.target_fps);
             } else {
-                log.info("Running in headless mode: window and audio device initialization skipped", .{});
-                if (self.target_fps < 1) self.target_fps = 1;
-                // In headless mode, we can still use Raylib's timing functions for a consistent update loop, even though we won't be rendering or producing audio.
-                rl.setTargetFPS(self.target_fps);
+                log.info("Running in headless mode: Window and audio device will not be initialized.", .{});
             }
+
+            rl.setTargetFPS(self.target_fps);
         }
 
         pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) anyerror!void {

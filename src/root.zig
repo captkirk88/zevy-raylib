@@ -2,6 +2,7 @@
 const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
+const rl = @import("raylib");
 const io = @import("io/root.zig");
 const graphics_mod = @import("graphics/root.zig");
 pub const input = @import("input/input.zig");
@@ -39,6 +40,88 @@ pub const params = struct {
 };
 
 pub const RaylibParamRegistry = zevy_ecs.DefaultParamRegistry;
+
+/// Returns true when the application should stop.
+/// In windowed mode delegates to `rl.windowShouldClose()`.
+/// In headless mode (no window), this probes stdin in non-blocking mode and
+/// returns true on `error.EndOfStream`.
+///
+/// Note: End-of-stream may indicate Ctrl+C in some terminal configurations,
+/// but can also indicate stdin closure/redirection. In both cases this exits.
+pub fn shouldClose(io_ctx: std.Io) bool {
+    if (rl.isWindowReady()) return rl.windowShouldClose();
+
+    var stdin_file = std.Io.File.stdin();
+    stdin_file.flags.nonblocking = true;
+
+    var b: [1]u8 = undefined;
+    const vec = [_][]u8{b[0..]};
+    _ = stdin_file.readStreaming(io_ctx, &vec) catch |err| switch (err) {
+        error.EndOfStream => return true,
+        error.WouldBlock => return false,
+        else => return true,
+    };
+    return false;
+}
+
+/// Returns ticks per second given the number of fixed-timestep updates processed
+/// in a frame and the actual elapsed frame time in seconds.
+/// Safe to call in headless mode (returns 0 when there is no window).
+pub fn getTPS(accum: *FixedTimestepAccumulator) usize {
+    const frame_time = if (rl.isWindowReady()) rl.getFrameTime() else accum.fixed_dt;
+    if (frame_time == 0) return 0;
+    return @intFromFloat(@as(f32, @floatFromInt(accum.updates)) / frame_time);
+}
+
+/// Fixed-timestep accumulator for game logic updates.
+///
+/// Works in both windowed and headless (no window) mode.
+///
+/// Usage:
+/// ```zig
+/// var accum = FixedTimestepAccumulator.init(1.0 / 60.0);
+/// // each frame:
+/// while (!zevy_raylib.shouldClose(io)) {
+///     accum.beginFrame();
+///     while (accum.consumeTick()) { /* run fixed-dt systems */ }
+/// }
+/// ```
+pub const FixedTimestepAccumulator = struct {
+    const Self = @This();
+
+    accumulator: f32 = 0.0,
+    fixed_dt: f32,
+    /// Maximum fixed updates consumed per frame (spiral-of-death guard).
+    max_updates: usize = 5,
+    /// Frame times above this are clamped (spiral-of-death guard).
+    max_frame_time: f32 = 0.25,
+    /// Number of fixed updates consumed in the current frame (reset by beginFrame()).
+    updates: usize = 0,
+
+    pub fn init(fixed_dt: f32) Self {
+        return .{ .fixed_dt = fixed_dt };
+    }
+
+    /// Call once per frame. Reads the frame time (or uses fixed_dt in headless mode),
+    /// clamps it, and adds it to the accumulator. Resets the per-frame update counter.
+    pub fn beginFrame(self: *Self) void {
+        const frame_time = if (rl.isWindowReady()) rl.getFrameTime() else self.fixed_dt;
+        const clamped = @min(frame_time, self.max_frame_time);
+        self.accumulator += clamped;
+        self.updates = 0;
+    }
+
+    /// Returns true while there is accumulated time left to consume and the
+    /// per-frame update cap has not been reached. Drains one fixed_dt tick
+    /// per call and increments the update counter.
+    pub fn consumeTick(self: *Self) bool {
+        if (self.updates >= self.max_updates) return false;
+        if (self.accumulator < self.fixed_dt) return false;
+        self.accumulator -= self.fixed_dt;
+        self.updates += 1;
+        return true;
+    }
+};
 
 /// Registers all plugins defined in this package
 pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager, headless: bool) anyerror!void {
