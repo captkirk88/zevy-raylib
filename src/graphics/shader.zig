@@ -118,19 +118,25 @@ pub fn resolveShaderSystem(
 
         var vs_source: ?[:0]const u8 = null;
         var fs_source: ?[:0]const u8 = null;
+        var vs_handle_to_unload: ?AssetHandle = null;
+        var fs_handle_to_unload: ?AssetHandle = null;
 
         if (comp.vert) |h| {
             const src = assets.get(ShaderSource, h) orelse continue; // retry next frame
             vs_source = src.source;
-            assets.unload(ShaderSource, h); // source no longer needed after compilation
+            vs_handle_to_unload = h;
         }
         if (comp.frag) |h| {
             const src = assets.get(ShaderSource, h) orelse continue; // retry next frame
             fs_source = src.source;
-            assets.unload(ShaderSource, h); // source no longer needed after compilation
+            fs_handle_to_unload = h;
         }
 
         comp.resolved = try rl.loadShaderFromMemory(vs_source, fs_source);
+
+        // Only unload sources after compilation so pointers remain valid during raylib call.
+        if (vs_handle_to_unload) |h| assets.unload(ShaderSource, h);
+        if (fs_handle_to_unload) |h| assets.unload(ShaderSource, h);
     }
 }
 
