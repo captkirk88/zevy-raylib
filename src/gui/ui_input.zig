@@ -388,19 +388,19 @@ pub fn uiInteractionDetectionSystem(
 
             // Change focus to the clicked element: remove UIFocus from any other
             while (focus_query.next()) |fitem| {
-                _ = commands.removeComponent(fitem.entity, components.UIFocus) catch null;
+                try commands.removeComponent(fitem.entity, components.UIFocus);
             }
             //try commands.flush(commands.manager); // Ensure focus removal is applied immediately
 
             // Add UIFocus to this entity (if focusable)
             if (commands.manager().getComponent(item.entity, components.UIFocusable) catch null) |ff| {
                 _ = ff;
-                _ = commands.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
+                try commands.addComponent(item.entity, components.UIFocus, components.UIFocus{});
             } else {
                 // Consider common interactive components focusable by default
                 if (commands.manager().getComponent(item.entity, components.UIButton) catch null) |b| {
                     _ = b;
-                    _ = commands.addComponent(item.entity, components.UIFocus, components.UIFocus{}) catch null;
+                    try commands.addComponent(item.entity, components.UIFocus, components.UIFocus{});
                 }
             }
         } else if (activated_by_confirm or activated_by_keypress) {
@@ -428,7 +428,7 @@ pub fn uiInteractionDetectionSystem(
         newprev.keys[idx] = current_keys[idx];
     }
     newprev.len = @min(current_keys.len, newprev.keys.len);
-    prev_pressed_mut.set(newprev);
+    prev_pressed_mut.getPtr().?.* = newprev;
 }
 
 /// Focus navigation system: cycles focusable UI elements when the
