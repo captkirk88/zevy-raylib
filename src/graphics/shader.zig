@@ -147,6 +147,8 @@ pub const ShaderBatcher = struct {
     /// Call once per entity before its draw call.
     /// Switches shader mode only when the active shader changes.
     /// Stored uniforms are re-applied via `applyUniforms` whenever a new shader is activated.
+    ///
+    /// Safe to call with `null` (or a component with both handles `null`) for entities that don't use a custom shader.
     pub fn begin(self: *ShaderBatcher, sc: ?*const ShaderComponent) void {
         const incoming: ?rl.Shader = if (sc) |c| c.getShader(self.assets) else null;
         const new_id: u32 = if (incoming) |sh| sh.id + 1 else 0;

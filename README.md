@@ -17,6 +17,8 @@
 - [Introduction](#introduction)
 - [Quick Start](#quick-start)
 - [Contributing](#contributing)
+- [Projects](#projects)
+- [License](#license)
 
 ---
 
@@ -41,3 +43,7 @@ zig build examples
 - Follow existing Zig patterns
 - Register new plugins in `src/root.zig` by adding them to `plug()`
 - Add unit tests beside features in the `src/*` directory. Prefer tests to be named `*_tests.zig`.
+
+## Projects
+- [zevy-alloy](https://github.com/captkirk88/zevy-alloy)
+- [zevy-ecs](https://github.com/captkirk88/zevy-ecs)
