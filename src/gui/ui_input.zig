@@ -262,7 +262,6 @@ pub fn uiInteractionDetectionSystem(
     const click_triggered_confirm = input_mgr_ptr.wasActionTriggered("ui_confirm");
 
     // Local params are provided as pointers; use them directly
-    var last_hover_mut = last_hover;
     var prev_pressed_mut = prev_pressed;
 
     // Build a small list of newly-pressed keys compared to the previous frame
@@ -306,7 +305,13 @@ pub fn uiInteractionDetectionSystem(
 
         // Emit hover events on state change and remember last hovered
         if (is_hovered and !was_hovered) {
-            last_hover_mut.set(item.entity);
+            if (last_hover.getPtr()) |lh| {
+                if (!lh.*.eql(item.entity)) {
+                    lh.* = item.entity;
+                }
+            } else {
+                last_hover.set(item.entity);
+            }
             hover_writer.write(.{
                 .entity = item.entity,
                 .position = cursor_pos,
@@ -428,7 +433,11 @@ pub fn uiInteractionDetectionSystem(
         newprev.keys[idx] = current_keys[idx];
     }
     newprev.len = @min(current_keys.len, newprev.keys.len);
-    prev_pressed_mut.getPtr().?.* = newprev;
+    if (prev_pressed_mut.getPtr()) |pptr| {
+        pptr.* = newprev;
+    } else {
+        prev_pressed_mut.set(newprev);
+    }
 }
 
 /// Focus navigation system: cycles focusable UI elements when the

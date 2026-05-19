@@ -165,10 +165,10 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
         }
 
         // Render
-        rl.beginDrawing();
-        defer rl.endDrawing();
+        zevy_raylib.beginDrawing();
+        defer zevy_raylib.endDrawing();
 
-        rl.clearBackground(rl.Color.black);
+        zevy_raylib.clearBackground(rl.Color.black);
 
         // Run render systems (extended to include UI stage at PostDraw + 1000)
         eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).sub(1));

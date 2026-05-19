@@ -61,7 +61,7 @@ pub fn UIPlugin(comptime ParamRegistry: type) type {
 
             scheduler.addSystem(
                 e,
-                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup),
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup),
                 systems.startupUiSystem,
                 ParamRegistry,
             );

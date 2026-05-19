@@ -87,6 +87,9 @@ pub const UIStyle = struct {
     input_icon: InputIconStyle = InputIconStyle.init(),
 
     pub fn init() UIStyle {
-        return UIStyle{ .font = rl.getFontDefault() catch |err| std.debug.panic("Failed to get default font: {}", .{err}) };
+        // In headless mode there is no render device, so getFontDefault can fail.
+        // We keep a zeroed fallback font and let startupUiSystem replace it when a window exists.
+        const fallback_font: rl.Font = std.mem.zeroes(rl.Font);
+        return UIStyle{ .font = rl.getFontDefault() catch fallback_font };
     }
 };

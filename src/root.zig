@@ -1,5 +1,6 @@
 //! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
+const builtin = @import("builtin");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const rl = @import("raylib");
@@ -52,6 +53,12 @@ pub const RaylibParamRegistry = zevy_ecs.DefaultParamRegistry;
 pub fn shouldClose(io_ctx: std.Io) bool {
     if (rl.isWindowReady()) return rl.windowShouldClose();
 
+    if (builtin.os.tag == .windows) {
+        // Zig 0.16's Windows nonblocking stdin path can panic on STATUS_ALERTED.
+        // In headless mode on Windows we rely on external termination (e.g. Ctrl+C).
+        return false;
+    }
+
     var stdin_file = std.Io.File.stdin();
     stdin_file.flags.nonblocking = true;
 
@@ -72,6 +79,24 @@ pub fn getTPS(accum: *FixedTimestepAccumulator) usize {
     const frame_time = if (rl.isWindowReady()) rl.getFrameTime() else accum.fixed_dt;
     if (frame_time == 0) return 0;
     return @intFromFloat(@as(f32, @floatFromInt(accum.updates)) / frame_time);
+}
+
+/// Begins a draw pass only when a window is ready.
+/// Returns true when drawing has started and `endDrawingIfReady()` should be called.
+pub fn beginDrawing() void {
+    if (!rl.isWindowReady()) return;
+    rl.beginDrawing();
+}
+
+/// Ends a draw pass only when a window is ready.
+pub fn endDrawing() void {
+    if (!rl.isWindowReady()) return;
+    rl.endDrawing();
+}
+
+pub fn clearBackground(color: rl.Color) void {
+    if (!rl.isWindowReady()) return;
+    rl.clearBackground(color);
 }
 
 /// Fixed-timestep accumulator for game logic updates.

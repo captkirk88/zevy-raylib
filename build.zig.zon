@@ -1,7 +1,7 @@
 .{
     .name = .zevy_raylib,
 
-    .version = "0.2.0",
+    .version = "0.2.1",
 
     .fingerprint = 0x73e22ea89041ce9, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",

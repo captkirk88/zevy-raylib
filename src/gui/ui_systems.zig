@@ -22,25 +22,27 @@ pub fn startupUiSystem(
     assets: zevy_ecs.params.ResMut(Assets),
 ) !void {
     _ = assets;
+
+    // Register style eagerly so systems that depend on UIStyle can run in headless mode.
+    _ = commands.addResource(ui_style.UIStyle, ui_style.UIStyle.init()) catch {};
+
     // Raylib UI startup requires a render device.
     if (!rl.isWindowReady()) return;
 
     rg.loadStyleDefault();
     const default_font = try rl.getFontDefault();
     rg.setFont(default_font);
-    // Populate the default style with the default font and register it. Ignore if already present.
-    var style = ui_style.UIStyle.init();
-    style.font = default_font;
-    _ = commands.addResource(ui_style.UIStyle, style) catch {};
+
+    if (commands.manager().getResource(ui_style.UIStyle)) |style_ref| {
+        defer style_ref.deinit();
+        var style_guard = style_ref.lockWrite();
+        defer style_guard.deinit();
+        style_guard.get().font = default_font;
+    }
 
     //const assets_ref = assets.get();
     // Register the default icon atlas from assets. This allows UI components to use icons in their default state.
-    switch (builtin.os.tag) {
-        .windows, .linux, .macos => {
-            //registerIconAtlasFromAssets(commands.manager(), assets_ref, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
-        },
-        else => {},
-    }
+    //registerIconAtlasFromAssets(commands.manager(), assets_ref, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
 }
 
 const ChildInfo = struct {
@@ -708,17 +710,23 @@ pub fn uiInputKeyRenderSystem(
         children: zevy_ecs.relations.Relation(zevy_ecs.relations.kinds.Child),
     }),
     style: zevy_ecs.params.Res(@import("style.zig").UIStyle),
-    icon_atlas: zevy_ecs.params.Res(ui_resources.UIIconAtlasHandle),
 ) anyerror!void {
     // Early out if window not ready to avoid unnecessary processing
     if (!rl.isWindowReady()) return;
+
+    var atlas_ptr: ?*const io_types.IconAtlas = null;
+    if (commands.manager().getResource(ui_resources.UIIconAtlasHandle)) |atlas_ref| {
+        defer atlas_ref.deinit();
+        var atlas_guard = atlas_ref.lockRead();
+        defer atlas_guard.deinit();
+        atlas_ptr = atlas_guard.get().atlas;
+    }
 
     while (input_key_query.next()) |q| {
         const ui_key: *components.UIInputKey = q.input_key;
         const parent: zevy_ecs.Entity = q.children.target;
         const parent_rect_opt = commands.manager().getComponent(parent, components.UIRect) catch continue;
         const parent_rect = parent_rect_opt orelse continue;
-        const atlas_ptr = icon_atlas.get().atlas;
         renderer.renderInputKeyAt(parent_rect.*.rect, ui_key.asSlice()[0], atlas_ptr, style.get());
     }
 }
