@@ -6,6 +6,7 @@
 //! for movement and rendering. A simple UI button is also created to demonstrate UI interaction.
 
 const std = @import("std");
+const zevy_mem = @import("zevy_mem");
 const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 const zevy_raylib = @import("zevy_raylib");
@@ -113,7 +114,6 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
     var accum = zevy_raylib.FixedTimestepAccumulator.init(fixed_dt);
     const dt_ptr = try ecs.addResource(DeltaTime, fixed_dt);
     defer dt_ptr.deinit();
-
     var eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First).sub(1));
     if (eg.hasErrors()) {
         std.log.err("Errors during PreStartup -> First stage:", .{});
@@ -232,9 +232,13 @@ pub fn main(init: std.process.Init) !u8 {
     std.log.info("Adding RaylibPlugin...", .{});
     // Manually add plugins one by one to showcase integration
     try plugin_manager.add(RaylibPlugin(ParamRegistry), RaylibPlugin(ParamRegistry){
-        .title = "Zevy Raylib Example",
-        .width = 1280,
-        .height = 720,
+        .window_opts = .{
+            .title = std.fmt.comptimePrint("Circles! - {d} of them!", .{CIRCLE_COUNT}),
+            .resolution = .init(1280, 720),
+            .vsync = true,
+            .high_dpi = false,
+            .fullscreen_mode = .Windowed,
+        },
         .log_level = .info,
     });
 
@@ -319,14 +323,20 @@ pub fn main(init: std.process.Init) !u8 {
         ui.components.UIRect.initScreen(),
     });
     const close_button = ecs.create(.{
-        ui.components.UIRect.init(0, 0, 100, 50),
-        ui.components.UIButton.init("Close Me"),
-        ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
+        ui.components.UIRect.init(0, 0, 100, 50), // TODO make this able to be set based on text size and padding
+        ui.components.UIButton.init("CLOSE ME"),
+        //ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }), TODO fix layout issue
         layout.AnchorLayout.init(.top_right),
         CloseMeButtonTag{},
     });
 
+    // _ = ecs.create(.{
+    //     ui.components.UIRect.initScreen(),
+    //     ui.components.UIMessageBox.init("This should POP!", "This is a test, only a test...", "Ok;Cancel"),
+    // });
+
     {
+        // TODO layout.UIContainer.child("root") would be nicer than this manual relation management
         const relations_ptr = ecs.getResource(zevy_ecs.relations.RelationManager) orelse try ecs.addResource(zevy_ecs.relations.RelationManager, .init(ecs.allocator));
         defer relations_ptr.deinit();
         var relations_guard = relations_ptr.lockWrite();

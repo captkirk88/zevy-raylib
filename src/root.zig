@@ -154,10 +154,10 @@ pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
     _ = allocator;
     _ = ecs;
     try plugs.add(RaylibPlugin(RaylibParamRegistry), .{
-        .title = "Zevy Raylib App",
-        .width = 1280,
-        .height = 720,
-        .headless = headless,
+        .window_opts = .{
+            .title = "Zevy Raylib App",
+            .headless = headless,
+        },
     });
     try plugs.add(AssetsPlugin, .{});
     try plugs.add(InputPlugin(RaylibParamRegistry), .{});
@@ -180,8 +180,8 @@ test "zevy_raylib" {
     try std.testing.expect(plugs.get(UIPlugin(RaylibParamRegistry)) != null);
 
     if (plugs.get(RaylibPlugin(RaylibParamRegistry))) |raylib_plug| {
-        try std.testing.expect(std.mem.eql(u8, raylib_plug.title, "Zevy Raylib App"));
-        try std.testing.expect(raylib_plug.headless);
+        try std.testing.expect(std.mem.eql(u8, raylib_plug.window_opts.title, "Zevy Raylib App"));
+        try std.testing.expect(raylib_plug.window_opts.headless);
     } else {
         try std.testing.expect(false);
     }
