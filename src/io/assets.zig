@@ -386,7 +386,8 @@ pub const TextureLoader = struct {
         switch (resolved) {
             .embedded_data => |data| {
                 const ext = std.fs.path.extension(ctx.uri);
-                const temp_path = try io_utils.writeTempFile(ctx.allocator, "", if (ext.len > 0) ext else ".png", data);
+                const temp_path = try io_utils.writeTempFile(ctx.allocator, if (ext.len > 0) ext else ".png", data);
+                defer _ = io_utils.deleteFile(temp_path);
                 defer ctx.allocator.free(temp_path);
 
                 const path_z = try std.heap.c_allocator.dupeZ(u8, temp_path);
@@ -427,7 +428,7 @@ pub const SoundLoader = struct {
         switch (resolved) {
             .embedded_data => |data| {
                 const ext = std.fs.path.extension(ctx.uri);
-                const temp_path = try io_utils.writeTempFile(ctx.allocator, "", if (ext.len > 0) ext else ".wav", data);
+                const temp_path = try io_utils.writeTempFile(ctx.allocator, if (ext.len > 0) ext else ".wav", data);
                 defer ctx.allocator.free(temp_path);
 
                 const path_z = try std.heap.c_allocator.dupeZ(u8, temp_path);
@@ -465,7 +466,7 @@ pub const MusicLoader = struct {
         switch (resolved) {
             .embedded_data => |data| {
                 const ext = std.fs.path.extension(ctx.uri);
-                const temp_path = try io_utils.writeTempFile(ctx.allocator, "", if (ext.len > 0) ext else ".mp3", data);
+                const temp_path = try io_utils.writeTempFile(ctx.allocator, if (ext.len > 0) ext else ".mp3", data);
                 defer ctx.allocator.free(temp_path);
 
                 const path_z = try std.heap.c_allocator.dupeZ(u8, temp_path);
@@ -503,7 +504,7 @@ pub const FontLoader = struct {
         switch (resolved) {
             .embedded_data => |data| {
                 const ext = std.fs.path.extension(ctx.uri);
-                const temp_path = try io_utils.writeTempFile(ctx.allocator, "", if (ext.len > 0) ext else ".ttf", data);
+                const temp_path = try io_utils.writeTempFile(ctx.allocator, if (ext.len > 0) ext else ".ttf", data);
                 defer ctx.allocator.free(temp_path);
 
                 const path_z = try std.heap.c_allocator.dupeZ(u8, temp_path);
@@ -685,14 +686,16 @@ test "Assets manager operations" {
 test "Assets load embedded texture" {
     const testing = std.testing;
     const embedded_assets = @import("embedded_assets");
-    if (should_skip) return error.SkipZigTest;
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
     if (embedded_assets.list().len == 0) return error.SkipZigTest;
-
-    var assets = Assets.init(testing.allocator);
-    defer assets.deinit();
 
     rl.initWindow(800, 600, "Test");
     defer rl.closeWindow();
+
+    var assets = Assets.init(testing.allocator);
+    defer assets.deinit();
 
     const tex = try assets.loadAssetNow(rl.Texture, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.png", null);
     try testing.expect(rl.isTextureValid(tex.*));
@@ -701,14 +704,16 @@ test "Assets load embedded texture" {
 test "Assets load embedded IconAtlas" {
     const testing = std.testing;
     const embedded_assets = @import("embedded_assets");
-    if (should_skip) return error.SkipZigTest;
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
     if (embedded_assets.list().len == 0) return error.SkipZigTest;
-
-    var assets = Assets.init(testing.allocator);
-    defer assets.deinit();
 
     rl.initWindow(800, 600, "Test");
     defer rl.closeWindow();
+
+    var assets = Assets.init(testing.allocator);
+    defer assets.deinit();
 
     const atlas = try assets.loadAssetNow(types.IconAtlas, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", null);
     try testing.expect(atlas.frameCount() > 0);
@@ -737,14 +742,16 @@ test "Assets custom scheme registration" {
 
 test "Assets file not found" {
     const testing = std.testing;
-    var assets = Assets.init(testing.allocator);
-    defer assets.deinit();
-
-    if (should_skip) return error.SkipZigTest;
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
 
     // Need raylib window for texture loading, but file check happens first
     rl.initWindow(320, 240, "Test");
     defer rl.closeWindow();
+
+    var assets = Assets.init(testing.allocator);
+    defer assets.deinit();
 
     const result = assets.loadAssetNow(rl.Texture, "nonexistent.png", null);
     try testing.expectError(error.FileNotFound, result);

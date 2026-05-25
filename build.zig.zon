@@ -1,15 +1,15 @@
 .{
     .name = .zevy_raylib,
 
-    .version = "0.2.1",
+    .version = "0.2.2",
 
     .fingerprint = 0x73e22ea89041ce9, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
 
     .dependencies = .{
         .zevy_ecs = .{
-            .url = "git+https://github.com/captkirk88/zevy-ecs#fa759c83daebbf57b18fb55a43a2f240090de186",
-            .hash = "zevy_ecs-2.6.6-VoL9macjCQDQrRZl85EtDly8fFhiM0TCRfrtSKE2-4rT",
+            .url = "git+https://github.com/captkirk88/zevy-ecs#0ad189ee0dfc55f123a4d14eef6c12f95f4ea64b",
+            .hash = "zevy_ecs-2.7.0-VoL9mbY4CQAGobW2pbtKrK2Q94e0itAqbrQ8nO02H5TH",
         },
         // .zevy_ecs = .{
         //     .path = "../zevy-ecs",
@@ -32,8 +32,8 @@
             .hash = "zevy_reflect-1.4.2-Ob80cCkvAwB4yWZ6OfIbO0tYgatrSJc08N40qQRBkga1",
         },
         .zevy_mem = .{
-            .url = "git+https://github.com/captkirk88/zevy-mem#3ac8ef7fa1ca630e53e3b7b55a9a22ebc1e1bae3",
-            .hash = "zevy_mem-1.2.2-jK9L0dU-AwDHI13yVz1pGLRiLFWNQWPeGEi6AXvkuqSO",
+            .url = "git+https://github.com/captkirk88/zevy-mem#94ea6a002fc2a850f9ffaf328cbd19d417df451c",
+            .hash = "zevy_mem-1.2.3-jK9L0ek_AwDV1MUrbzDEjHriTpIZdppaGVvBuXEcz2MP",
         },
         // .zevy_buildtools = .{
         //     .path = "../zevy-buildtools",

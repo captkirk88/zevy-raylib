@@ -173,6 +173,41 @@ test "InputBindings collection operations" {
     try testing.expect(bindings.getBinding("interact") == null);
 }
 
+test "InputBindings action queries span multiple bindings" {
+    const allocator = testing.allocator;
+
+    var bindings = InputBindingCollection.init(allocator);
+    defer bindings.deinit();
+
+    {
+        var chord = InputChord.init(allocator);
+        try chord.add(allocator, .{ .mouse = .left });
+        const action = try InputAction.init(allocator, "ui_click", "UI click/select");
+        try bindings.addBinding(InputBinding.init(chord, action));
+    }
+
+    {
+        var chord = InputChord.init(allocator);
+        try chord.add(allocator, .{ .touch = .{ .touch_id = 0, .input = .touch_tap } });
+        const action = try InputAction.init(allocator, "ui_click", "UI click/select");
+        try bindings.addBinding(InputBinding.init(chord, action));
+    }
+
+    const touch_pressed = [_]InputKey{.{ .touch = .{ .touch_id = 0, .input = .touch_tap } }};
+    const empty_pressed = [_]InputKey{};
+
+    try testing.expect(bindings.getBinding("ui_click") != null);
+    try testing.expect(bindings.actionMatches("ui_click", &touch_pressed));
+    try testing.expect(bindings.actionTriggered("ui_click", &touch_pressed, &empty_pressed));
+    try testing.expect(!bindings.actionTriggered("ui_click", &touch_pressed, &touch_pressed));
+
+    try testing.expect(bindings.setBindingEnabled("ui_click", false));
+    try testing.expect(!bindings.actionMatches("ui_click", &touch_pressed));
+
+    try testing.expect(bindings.removeBinding("ui_click"));
+    try testing.expect(bindings.getBinding("ui_click") == null);
+}
+
 test "InputChord comparison and sorting" {
     const allocator = testing.allocator;
 
@@ -258,6 +293,40 @@ test "Input manager basic functionality" {
     // Test enabling/disabling
     try testing.expect(manager.setBindingEnabled("jump", false));
     try testing.expect(manager.setBindingEnabled("nonexistent", false) == false);
+}
+
+test "Input manager action queries support multiple bindings per action" {
+    const allocator = testing.allocator;
+
+    var manager = InputManager.init(allocator);
+    defer manager.deinit();
+
+    {
+        var mouse_chord = InputChord.init(allocator);
+        try mouse_chord.add(allocator, .{ .mouse = .left });
+        const action = try InputAction.init(allocator, "ui_click", "UI click/select");
+        try manager.addBinding(InputBinding.init(mouse_chord, action));
+    }
+
+    {
+        var touch_chord = InputChord.init(allocator);
+        try touch_chord.add(allocator, .{ .touch = .{ .touch_id = 0, .input = .touch_tap } });
+        const action = try InputAction.init(allocator, "ui_click", "UI click/select");
+        try manager.addBinding(InputBinding.init(touch_chord, action));
+    }
+
+    try manager.current_state.add(.{ .touch = .{ .touch_id = 0, .input = .touch_tap } });
+
+    try testing.expect(manager.isActionActive("ui_click"));
+    try testing.expect(manager.wasActionTriggered("ui_click"));
+
+    manager.previous_state.clear();
+    try manager.previous_state.add(.{ .touch = .{ .touch_id = 0, .input = .touch_tap } });
+    manager.current_state.clear();
+    try manager.current_state.add(.{ .touch = .{ .touch_id = 0, .input = .touch_tap } });
+
+    try testing.expect(manager.isActionActive("ui_click"));
+    try testing.expect(!manager.wasActionTriggered("ui_click"));
 }
 
 test "InputBindingBuilder" {

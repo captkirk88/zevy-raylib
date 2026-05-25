@@ -278,14 +278,18 @@ pub const InputBindings = struct {
 
     /// Remove a binding by action name
     pub fn removeBinding(self: *Self, action_name: []const u8) bool {
-        for (self.bindings.items, 0..) |*binding, i| {
-            if (std.mem.eql(u8, binding.action.name, action_name)) {
-                binding.deinit(self.allocator);
+        var removed_any = false;
+        var i: usize = 0;
+        while (i < self.bindings.items.len) {
+            if (std.mem.eql(u8, self.bindings.items[i].action.name, action_name)) {
+                self.bindings.items[i].deinit(self.allocator);
                 _ = self.bindings.orderedRemove(i);
-                return true;
+                removed_any = true;
+                continue;
             }
+            i += 1;
         }
-        return false;
+        return removed_any;
     }
 
     /// Find the best matching binding for the given pressed keys
@@ -335,15 +339,32 @@ pub const InputBindings = struct {
         return null;
     }
 
+    /// Check whether any binding for an action matches the current keys.
+    pub fn actionMatches(self: *const Self, action_name: []const u8, pressed_keys: []const InputKey) bool {
+        for (self.bindings.items) |*binding| {
+            if (!std.mem.eql(u8, binding.action.name, action_name)) continue;
+            if (binding.matches(pressed_keys)) return true;
+        }
+        return false;
+    }
+
+    /// Check whether an action transitioned from inactive to active this frame.
+    pub fn actionTriggered(self: *const Self, action_name: []const u8, current_keys: []const InputKey, previous_keys: []const InputKey) bool {
+        const matches_current = self.actionMatches(action_name, current_keys);
+        const matches_previous = self.actionMatches(action_name, previous_keys);
+        return matches_current and !matches_previous;
+    }
+
     /// Enable or disable a binding
     pub fn setBindingEnabled(self: *Self, action_name: []const u8, enabled: bool) bool {
+        var changed_any = false;
         for (self.bindings.items) |*binding| {
             if (std.mem.eql(u8, binding.action.name, action_name)) {
                 binding.enabled = enabled;
-                return true;
+                changed_any = true;
             }
         }
-        return false;
+        return changed_any;
     }
 
     /// Get all bindings

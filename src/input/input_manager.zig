@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const input_bindings = @import("input_bindings.zig");
+const platform = @import("platform.zig");
 const input_types = @import("input_types.zig");
 
 pub const InputBinding = input_bindings.InputBinding;
@@ -105,12 +106,24 @@ pub const RaylibBindings = struct {
     get_gesture_detected: ?*const fn () rl.Gesture,
     is_gesture_detected: ?*const fn (gesture: rl.Gesture) bool,
 
+    fn isKeyDownAdapter(key: c_int) bool {
+        return rl.isKeyDown(@enumFromInt(key));
+    }
+
+    fn isMouseButtonDownAdapter(button: c_int) bool {
+        return rl.isMouseButtonDown(@enumFromInt(button));
+    }
+
+    fn isGamepadButtonDownAdapter(gamepad: i32, button: c_int) bool {
+        return rl.isGamepadButtonDown(gamepad, @enumFromInt(button));
+    }
+
     pub fn default() RaylibBindings {
         return RaylibBindings{
-            .is_key_down = @ptrCast(&rl.isKeyDown),
-            .is_mouse_button_down = @ptrCast(&rl.isMouseButtonDown),
+            .is_key_down = isKeyDownAdapter,
+            .is_mouse_button_down = isMouseButtonDownAdapter,
             .is_gamepad_available = rl.isGamepadAvailable,
-            .is_gamepad_button_down = @ptrCast(&rl.isGamepadButtonDown),
+            .is_gamepad_button_down = isGamepadButtonDownAdapter,
             .get_touch_point_count = rl.getTouchPointCount,
             .get_touch_position = rl.getTouchPosition,
             .get_gesture_detected = rl.getGestureDetected,
@@ -247,55 +260,61 @@ pub const InputManager = struct {
             }
         }
 
-        // Check touch inputs
-        if (self.raylib.get_touch_point_count) |get_count_fn| {
-            const touch_count = get_count_fn();
+        if (platform.usesTouchPrimaryPointer()) {
+            // Touch and gesture input are only polled on touch-primary platforms.
+            // On desktop Linux, raylib can surface pseudo-touch state that keeps
+            // ui_click continuously active and suppresses mouse edge detection.
 
-            // Check each touch point (up to 10 supported by raylib)
-            var i: c_int = 0;
-            while (i < touch_count and i < 10) : (i += 1) {
-                if (self.raylib.get_touch_position) |get_pos_fn| {
-                    const pos = get_pos_fn(i);
-                    // Touch is considered active if we have a valid position
-                    if (pos.x >= 0 and pos.y >= 0) {
-                        try self.current_state.add(InputKey{ .touch = .{
-                            .touch_id = @intCast(i),
-                            .input = .touch_tap,
-                        } });
+            // Check touch inputs
+            if (self.raylib.get_touch_point_count) |get_count_fn| {
+                const touch_count = get_count_fn();
+
+                // Check each touch point (up to 10 supported by raylib)
+                var i: c_int = 0;
+                while (i < touch_count and i < 10) : (i += 1) {
+                    if (self.raylib.get_touch_position) |get_pos_fn| {
+                        const pos = get_pos_fn(i);
+                        // Touch is considered active if we have a valid position
+                        if (pos.x >= 0 and pos.y >= 0) {
+                            try self.current_state.add(InputKey{ .touch = .{
+                                .touch_id = @intCast(i),
+                                .input = .touch_tap,
+                            } });
+                        }
                     }
                 }
             }
-        }
 
-        // Check gesture inputs
-        if (self.raylib.get_gesture_detected) |get_gesture_fn| {
-            const detected_gesture = get_gesture_fn();
-            var gesture_input: ?GestureInput = null;
+            // Check gesture inputs
+            if (self.raylib.get_gesture_detected) |get_gesture_fn| {
+                const detected_gesture = get_gesture_fn();
+                var gesture_input: ?GestureInput = null;
 
-            if (detected_gesture.tap) {
-                gesture_input = .gesture_tap;
-            } else if (detected_gesture.doubletap) {
-                gesture_input = .gesture_doubletap;
-            } else if (detected_gesture.hold) {
-                gesture_input = .gesture_hold;
-            } else if (detected_gesture.drag) {
-                gesture_input = .gesture_drag;
-            } else if (detected_gesture.pinch_in) {
-                gesture_input = .gesture_pinch_in;
-            } else if (detected_gesture.pinch_out) {
-                gesture_input = .gesture_pinch_out;
-            } else if (detected_gesture.swipe_up) {
-                gesture_input = .gesture_swipe_up;
-            } else if (detected_gesture.swipe_down) {
-                gesture_input = .gesture_swipe_down;
-            } else if (detected_gesture.swipe_left) {
-                gesture_input = .gesture_swipe_left;
-            } else if (detected_gesture.swipe_right) {
-                gesture_input = .gesture_swipe_right;
-            }
+                if (detected_gesture.tap) {
+                    gesture_input = .gesture_tap;
+                } else if (detected_gesture.doubletap) {
+                    gesture_input = .gesture_doubletap;
+                } else if (detected_gesture.hold) {
+                    gesture_input = .gesture_hold;
+                } else if (detected_gesture.drag) {
+                    gesture_input = .gesture_drag;
+                } else if (detected_gesture.pinch_in) {
+                    gesture_input = .gesture_pinch_in;
+                } else if (detected_gesture.pinch_out) {
+                    gesture_input = .gesture_pinch_out;
+                } else if (detected_gesture.swipe_up) {
+                    gesture_input = .gesture_swipe_up;
+                } else if (detected_gesture.swipe_down) {
+                    gesture_input = .gesture_swipe_down;
+                } else if (detected_gesture.swipe_left) {
+                    gesture_input = .gesture_swipe_left;
+                } else if (detected_gesture.swipe_right) {
+                    gesture_input = .gesture_swipe_right;
+                }
 
-            if (gesture_input) |gesture| {
-                try self.current_state.add(InputKey{ .gesture = gesture });
+                if (gesture_input) |gesture| {
+                    try self.current_state.add(InputKey{ .gesture = gesture });
+                }
             }
         }
     }
@@ -329,23 +348,14 @@ pub const InputManager = struct {
     /// Check if a specific action is currently active
     pub fn isActionActive(self: *const InputManager, action_name: []const u8) bool {
         const current_keys = self.current_state.getPressed();
-        const binding = self.bindings.getBinding(action_name) orelse return false;
-        return binding.matches(current_keys);
+        return self.bindings.actionMatches(action_name, current_keys);
     }
 
     /// Check if a specific action was just triggered (pressed this frame)
     pub fn wasActionTriggered(self: *const InputManager, action_name: []const u8) bool {
         const current_keys = self.current_state.getPressed();
         const previous_keys = self.previous_state.getPressed();
-        const binding = self.bindings.getBinding(action_name) orelse return false;
-        const matches_current = binding.matches(current_keys);
-        const matches_previous = binding.matches(previous_keys);
-
-        if (matches_current and !matches_previous) {
-            return true;
-        }
-
-        return false;
+        return self.bindings.actionTriggered(action_name, current_keys, previous_keys);
     }
 
     /// Get the current input state

@@ -36,6 +36,9 @@ Zevy Raylib is a small library that wires the Raylib runtime into a Zevy ECS-bas
 zig build examples
 ```
 
+> [!NOTE]
+> Requires `libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev` on Linux.
+
 ---
 
 ## Contributing
@@ -47,3 +50,6 @@ zig build examples
 ## Projects
 - [zevy-alloy](https://github.com/captkirk88/zevy-alloy)
 - [zevy-ecs](https://github.com/captkirk88/zevy-ecs)
+
+## License
+[MIT](LICENSE)

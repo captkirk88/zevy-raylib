@@ -217,7 +217,11 @@ pub fn main(init: std.process.Init) !u8 {
 
     // Initialize ECS
     var ecs = try zevy_ecs.Manager.init(allocator);
-    defer ecs.deinit();
+    defer {
+        ecs.deinit();
+        if (rl.isAudioDeviceReady()) rl.closeAudioDevice();
+        if (rl.isWindowReady()) rl.closeWindow();
+    }
 
     // Initialize plugin manager
     var plugin_manager = plugins.PluginManager.init(allocator);

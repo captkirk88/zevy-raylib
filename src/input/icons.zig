@@ -143,13 +143,16 @@ fn freeFrameNames(allocator: std.mem.Allocator, frames: []const IconFrame) void 
 test "parse keyboardmouse texture atlas" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    if (should_skip) return error.SkipZigTest;
-    var assets = Assets.init(allocator);
-    defer assets.deinit();
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
 
     // Raylib must be initialised to load textures
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
+
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
 
     const xml_path = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
     // Use parseKeyboardMouse which properly handles embedded assets
@@ -163,13 +166,16 @@ test "parse keyboardmouse texture atlas" {
 test "loadAssetNow IconAtlas from embedded path" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    if (should_skip) return error.SkipZigTest;
-    var assets = Assets.init(allocator);
-    defer assets.deinit();
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
 
     // Raylib must be initialised to load textures
     rl.initWindow(640, 480, "icons test loadAssetNow");
     defer rl.closeWindow();
+
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
 
     // Test that assets.loadAssetNow works with embedded IconAtlas
     // This exercises the scheme-aware FileResolver for relative path resolution
@@ -183,12 +189,15 @@ test "loadAssetNow IconAtlas from embedded path" {
 test "parse xbox texture atlas" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    if (should_skip) return error.SkipZigTest;
-    var assets = Assets.init(allocator);
-    defer assets.deinit();
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
 
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
+
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
 
     const xml_path = "embedded://Xbox Series/xbox-series_sheet_default.xml";
     var pa = try parseXbox(allocator, xml_path, &assets);
@@ -221,14 +230,16 @@ test "missing imagePath attribute returns error" {
 test "parse keyboardmouse via Assets resolver (embedded://)" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    if (should_skip) return error.SkipZigTest;
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
 
     // Setup assets so 'embedded://' scheme is registered
-    var assets = Assets.init(allocator);
-    defer assets.deinit();
-
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
+
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
 
     const uri = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
     var pa = try parseKeyboardMouse(assets.allocator, uri, &assets);
@@ -241,13 +252,15 @@ test "parse keyboardmouse via Assets resolver (embedded://)" {
 test "parse playstation via Assets resolver (embedded://)" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    if (should_skip) return error.SkipZigTest;
-
-    var assets = Assets.init(allocator);
-    defer assets.deinit();
+    if (should_skip) {
+        return error.SkipZigTest;
+    }
 
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
+
+    var assets = Assets.init(allocator);
+    defer assets.deinit();
 
     const uri = "embedded://PlayStation Series/playstation-series_sheet_default.xml";
     var pa = try parsePlaystation(assets.allocator, uri, &assets);

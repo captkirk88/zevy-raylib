@@ -1,6 +1,6 @@
 const std = @import("std");
-const rlb = @import("raylib-backend");
-const rl = @import("raylib-backend").c;
+const rl = @import("raylib");
+const rlc = rl.cdef;
 const reflect = @import("zevy_ecs").reflect;
 const schemes = @import("scheme_resolver.zig");
 
@@ -255,6 +255,7 @@ pub const Loaders = struct {
                             const extension = std.fs.path.extension(path_without_scheme);
                             const ext = if (extension.len > 0) extension else ".tmp";
                             const temp_file = try io_utils.writeTempFile(self.allocator, "", ext, data);
+                            defer io_utils.deleteFile(temp_file);
                             defer self.allocator.free(temp_file);
 
                             const res = try view.load_asset_now_fn(view.ptr, temp_file, null);

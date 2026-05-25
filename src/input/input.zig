@@ -28,6 +28,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const rl = @import("raylib");
+const platform = @import("platform.zig");
 
 // Re-export all public types and functions
 const types = @import("input_types.zig");
@@ -79,10 +80,8 @@ pub const printBindings = serialize.printBindings;
 ///
 /// If no touch points are active on mobile, returns null.
 pub fn getMousePosition() ?rl.Vector2 {
-    const os = builtin.os.tag;
-    const arch = builtin.target.cpu.arch;
-    const isAndroid = (os == .linux and (arch == .arm or arch == .armeb or arch == .x86 or arch == .x86_64));
-    if (os == .ios or isAndroid) {
+    _ = builtin;
+    if (platform.usesTouchPrimaryPointer()) {
         if (rl.getTouchPointCount() == 0) {
             return null; // No touch points
         }

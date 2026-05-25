@@ -102,6 +102,7 @@ fn buttonClickedSystem(
             //const button: *zevy_raylib.ui.components.UIButton = item.button;
             if (event.data.entity.eql(item.entity)) {
                 exit_app_writer.write(.Success);
+                std.log.info("Close button clicked, exiting app...", .{});
                 event.handled = true;
             }
         }
@@ -217,7 +218,11 @@ pub fn main(init: std.process.Init) !u8 {
 
     // Initialize ECS
     var ecs = try zevy_ecs.Manager.init(allocator);
-    defer ecs.deinit();
+    defer {
+        ecs.deinit();
+        if (rl.isAudioDeviceReady()) rl.closeAudioDevice();
+        if (rl.isWindowReady()) rl.closeWindow();
+    }
 
     // Initialize plugin manager
     var plugin_manager = plugins.PluginManager.init(allocator);

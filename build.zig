@@ -37,9 +37,11 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    //const os_tag = @import("builtin").os.tag;
     const raylib_dep = b.dependency("raylib_zig", .{
         .target = target,
         .optimize = optimize,
+        .linkage = .dynamic,
     });
 
     const mod = b.addModule("zevy_raylib", .{

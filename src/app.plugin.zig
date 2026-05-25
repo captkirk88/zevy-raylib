@@ -116,7 +116,7 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
         window_opts: WindowOpts = .{},
         log_level: rl.TraceLogLevel = .info,
         /// Raylib log callback that redirects to zevy_raylib scoped logger
-        raylib_logcallback: *const fn (c_int, [*c]const u8, [*c]u8) callconv(.c) void = raylib_log_callback.callback,
+        raylib_logcallback: *const fn (c_int, [*c]const u8, raylib_log_callback.VaListParam) callconv(.c) void = raylib_log_callback.callback,
 
         pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) anyerror!void {
             const log = std.log.scoped(.zevy_raylib);
@@ -155,28 +155,31 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
         }
 
         pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) anyerror!void {
-            // Do not manually deinit ECS-managed resources here unless they have a different func name for deinit: the ECS manager owns resource lifetimes and will deinit them during `Manager.deinit()`.
+            // Do not close raylib here: plugin_manager.deinit() runs before
+            // ecs.deinit(), and ECS-owned assets may still need a live GL/audio
+            // context to unload safely.
             _ = ecs;
-            if (!self.window_opts.headless) {
-                rl.closeAudioDevice();
-                rl.closeWindow();
-            }
+            _ = self;
         }
     };
 }
 
 // Extern functions
-extern fn SetTraceLogCallback(callback: ?*const fn (c_int, [*c]const u8, [*c]u8) callconv(.c) void) void;
+extern fn SetTraceLogCallback(callback: ?*const fn (c_int, [*c]const u8, raylib_log_callback.VaListParam) callconv(.c) void) void;
 
 /// Raylib log callback that redirects to zevy_raylib scoped logger
 const raylib_log_callback = struct {
     const c_stdio = @cImport({
         @cInclude("stdio.h");
     });
+    pub const VaListParam = switch (@typeInfo(c_stdio.va_list)) {
+        .array => |info| [*c]info.child,
+        else => c_stdio.va_list,
+    };
 
-    extern fn vsnprintf(dst: [*c]u8, n: usize, format: [*c]const u8, args: c_stdio.va_list) callconv(.c) c_int;
+    extern fn vsnprintf(dst: [*c]u8, n: usize, format: [*c]const u8, args: VaListParam) callconv(.c) c_int;
 
-    fn callback(log_level: c_int, format: [*c]const u8, args: c_stdio.va_list) callconv(.c) void {
+    fn callback(log_level: c_int, format: [*c]const u8, args: VaListParam) callconv(.c) void {
         if (format == null) return;
         var buf: [1024:0]u8 = undefined;
         _ = vsnprintf(&buf, buf.len, format, args);

@@ -10,7 +10,9 @@ const SKIP_IN_DEBUG = true;
 const is_debug = @import("builtin").mode == .Debug;
 const should_skip = if (SKIP_IN_DEBUG and is_debug) true else false;
 
-/// Watchdog timeout: panic if a test takes longer than this many seconds.
+/// Watchdog timeout: kill the process if a test takes longer than this many seconds.
+/// Must be > render loop max_duration_ms (5s) + setup overhead (~2s), so 15s gives
+/// plenty of headroom while still bounding a genuine hang.
 const TEST_SKIP_TIMEOUT_SECS = 15;
 const TEST_TIMEOUT_POLL_MS: u64 = 100;
 
@@ -63,7 +65,10 @@ const TimeoutGuard = struct {
         }
 
         if (!stop.load(.acquire)) {
-            std.debug.panic("Render test timed out after {d}s: {s}", .{ TEST_SKIP_TIMEOUT_SECS, test_name });
+            // Use process.exit instead of std.debug.panic to avoid Windows crash
+            // dialogs from background threads (which block test-runner indefinitely).
+            std.debug.print("TIMEOUT: Render test timed out after {d}s: {s}\n", .{ TEST_SKIP_TIMEOUT_SECS, test_name });
+            std.process.exit(1);
         }
     }
 };

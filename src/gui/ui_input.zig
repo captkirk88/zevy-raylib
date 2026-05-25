@@ -235,7 +235,6 @@ pub fn uiInteractionDetectionSystem(
     prev_pressed: zevy_ecs.params.Local(PrevPressed),
 
     // Query for button.paramss
-    rel: zevy_ecs.params.Relations,
     button_query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
         rect: components.UIRect,
@@ -248,6 +247,7 @@ pub fn uiInteractionDetectionSystem(
         entity: zevy_ecs.Entity,
         focus: components.UIFocus,
     }),
+    rel: zevy_ecs.params.Relations,
 ) anyerror!void {
 
     // Get input position (handles mouse/touch automatically)
@@ -291,9 +291,15 @@ pub fn uiInteractionDetectionSystem(
     // Process buttons
     while (button_query.next()) |item| {
         const ui_rect: *components.UIRect = item.rect;
+        const enabled: ?*components.UIEnabled = item.enabled;
         // Skip invisible elements
         if (item.visible) |v| {
             if (!v.visible) continue;
+        }
+
+        // Skip if explicitly disabled via UIEnabled component
+        if (enabled) |en| {
+            if (en.state == false) continue;
         }
 
         const bounds = ui_rect.rect;
@@ -325,10 +331,6 @@ pub fn uiInteractionDetectionSystem(
             });
         }
 
-        // Skip if explicitly disabled via UIEnabled component
-        if (item.enabled) |en| {
-            if (en.state == false) continue;
-        }
         // Activated by mouse/touch click
         const activated_by_mouse = is_hovered and click_triggered_click;
         // Activated by keyboard/gamepad confirm (don't require hover;
@@ -446,7 +448,6 @@ pub fn uiInteractionDetectionSystem(
 pub fn uiFocusNavigationSystem(
     commands: zevy_ecs.params.Commands,
     input_mgr: zevy_ecs.params.Res(input.InputManager),
-    rel: zevy_ecs.params.Relations,
     last_hover: zevy_ecs.params.Local(zevy_ecs.Entity),
     focus_writer: zevy_ecs.params.EventWriter(UIFocusEvent),
     focus_query: zevy_ecs.params.Query(struct {
@@ -455,6 +456,7 @@ pub fn uiFocusNavigationSystem(
         enabled: ?components.UIEnabled,
         visible: ?components.UIVisible,
     }),
+    rel: zevy_ecs.params.Relations,
 ) !void {
     // manager is used below; no discard needed
 

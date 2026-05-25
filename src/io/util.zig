@@ -9,7 +9,7 @@ fn globalIoAndEnv(allocator: std.mem.Allocator) !struct {
 } {
     var threaded = std.Io.Threaded.global_single_threaded;
     const io = threaded.io();
-    const env_map = std.process.Environ.createMap(.{ .block = .global }, allocator) catch |err| switch (err) {
+    const env_map = std.process.Environ.createMap(.{ .block = .empty }, allocator) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.ParseError,
     };
@@ -349,25 +349,10 @@ pub fn randomFileName(allocator: std.mem.Allocator, length: usize, extension: []
     return name;
 }
 
-pub fn writeTempFile(allocator: std.mem.Allocator, prefix: []const u8, extension: []const u8, data: []const u8) anyerror![]const u8 {
-    const tmp_dir_path = cacheDir(allocator) catch return error.IOError;
-    defer allocator.free(tmp_dir_path);
-    var threaded = std.Io.Threaded.init_single_threaded;
-    const io = threaded.io();
-
-    const temp_file_name = try randomFileName(allocator, 8, extension);
-    defer allocator.free(temp_file_name);
-
-    const temp_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path, prefix, temp_file_name });
-    errdefer allocator.free(temp_path);
-
-    var tmp_dir = try std.Io.Dir.openDirAbsolute(io, tmp_dir_path, .{});
-    defer tmp_dir.close(io);
-    var temp_file = try tmp_dir.createFile(io, temp_file_name, .{ .read = true });
-    defer temp_file.close(io);
-
-    try temp_file.writeStreamingAll(io, data);
-
+pub fn writeTempFile(allocator: std.mem.Allocator, extension: []const u8, data: []const u8) anyerror![]const u8 {
+    const filename = try randomFileName(allocator, 12, extension);
+    defer allocator.free(filename);
+    const temp_path = try writeTempFileNamed(allocator, filename, data);
     return temp_path;
 }
 
@@ -378,7 +363,18 @@ pub fn writeTempFileNamed(allocator: std.mem.Allocator, filename: []const u8, da
     var threaded = std.Io.Threaded.init_single_threaded;
     const io = threaded.io();
 
-    var tmp_dir = try std.Io.Dir.openDirAbsolute(io, tmp_dir_path, .{});
+    var tmp_dir_abs: ?[:0]const u8 = null;
+    defer if (tmp_dir_abs) |p| allocator.free(p);
+
+    const tmp_dir_open_path: []const u8 = if (isAbsolutePath(tmp_dir_path))
+        tmp_dir_path
+    else blk: {
+        const cwd_path = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", allocator);
+        tmp_dir_abs = cwd_path;
+        break :blk cwd_path[0..cwd_path.len];
+    };
+
+    var tmp_dir = try std.Io.Dir.openDirAbsolute(io, tmp_dir_open_path, .{});
     defer tmp_dir.close(io);
     var temp_file = try tmp_dir.createFile(io, filename, .{ .read = true });
     defer temp_file.close(io);
@@ -386,13 +382,24 @@ pub fn writeTempFileNamed(allocator: std.mem.Allocator, filename: []const u8, da
     try temp_file.writeStreamingAll(io, data);
 
     // Return the absolute path to the temp file
-    const abs_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_path, filename });
+    const abs_path = try joinPath(allocator, &[_][]const u8{ tmp_dir_open_path, filename });
     return abs_path;
 }
 
 pub fn deleteFile(path: []const u8) bool {
     var threaded = std.Io.Threaded.init_single_threaded;
     const io = threaded.io();
+
+    if (isAbsolutePath(path)) {
+        const dir_path = std.fs.path.dirname(path) orelse return false;
+        const file_name = std.fs.path.basename(path);
+
+        var dir = std.Io.Dir.openDirAbsolute(io, dir_path, .{}) catch return false;
+        defer dir.close(io);
+        dir.deleteFile(io, file_name) catch return false;
+        return true;
+    }
+
     std.Io.Dir.cwd().deleteFile(io, path) catch return false;
     return true;
 }
@@ -868,4 +875,16 @@ test "path operations memory safety" {
         try std.testing.expectEqualStrings(path, base);
         try std.testing.expectEqualStrings(".", dir.?);
     }
+}
+
+test "deleteFile removes absolute temp paths" {
+    const allocator = std.testing.allocator;
+
+    const temp_path = try writeTempFile(allocator, ".tmp", "temp-data");
+    defer allocator.free(temp_path);
+    defer _ = deleteFile(temp_path);
+
+    try std.testing.expect(exists(temp_path));
+    try std.testing.expect(deleteFile(temp_path));
+    try std.testing.expect(!exists(temp_path));
 }
