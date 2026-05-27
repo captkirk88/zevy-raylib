@@ -1,6 +1,6 @@
 const std = @import("std");
 const plugins = @import("plugins");
-const input = @import("input/input.zig");
+const input = @import("input/root.zig");
 const zevy_ecs = @import("zevy_ecs");
 
 pub const params = input.params;

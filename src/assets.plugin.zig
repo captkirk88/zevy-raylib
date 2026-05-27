@@ -11,10 +11,11 @@ pub fn AssetsPlugin(comptime ParamRegistry: type) type {
         const Name: []const u8 = "AssetsPlugin";
         const Self = @This();
 
+        io: std.Io,
+
         pub fn build(self: *Self, e: *zevy_ecs.Manager, plugin_manager: *plugins.PluginManager) anyerror!void {
-            _ = self;
             _ = plugin_manager;
-            try e.addResourceRetained(io.Assets, io.Assets.init(e.allocator));
+            try e.addResourceRetained(io.Assets, io.Assets.init(self.io, e.allocator));
 
             const scheduler_ptr = e.getResource(zevy_ecs.schedule.Scheduler) orelse return error.MissingScheduler;
             defer scheduler_ptr.deinit();

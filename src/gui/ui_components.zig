@@ -486,7 +486,7 @@ pub const UIEnabled = struct {
     state: bool = true,
 };
 
-const input = @import("../input/input.zig");
+const input = @import("../input/root.zig");
 
 /// Component representing a single input key or a small key chord associated with a UI element.
 /// Stores up to 4 keys inline to avoid allocator ownership in components.

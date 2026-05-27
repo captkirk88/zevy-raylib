@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const rl = @import("raylib");
-const input = @import("../input/input.zig");
+const input = @import("../input/root.zig");
 const icons = @import("icons.zig");
 const Assets = @import("../io/assets.zig").Assets;
 

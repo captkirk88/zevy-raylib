@@ -1,5 +1,5 @@
 const std = @import("std");
-const input = @import("input.zig");
+const input = @import("root.zig");
 const zevy_ecs = @import("zevy_ecs");
 
 pub const Bindings = input.InputManager;

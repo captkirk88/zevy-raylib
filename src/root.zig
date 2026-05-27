@@ -6,7 +6,7 @@ const plugins = @import("plugins");
 const rl = @import("raylib");
 const io = @import("io/root.zig");
 const graphics_mod = @import("graphics/root.zig");
-pub const input = @import("input/input.zig");
+pub const input = @import("input/root.zig");
 
 pub const components = struct {
     pub const Transform = @import("common/components/transform.zig").Transform;
@@ -150,21 +150,49 @@ pub const FixedTimestepAccumulator = struct {
 };
 
 /// Registers all plugins defined in this package
-pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *zevy_ecs.Manager, headless: bool) anyerror!void {
-    _ = allocator;
-    _ = ecs;
+fn plug(init: std.process.Init, plugs: *plugins.PluginManager, headless: bool) anyerror!void {
     try plugs.add(RaylibPlugin(RaylibParamRegistry), .{
         .window_opts = .{
             .title = "Zevy Raylib App",
             .headless = headless,
         },
     });
-    try plugs.add(AssetsPlugin(RaylibParamRegistry), .{});
+    try plugs.add(AssetsPlugin(RaylibParamRegistry), .{ .io = init.io });
     try plugs.add(InputPlugin(RaylibParamRegistry), .{});
     try plugs.add(UIPlugin(RaylibParamRegistry), .{});
 }
 
+fn testInit() std.process.Init {
+    if (builtin.is_test == false) {
+        // This function is only intended for test initialization, so it should not be called in non-test contexts.
+        @compileError("testInit() should only be used in test contexts");
+    }
+    const State = struct {
+        var initialized = false;
+        var threaded: std.Io.Threaded = undefined;
+        var arena: std.heap.ArenaAllocator = undefined;
+        var environ_map: std.process.Environ.Map = undefined;
+    };
+
+    if (!State.initialized) {
+        State.threaded = std.Io.Threaded.init(std.heap.page_allocator, .{});
+        State.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        State.environ_map = std.process.Environ.Map.init(State.arena.allocator());
+        State.initialized = true;
+    }
+
+    return .{
+        .arena = &State.arena,
+        .gpa = std.heap.page_allocator,
+        .io = State.threaded.io(),
+        .minimal = .{ .args = .{ .vector = undefined }, .environ = .empty },
+        .preopens = .empty,
+        .environ_map = &State.environ_map,
+    };
+}
+
 test "zevy_raylib" {
+    const init = testInit();
     const allocator = std.testing.allocator;
     var ecs = try zevy_ecs.Manager.init(allocator);
     var plugs = plugins.PluginManager.init(allocator);
@@ -172,10 +200,10 @@ test "zevy_raylib" {
         _ = plugs.deinit(&ecs);
         ecs.deinit();
     }
-    try plug(allocator, &plugs, &ecs, true);
+    try plug(init, &plugs, true);
 
     try std.testing.expect(plugs.get(RaylibPlugin(RaylibParamRegistry)) != null);
-    try std.testing.expect(plugs.get(AssetsPlugin) != null);
+    try std.testing.expect(plugs.get(AssetsPlugin(RaylibParamRegistry)) != null);
     try std.testing.expect(plugs.get(InputPlugin(RaylibParamRegistry)) != null);
     try std.testing.expect(plugs.get(UIPlugin(RaylibParamRegistry)) != null);
 
@@ -188,6 +216,7 @@ test "zevy_raylib" {
 }
 
 test "zevy_raylib builds plugins headless" {
+    const init = testInit();
     const allocator = std.testing.allocator;
     var ecs = try zevy_ecs.Manager.init(allocator);
     var plugs = plugins.PluginManager.init(allocator);
@@ -196,7 +225,7 @@ test "zevy_raylib builds plugins headless" {
         ecs.deinit();
     }
 
-    try plug(allocator, &plugs, &ecs, true);
+    try plug(init, &plugs, true);
     try plugs.build(&ecs);
 
     try std.testing.expect(ecs.hasResource(zevy_ecs.schedule.Scheduler));

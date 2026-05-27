@@ -29,7 +29,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const zevy_ecs = @import("zevy_ecs");
-const input = @import("../input/input.zig");
+const input = @import("../input/root.zig");
 const components = @import("ui_components.zig");
 
 const PrevPressed = struct {

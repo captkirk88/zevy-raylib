@@ -118,6 +118,7 @@ pub const Assets = struct {
     cache: std.AutoHashMap(AssetHandle, CacheEntry),
     queue_mutex: std.atomic.Mutex,
     queue: std.ArrayList(LoadRequest),
+    io: std.Io,
     /// Monotonic counter for handles issued by `insert`.
     /// High bit is set to distinguish from URI-hash-based handles.
     next_handle_id: u64 = 0,
@@ -135,9 +136,10 @@ pub const Assets = struct {
         destroy_settings_fn: ?*const fn (*anyopaque, std.mem.Allocator) void = null,
     };
 
-    pub fn init(allocator: std.mem.Allocator) Assets {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator) Assets {
         var self = Assets{
             .allocator = allocator,
+            .io = io,
             .scheme_registry = schemes.SchemeRegistry.init(allocator),
             .loaders = std.AutoHashMap(AssetHandle, LoaderEntry).init(allocator),
             .cache = std.AutoHashMap(u64, CacheEntry).init(allocator),
@@ -517,8 +519,7 @@ pub const Assets = struct {
             return self.allocator.dupe(u8, uri);
         }
 
-        var threaded = std.Io.Threaded.init_single_threaded;
-        const io = threaded.io();
+        const io = self.io;
         const cwd = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", self.allocator);
         defer self.allocator.free(cwd);
         return std.fs.path.join(self.allocator, &[_][]const u8{ cwd, uri });
@@ -869,7 +870,7 @@ pub const IconAtlasLoader = struct {
 
 test "Assets manager operations" {
     const testing = std.testing;
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
     try testing.expect(assets.hasLoader(rl.Texture));
 }
@@ -885,7 +886,7 @@ test "Assets load embedded texture" {
     rl.initWindow(800, 600, "Test");
     defer rl.closeWindow();
 
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
 
     const tex = try assets.loadAssetNow(rl.Texture, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.png", null);
@@ -903,7 +904,7 @@ test "Assets load embedded IconAtlas" {
     rl.initWindow(800, 600, "Test");
     defer rl.closeWindow();
 
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
 
     const atlas = try assets.loadAssetNow(types.IconAtlas, "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", null);
@@ -913,7 +914,7 @@ test "Assets load embedded IconAtlas" {
 
 test "Assets default schemes" {
     const testing = std.testing;
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
     try testing.expect(assets.hasScheme("embedded"));
     try testing.expect(assets.hasScheme("file"));
@@ -921,7 +922,7 @@ test "Assets default schemes" {
 
 test "Assets custom scheme registration" {
     const testing = std.testing;
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
 
     try assets.registerFolderScheme("assets", "game_assets");
@@ -941,7 +942,7 @@ test "Assets file not found" {
     rl.initWindow(320, 240, "Test");
     defer rl.closeWindow();
 
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
 
     const result = assets.loadAssetNow(rl.Texture, "nonexistent.png", null);
@@ -950,7 +951,7 @@ test "Assets file not found" {
 
 test "Assets unknown scheme" {
     const testing = std.testing;
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
 
     const result = assets.scheme_registry.resolve(testing.allocator, "unknown://file.txt");
@@ -980,7 +981,7 @@ test "Assets queued load waits for process" {
         }
     };
 
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
     try assets.addLoader(TestAsset, TestLoader, .{});
 
@@ -1020,7 +1021,7 @@ test "Assets loadAssetNow consumes matching queued request" {
         }
     };
 
-    var assets = Assets.init(testing.allocator);
+    var assets = Assets.init(testing.io, testing.allocator);
     defer assets.deinit();
     try assets.addLoader(TestAsset, TestLoader, .{});
 

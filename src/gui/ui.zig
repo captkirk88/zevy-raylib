@@ -3,7 +3,7 @@ const zevy_ecs = @import("zevy_ecs");
 const plugins = @import("plugins");
 
 const _assets = @import("../io/assets.zig");
-const _input = @import("../input/input.zig");
+const _input = @import("../input/root.zig");
 
 /// UI Components
 pub const components = @import("ui_components.zig");

@@ -8,7 +8,7 @@ const atlas = @import("../graphics/texture_atlas.zig");
 const TextureAtlas = atlas.TextureAtlas;
 const FrameRect = atlas.FrameRect;
 const io_types = @import("../io/types.zig");
-const input = @import("../input/input.zig");
+const input = @import("../input/root.zig");
 const icon_parser = @import("icons_parser.zig");
 
 pub const AtlasParseResult = icon_parser.AtlasParseResult;

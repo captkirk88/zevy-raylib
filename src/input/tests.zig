@@ -1,6 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
-const input = @import("input.zig");
+const input = @import("root.zig");
 
 const InputKey = input.InputKey;
 const KeyCode = input.KeyCode;

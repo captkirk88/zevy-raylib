@@ -44,7 +44,8 @@ pub const xml = @import("xml.zig");
 /// Asset types
 pub const types = @import("types.zig");
 
+const std = @import("std");
+
 test {
-    const std = @import("std");
     std.testing.refAllDecls(@This());
 }

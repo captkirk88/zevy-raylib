@@ -1,6 +1,6 @@
 const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
-const input = @import("input.zig");
+const input = @import("root.zig");
 const Bindings = @import("params.zig").Bindings;
 
 pub const InputActions = struct {
