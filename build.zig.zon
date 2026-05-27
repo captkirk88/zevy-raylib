@@ -28,8 +28,8 @@
             .ignore = true,
         },
         .zevy_reflect = .{
-            .url = "git+https://github.com/captkirk88/zevy-reflect#3b85f88aea47e69c62443bc96c01ae876119822d",
-            .hash = "zevy_reflect-1.4.2-Ob80cCkvAwB4yWZ6OfIbO0tYgatrSJc08N40qQRBkga1",
+            .url = "git+https://github.com/captkirk88/zevy-reflect#bb19665ede7f789e2bf67678577492256d43f284",
+            .hash = "zevy_reflect-1.4.6-Ob80cFVtAwAmnLn8leQcWQiFbmE3lsm_8BlxmdNJ_xnu",
         },
         .zevy_mem = .{
             .url = "git+https://github.com/captkirk88/zevy-mem#94ea6a002fc2a850f9ffaf328cbd19d417df451c",

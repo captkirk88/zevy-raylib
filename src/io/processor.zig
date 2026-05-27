@@ -1,6 +1,7 @@
 const std = @import("std");
 const reflect = @import("zevy_reflect");
-const FileResolver = @import("loader.zig").FileResolver;
+const loader = @import("loader.zig");
+const FileResolver = loader.FileResolver;
 
 /// Template for creating asset processors
 ///
@@ -33,8 +34,8 @@ const FileResolver = @import("loader.zig").FileResolver;
 ///         }
 ///     }
 /// };
-/// const Template = AssetProcessorTemplate(MyAsset, MyProcessor);
-/// const AssetProcessor = Template.Interface;
+/// const Template = AssetProcessorTemplate(MyAsset);
+/// const AssetProcessor = Template.InterfaceFor(MyProcessor);
 /// const processor: AssetProcessor = undefined;
 /// const processor_inst = try Template.populateFromValue(std.testing.allocator, &processor, .{});
 /// defer std.testing.allocator.destroy(processor_inst);
@@ -43,20 +44,22 @@ const FileResolver = @import("loader.zig").FileResolver;
 /// const settings = MyProcessor.ProcessSettings{ .multiplier = 3 };
 /// try processor.vtable.process(processor.ptr, &asset, std.testing.allocator, null, &settings);
 /// ```
-pub fn AssetProcessorTemplate(comptime ProcessorType: type, comptime AssetType: type) type {
-    if (!reflect.hasStruct(ProcessorType, "ProcessSettings")) {
-        @compileError("Processor must have a ProcessSettings pub struct declaration: " ++ @typeName(ProcessorType));
-    }
+pub fn AssetProcessorTemplate(comptime AssetType: type) type {
     return reflect.Template(struct {
         pub const Name: []const u8 = "AssetProcessor";
+        pub const ProcessSettings = reflect.TemplateDeclType("ProcessSettings");
 
-        pub fn process(_: *@This(), asset: *AssetType, _: std.mem.Allocator, resolver: ?*const FileResolver, settings: ?*const ProcessorType.ProcessSettings) anyerror!void {
+        pub fn process(_: *@This(), asset: *AssetType, _: std.mem.Allocator, resolver: ?*const FileResolver, settings: ?*const ProcessSettings) anyerror!void {
             _ = asset;
             _ = resolver;
             _ = settings;
             unreachable;
         }
     });
+}
+
+pub fn AssetProcessor(comptime ProcessorType: type, comptime AssetType: type) type {
+    return AssetProcessorTemplate(AssetType).InterfaceFor(ProcessorType);
 }
 
 test "AssetProcessor basic interface" {
@@ -83,9 +86,9 @@ test "AssetProcessor basic interface" {
         }
     };
 
-    const Template = AssetProcessorTemplate(TestProcessor, TestAsset);
-    const AssetProcessor = Template.Interface;
-    var processor: AssetProcessor = undefined;
+    const Template = AssetProcessorTemplate(TestAsset);
+    const AssetProcessorInterface = AssetProcessor(TestProcessor, TestAsset);
+    var processor: AssetProcessorInterface = undefined;
     var inst = TestProcessor{ .multiplier = 2 };
     Template.populate(&processor, &inst);
 
@@ -115,9 +118,9 @@ test "AssetProcessor without settings" {
         }
     };
 
-    const Template = AssetProcessorTemplate(NoOpProcessor, TestAsset);
-    const AssetProcessor = Template.Interface;
-    var processor: AssetProcessor = undefined;
+    const Template = AssetProcessorTemplate(TestAsset);
+    const AssetProcessorInterface = AssetProcessor(NoOpProcessor, TestAsset);
+    var processor: AssetProcessorInterface = undefined;
     var inst = NoOpProcessor{};
     Template.populate(&processor, &inst);
 

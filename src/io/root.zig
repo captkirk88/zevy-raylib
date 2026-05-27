@@ -21,7 +21,16 @@ pub const XmlDocumentLoader = assets.XmlDocumentLoader;
 pub const IconAtlasLoader = assets.IconAtlasLoader;
 
 const processor = @import("processor.zig");
+const loader = @import("loader.zig");
+pub const FileResolver = loader.FileResolver;
+pub const AssetLoaderTemplate = loader.AssetLoaderTemplate;
+pub const AssetLoader = loader.AssetLoader;
+pub const AssetUnloaderTemplate = loader.AssetUnloaderTemplate;
+pub const AssetUnloader = loader.AssetUnloader;
+pub const AssetSaverTemplate = loader.AssetSaverTemplate;
+pub const AssetSaver = loader.AssetSaver;
 pub const AssetProcessorTemplate = processor.AssetProcessorTemplate;
+pub const AssetProcessor = processor.AssetProcessor;
 
 /// General IO utility functions
 pub const util = @import("util.zig");

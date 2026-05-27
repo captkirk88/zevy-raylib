@@ -1,7 +1,5 @@
 const std = @import("std");
-const rl = @import("raylib");
-const rlc = rl.cdef;
-const reflect = @import("zevy_ecs").reflect;
+const reflect = @import("zevy_reflect");
 const schemes = @import("scheme_resolver.zig");
 
 /// File resolver for complex loaders that need to load multiple related files
@@ -17,16 +15,12 @@ pub const FileResolver = struct {
     scheme_registry: ?*schemes.SchemeRegistry = null,
 
     /// Resolve a relative path to an absolute path within the base directory
-    resolve_path: *const fn (self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) std.mem.Allocator.Error![]u8 = null,
+    resolve_path: ?*const fn (self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) std.mem.Allocator.Error![]u8 = null,
 
     /// Check if a relative path exists within the base directory
-    path_exists: *const fn (self: *const FileResolver, relative_path: []const u8) bool = null,
-    /// Pointer to the Loaders registry so a loader can request other
-    /// asset types (via a small, typed API) without importing concrete managers.
-    loaders: *Loaders,
-
+    path_exists: ?*const fn (self: *const FileResolver, relative_path: []const u8) bool = null,
     /// Resolve a relative path, using scheme registry if original_uri has a scheme
-    /// Returns the resolved path/URI that can be used with loaders.loadNow()
+    /// Returns the resolved path/URI that can be passed back into the active loader.
     pub fn resolveRelative(self: *const FileResolver, allocator: std.mem.Allocator, relative_path: []const u8) ![]u8 {
         // If we have an original URI with a scheme, resolve relative to that
         if (self.original_uri) |uri| {
@@ -81,208 +75,128 @@ pub const FileResolver = struct {
     }
 };
 
-/// AssetLoader wrapper type: validates that a loader implements the required interface
-/// and provides a unified interface for loading assets.
-///
-/// Required loader methods:
-///   - load(self: LoaderType, absolute_path: []const u8, file_resolver: ?*const FileResolver, settings: ?*const LoadSettings) anyerror!AssetType
-///   - extensions() []const []const u8
-///   - LoadSettings: type (must be declared)
-pub fn AssetLoader(comptime AssetType: type) type {
-    return struct {
-        loadFn: *const fn ([]const u8, ?*const FileResolver, ?*const anyopaque) anyerror!AssetType,
-        extensionsFn: *const fn () []const []const u8,
+pub fn AssetLoaderTemplate(comptime AssetType: type) type {
+    return reflect.Template(struct {
+        pub const Name: []const u8 = "AssetLoader";
+        pub const LoadSettings = reflect.TemplateDeclType("LoadSettings");
 
-        const Self = @This();
-
-        pub fn init(comptime LoaderType: type, loader: LoaderType) Self {
-            // Compile-time validation
-            comptime {
-                if (!@hasDecl(LoaderType, "LoadSettings")) {
-                    @compileError("Loader must have a LoadSettings pub struct declaration: " ++ @typeName(LoaderType));
-                }
-                if (!reflect.hasFuncWithArgs(LoaderType, "load", &[_]type{ []const u8, ?*const FileResolver, ?*const LoaderType.LoadSettings }) == false) {
-                    @compileError("Loader must have a load method: " ++ @typeName(LoaderType));
-                }
-                if (!reflect.hasFunc(LoaderType, "extensions")) {
-                    @compileError("Loader must have an extensions method: " ++ @typeName(LoaderType));
-                }
-            }
-
-            const LoaderWrapper = struct {
-                var instance: LoaderType = loader;
-
-                fn loadWrapper(absolute_path: []const u8, file_resolver: ?*const FileResolver, settings: ?*const anyopaque) anyerror!AssetType {
-                    const typed_settings: ?*const LoaderType.LoadSettings = if (settings) |s| @ptrCast(@alignCast(s)) else null;
-                    return try instance.load(absolute_path, file_resolver, typed_settings);
-                }
-
-                fn extensionsWrapper() []const []const u8 {
-                    return LoaderType.extensions();
-                }
-            };
-
-            return .{
-                .loadFn = LoaderWrapper.loadWrapper,
-                .extensionsFn = LoaderWrapper.extensionsWrapper,
-            };
+        pub fn load(_: *@This(), absolute_path: []const u8, file_resolver: ?*const FileResolver, settings: ?*const LoadSettings) anyerror!AssetType {
+            _ = absolute_path;
+            _ = file_resolver;
+            _ = settings;
+            unreachable;
         }
 
-        pub fn load(self: Self, absolute_path: []const u8, file_resolver: ?*const FileResolver, settings: ?*const anyopaque) anyerror!AssetType {
-            return try self.loadFn(absolute_path, file_resolver, settings);
+        pub fn extensions() []const []const u8 {
+            unreachable;
         }
-
-        pub fn extensions(self: Self) []const []const u8 {
-            return self.extensionsFn();
-        }
-    };
+    });
 }
 
-/// AssetUnloader wrapper type: validates that an unloader implements the required interface
-/// and provides a unified interface for unloading assets.
-///
-/// Required unloader methods:
-///   - unload(self: UnloaderType, asset: AssetType) void
+pub fn AssetLoader(comptime LoaderType: type, comptime AssetType: type) type {
+    return AssetLoaderTemplate(AssetType).InterfaceFor(LoaderType);
+}
+
+pub fn AssetUnloaderTemplate(comptime AssetType: type) type {
+    return reflect.Template(struct {
+        pub const Name: []const u8 = "AssetUnloader";
+
+        pub fn unload(_: *@This(), asset: AssetType) void {
+            _ = asset;
+            unreachable;
+        }
+    });
+}
+
 pub fn AssetUnloader(comptime AssetType: type) type {
-    return struct {
-        unloadFn: *const fn (AssetType) void,
-
-        const Self = @This();
-
-        pub fn init(comptime UnloaderType: type, unloader: UnloaderType) Self {
-            // Compile-time validation
-            comptime {
-                if (!@hasDecl(UnloaderType, "unload")) {
-                    @compileError("Unloader must have an unload method: " ++ @typeName(UnloaderType));
-                }
-            }
-
-            const UnloaderWrapper = struct {
-                var instance: UnloaderType = unloader;
-
-                fn unloadWrapper(asset: AssetType) void {
-                    instance.unload(asset);
-                }
-            };
-
-            return .{
-                .unloadFn = UnloaderWrapper.unloadWrapper,
-            };
-        }
-
-        // TODO make AssetType a pointer to allow unloading of large structs without copying
-        pub fn unload(self: Self, asset: AssetType) void {
-            self.unloadFn(asset);
-        }
-    };
+    return AssetUnloaderTemplate(AssetType).Interface;
 }
 
-/// Runtime registry for exposing manager entry views to loaders.
-pub const Loaders = struct {
-    pub const ManagerView = struct {
-        ptr: *anyopaque,
-        // Lifecycle / control callbacks
-        deinit_fn: ?*const fn (*anyopaque) void,
-        process_fn: *const fn (*anyopaque) anyerror!void,
-        destroy_fn: ?*const fn (*anyopaque, std.mem.Allocator) void,
+pub fn AssetSaverTemplate(comptime AssetType: type) type {
+    return reflect.Template(struct {
+        pub const Name: []const u8 = "AssetSaver";
+        pub const SaveSettings = reflect.TemplateDeclType("SaveSettings");
 
-        // Public access/load callbacks
-        get_fn: *const fn (*anyopaque, usize) ?*anyopaque,
-        load_asset_fn: *const fn (*anyopaque, []const u8, ?*anyopaque) anyerror!usize,
-        load_asset_now_fn: *const fn (*anyopaque, []const u8, ?*anyopaque) anyerror!*anyopaque,
+        pub fn save(_: *@This(), asset: *const AssetType, absolute_path: []const u8, file_resolver: ?*const FileResolver, settings: ?*const SaveSettings) anyerror!void {
+            _ = asset;
+            _ = absolute_path;
+            _ = file_resolver;
+            _ = settings;
+            unreachable;
+        }
+    });
+}
+
+pub fn AssetSaver(comptime SaverType: type, comptime AssetType: type) type {
+    return AssetSaverTemplate(AssetType).InterfaceFor(SaverType);
+}
+
+test "AssetLoader and AssetUnloader validate template contracts" {
+    const TestAsset = usize;
+
+    const TestLoader = struct {
+        pub const LoadSettings = struct {
+            scale: usize = 1,
+        };
+
+        pub fn load(_: *@This(), absolute_path: []const u8, file_resolver: ?*const FileResolver, settings: ?*const LoadSettings) anyerror!TestAsset {
+            _ = file_resolver;
+            return absolute_path.len * if (settings) |s| s.scale else 1;
+        }
+
+        pub fn extensions() []const []const u8 {
+            return &[_][]const u8{".txt"};
+        }
+
+        pub fn unload(_: *@This(), asset: TestAsset) void {
+            _ = asset;
+        }
     };
 
-    allocator: std.mem.Allocator,
-    map: std.AutoHashMap(u64, ManagerView),
-    /// Optional reference to scheme registry for scheme-aware path resolution
-    scheme_registry: ?*schemes.SchemeRegistry = null,
+    const LoaderTemplate = AssetLoaderTemplate(TestAsset);
+    const UnloaderTemplate = AssetUnloaderTemplate(TestAsset);
+    const LoaderInterface = AssetLoader(TestLoader, TestAsset);
+    LoaderTemplate.validate(TestLoader);
+    UnloaderTemplate.validate(TestLoader);
 
-    pub fn init(allocator: std.mem.Allocator) anyerror!Loaders {
-        return Loaders{
-            .allocator = allocator,
-            .map = std.AutoHashMap(u64, ManagerView).init(allocator),
-            .scheme_registry = null,
+    var loader: LoaderInterface = undefined;
+    var inst = TestLoader{};
+    LoaderTemplate.populate(&loader, &inst);
+
+    const settings = TestLoader.LoadSettings{ .scale = 2 };
+    const loaded = try loader.vtable.load(loader.ptr, "abc", null, &settings);
+    try std.testing.expectEqual(@as(TestAsset, 6), loaded);
+
+    try std.testing.expectEqual(@as(usize, 1), TestLoader.extensions().len);
+}
+
+test "AssetSaver validates template contract" {
+    const TestAsset = struct {
+        value: usize,
+    };
+
+    const TestSaver = struct {
+        pub const SaveSettings = struct {
+            overwrite: bool = false,
         };
-    }
 
-    pub fn initWithSchemeRegistry(allocator: std.mem.Allocator, registry: *schemes.SchemeRegistry) anyerror!Loaders {
-        return Loaders{
-            .allocator = allocator,
-            .map = std.AutoHashMap(u64, ManagerView).init(allocator),
-            .scheme_registry = registry,
-        };
-    }
-
-    pub fn deinit(self: *Loaders) void {
-        self.map.deinit();
-    }
-
-    pub fn register(self: *Loaders, hash: u64, view: ManagerView) error{OutOfMemory}!void {
-        try self.map.putNoClobber(hash, view);
-    }
-
-    pub fn unregister(self: *Loaders, hash: u64) void {
-        _ = self.map.remove(hash);
-    }
-
-    pub fn load(self: *Loaders, comptime AssetType: type, path: []const u8) anyerror!usize {
-        const hash = std.hash_map.hashString(@typeName(AssetType));
-        if (self.map.get(hash)) |view| {
-            const handle = try view.load_asset_fn(view.ptr, path, null);
-            return handle;
+        pub fn save(_: *@This(), asset: *const TestAsset, absolute_path: []const u8, file_resolver: ?*const FileResolver, settings: ?*const SaveSettings) anyerror!void {
+            _ = asset;
+            _ = absolute_path;
+            _ = file_resolver;
+            _ = settings;
         }
-        return error.NoManagerForType;
-    }
+    };
 
-    pub fn loadNow(self: *Loaders, comptime AssetType: type, path: []const u8) anyerror!*AssetType {
-        const hash = std.hash_map.hashString(@typeName(AssetType));
-        if (self.map.get(hash)) |view| {
-            // Check if this is a scheme-based URI that needs resolution
-            if (self.scheme_registry) |registry| {
-                if (std.mem.indexOf(u8, path, "://") != null) {
-                    // Resolve through scheme registry
-                    var resolved = try registry.resolve(self.allocator, path);
-                    defer resolved.deinit(self.allocator);
+    const SaverTemplate = AssetSaverTemplate(TestAsset);
+    const SaverInterface = AssetSaver(TestSaver, TestAsset);
+    SaverTemplate.validate(TestSaver);
 
-                    switch (resolved) {
-                        .embedded_data => |data| {
-                            // Write to temp file and load from there
-                            const io_utils = @import("util.zig");
-                            const path_without_scheme = if (std.mem.indexOf(u8, path, "://")) |idx|
-                                path[idx + 3 ..]
-                            else
-                                path;
-                            const extension = std.fs.path.extension(path_without_scheme);
-                            const ext = if (extension.len > 0) extension else ".tmp";
-                            const temp_file = try io_utils.writeTempFile(self.allocator, "", ext, data);
-                            defer io_utils.deleteFile(temp_file);
-                            defer self.allocator.free(temp_file);
+    var saver: SaverInterface = undefined;
+    var inst = TestSaver{};
+    SaverTemplate.populate(&saver, &inst);
+    const asset = TestAsset{ .value = 1 };
+    try saver.vtable.save(saver.ptr, &asset, "out.bin", null, null);
 
-                            const res = try view.load_asset_now_fn(view.ptr, temp_file, null);
-                            return @as(*AssetType, @ptrCast(@alignCast(res)));
-                        },
-                        .file_path => |file_path| {
-                            defer self.allocator.free(file_path);
-                            const res = try view.load_asset_now_fn(view.ptr, file_path, null);
-                            return @as(*AssetType, @ptrCast(@alignCast(res)));
-                        },
-                        .url => |url| {
-                            defer self.allocator.free(url);
-                            const res = try view.load_asset_now_fn(view.ptr, url, null);
-                            return @as(*AssetType, @ptrCast(@alignCast(res)));
-                        },
-                        .raw => |custom| {
-                            defer self.allocator.free(custom);
-                            const res = try view.load_asset_now_fn(view.ptr, custom, null);
-                            return @as(*AssetType, @ptrCast(@alignCast(res)));
-                        },
-                    }
-                }
-            }
-            // No scheme or no registry - pass path directly
-            const res = try view.load_asset_now_fn(view.ptr, path, null);
-            return @as(*AssetType, @ptrCast(@alignCast(res)));
-        }
-        return error.NoManagerForType;
-    }
-};
+    try std.testing.expect(true);
+}

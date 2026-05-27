@@ -44,11 +44,11 @@ const Sprite = struct {
 
 // Example system that updates entity positions
 fn movementSystem(
-    manager: zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { pos: Position, vel: Velocity }),
     dt_res: zevy_ecs.params.Res(DeltaTime),
 ) !void {
-    _ = manager;
+    _ = commands;
     const dt = dt_res.get().*;
 
     while (query.next()) |item| {
@@ -66,10 +66,10 @@ fn movementSystem(
 
 // Example system that renders circles based on their Position and Sprite components
 fn renderSystem(
-    manager: zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { pos: Position, sprite: Sprite }),
 ) !void {
-    _ = manager;
+    _ = commands;
 
     while (query.next()) |item| {
         const pos: *Position = item.pos;
@@ -86,7 +86,7 @@ fn renderSystem(
 const CloseMeButtonTag = struct {};
 
 fn buttonClickedSystem(
-    manager: zevy_ecs.params.Commands,
+    commands: zevy_ecs.params.Commands,
     exit_app_writer: zevy_ecs.params.EventWriter(zevy_raylib.ExitAppEvent),
     click_events: zevy_ecs.params.EventReader(zevy_raylib.ui.input.UIClickEvent),
     query: zevy_ecs.params.Query(struct {
@@ -95,7 +95,7 @@ fn buttonClickedSystem(
         tag: CloseMeButtonTag,
     }),
 ) !void {
-    _ = manager;
+    _ = commands;
 
     while (click_events.read()) |event| {
         while (query.next()) |item| {
