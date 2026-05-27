@@ -159,7 +159,7 @@ pub fn plug(allocator: std.mem.Allocator, plugs: *plugins.PluginManager, ecs: *z
             .headless = headless,
         },
     });
-    try plugs.add(AssetsPlugin, .{});
+    try plugs.add(AssetsPlugin(RaylibParamRegistry), .{});
     try plugs.add(InputPlugin(RaylibParamRegistry), .{});
     try plugs.add(UIPlugin(RaylibParamRegistry), .{});
 }

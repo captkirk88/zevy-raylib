@@ -248,7 +248,7 @@ pub fn main(init: std.process.Init) !u8 {
     });
 
     std.log.info("Adding AssetsPlugin...", .{});
-    try plugin_manager.add(AssetsPlugin, .{});
+    try plugin_manager.add(AssetsPlugin(ParamRegistry), .{});
 
     std.log.info("Adding InputPlugin...", .{});
     try plugin_manager.add(InputPlugin(ParamRegistry), .{});

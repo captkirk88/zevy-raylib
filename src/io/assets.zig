@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const rl = @import("raylib");
+const reflect = @import("zevy_reflect");
 const io_utils = @import("util.zig");
 const schemes = @import("scheme_resolver.zig");
 const types = @import("types.zig");
@@ -115,6 +116,8 @@ pub const Assets = struct {
     loaders: std.AutoHashMap(u64, LoaderEntry),
     /// Cached assets by URI hash
     cache: std.AutoHashMap(AssetHandle, CacheEntry),
+    queue_mutex: std.atomic.Mutex,
+    queue: std.ArrayList(LoadRequest),
     /// Monotonic counter for handles issued by `insert`.
     /// High bit is set to distinguish from URI-hash-based handles.
     next_handle_id: u64 = 0,
@@ -124,26 +127,36 @@ pub const Assets = struct {
         type_hash: u64,
     };
 
+    const LoadRequest = struct {
+        handle: AssetHandle,
+        type_hash: u64,
+        uri: []u8,
+        settings_ptr: ?*anyopaque = null,
+        destroy_settings_fn: ?*const fn (*anyopaque, std.mem.Allocator) void = null,
+    };
+
     pub fn init(allocator: std.mem.Allocator) Assets {
         var self = Assets{
             .allocator = allocator,
             .scheme_registry = schemes.SchemeRegistry.init(allocator),
             .loaders = std.AutoHashMap(AssetHandle, LoaderEntry).init(allocator),
             .cache = std.AutoHashMap(u64, CacheEntry).init(allocator),
+            .queue_mutex = .unlocked,
+            .queue = std.ArrayList(LoadRequest).empty,
         };
 
         // Register default schemes
         self.initDefaultSchemes() catch @panic("Failed to register default schemes");
 
         // Register default loaders
-        self.addLoader(rl.Texture, TextureLoader{}) catch @panic("Failed to add texture loader");
-        self.addLoader(rl.Sound, SoundLoader{}) catch @panic("Failed to add sound loader");
-        self.addLoader(rl.Music, MusicLoader{}) catch @panic("Failed to add music loader");
-        self.addLoader(rl.Font, FontLoader{}) catch @panic("Failed to add font loader");
-        self.addLoader(rl.Shader, ShaderLoader{}) catch @panic("Failed to add shader loader");
-        self.addLoader(ShaderSource, ShaderSourceLoader{}) catch @panic("Failed to add shader source loader");
-        self.addLoader(xml.XmlDocument, XmlDocumentLoader{}) catch @panic("Failed to add xml loader");
-        self.addLoader(types.IconAtlas, IconAtlasLoader{}) catch @panic("Failed to add icon atlas loader");
+        self.addLoader(rl.Texture, TextureLoader, .{}) catch @panic("Failed to add texture loader");
+        self.addLoader(rl.Sound, SoundLoader, .{}) catch @panic("Failed to add sound loader");
+        self.addLoader(rl.Music, MusicLoader, .{}) catch @panic("Failed to add music loader");
+        self.addLoader(rl.Font, FontLoader, .{}) catch @panic("Failed to add font loader");
+        self.addLoader(rl.Shader, ShaderLoader, .{}) catch @panic("Failed to add shader loader");
+        self.addLoader(ShaderSource, ShaderSourceLoader, .{}) catch @panic("Failed to add shader source loader");
+        self.addLoader(xml.XmlDocument, XmlDocumentLoader, .{}) catch @panic("Failed to add xml loader");
+        self.addLoader(types.IconAtlas, IconAtlasLoader, .{}) catch @panic("Failed to add icon atlas loader");
 
         return self;
     }
@@ -165,25 +178,76 @@ pub const Assets = struct {
         }
         self.loaders.deinit();
 
+        self.lockQueue();
+        defer self.unlockQueue();
+        for (self.queue.items) |*req| {
+            self.deinitLoadRequest(req);
+        }
+        self.queue.deinit(self.allocator);
+
         self.scheme_registry.deinit();
+    }
+
+    fn deinitLoadRequest(self: *Assets, req: *LoadRequest) void {
+        self.allocator.free(req.uri);
+        if (req.settings_ptr) |settings_ptr| {
+            req.destroy_settings_fn.?(settings_ptr, self.allocator);
+        }
+    }
+
+    fn lockQueue(self: *Assets) void {
+        while (!self.queue_mutex.tryLock()) {
+            std.atomic.spinLoopHint();
+        }
+    }
+
+    fn unlockQueue(self: *Assets) void {
+        self.queue_mutex.unlock();
     }
 
     fn initDefaultSchemes(self: *Assets) !void {
         const embedded_resolver_ptr = try self.allocator.create(EmbeddedResolver);
         embedded_resolver_ptr.* = EmbeddedResolver{};
         try self.scheme_registry.registerScheme("embedded", schemes.SchemeResolver.initOwned(embedded_resolver_ptr));
+        try self.scheme_registry.registerScheme("embed", schemes.SchemeResolver.initOwned(embedded_resolver_ptr));
 
         const file_resolver_ptr = try self.allocator.create(schemes.FileResolver);
         file_resolver_ptr.* = schemes.FileResolver{};
         try self.scheme_registry.registerScheme("file", schemes.SchemeResolver.initOwned(file_resolver_ptr));
     }
 
-    /// Add a loader for an asset type
-    pub fn addLoader(self: *Assets, comptime AssetType: type, loader: anytype) error{ ManagerAlreadyExists, OutOfMemory }!void {
-        const LoaderType = @TypeOf(loader);
+    /// Add a loader for an asset type.
+    ///
+    /// The loader must declare `pub const LoadSettings` and implement:
+    /// - `load(self: *LoaderType, ctx: *const LoadContext, settings: ?*const LoadSettings) anyerror!AssetType`
+    /// - `unload(self: *LoaderType, asset: AssetType) void`
+    pub fn addLoader(self: *Assets, comptime AssetType: type, comptime LoaderType: type, loader: LoaderType) error{ LoaderAlreadyExists, OutOfMemory }!void {
+        const LoaderTemplate = reflect.Template(struct {
+            pub const Name: []const u8 = "AssetsLoader";
+            pub const LoadSettings = reflect.TemplateDeclType("LoadSettings");
+
+            pub fn load(_: *@This(), ctx: *const LoadContext, settings: ?*const LoadSettings) anyerror!AssetType {
+                _ = ctx;
+                _ = settings;
+                unreachable;
+            }
+        });
+
+        const UnloaderTemplate = reflect.Template(struct {
+            pub const Name: []const u8 = "AssetsUnloader";
+
+            pub fn unload(_: *@This(), asset: AssetType) void {
+                _ = asset;
+                unreachable;
+            }
+        });
+
+        LoaderTemplate.validate(LoaderType);
+        UnloaderTemplate.validate(LoaderType);
+
         const hash = std.hash_map.hashString(@typeName(AssetType));
 
-        if (self.loaders.contains(hash)) return error.ManagerAlreadyExists;
+        if (self.loaders.contains(hash)) return error.LoaderAlreadyExists;
 
         const loader_ptr = try self.allocator.create(LoaderType);
         loader_ptr.* = loader;
@@ -228,6 +292,38 @@ pub const Assets = struct {
         return self.loaders.contains(hash);
     }
 
+    pub fn amount(self: *const Assets) usize {
+        @constCast(self).lockQueue();
+        defer @constCast(self).unlockQueue();
+        return self.queue.items.len;
+    }
+
+    fn performLoad(self: *Assets, handle: AssetHandle, type_hash: u64, uri: []const u8, settings_ptr: ?*const anyopaque) anyerror!*anyopaque {
+        if (self.cache.get(handle)) |entry| {
+            if (entry.type_hash == type_hash) {
+                return entry.ptr;
+            }
+        }
+
+        const loader = self.loaders.get(type_hash) orelse return error.NoManagerForType;
+        const ctx = LoadContext{
+            .allocator = self.allocator,
+            .uri = uri,
+            .scheme_registry = &self.scheme_registry,
+            .assets = self,
+        };
+
+        const asset_ptr = try loader.load_fn(loader.ptr, &ctx, settings_ptr);
+        errdefer loader.unload_fn(loader.ptr, asset_ptr, self.allocator);
+
+        try self.cache.put(handle, .{
+            .ptr = asset_ptr,
+            .type_hash = type_hash,
+        });
+
+        return asset_ptr;
+    }
+
     /// Store an already-created asset value and return a unique handle.
     /// The asset will be unloaded via the registered loader's `unload` callback
     /// when `unload(AssetType, handle)` is called or when `Assets.deinit` runs.
@@ -244,7 +340,10 @@ pub const Assets = struct {
         return handle;
     }
 
-    /// Load an asset synchronously and return a pointer to it
+    /// Load an asset synchronously and return a pointer to it.
+    ///
+    /// If the same asset is already queued via `loadAsset`, the pending request is
+    /// removed from the queue and executed immediately using its queued settings.
     pub fn loadAssetNow(self: *Assets, comptime AssetType: type, uri: []const u8, settings: anytype) anyerror!*AssetType {
         const type_hash = std.hash_map.hashString(@typeName(AssetType));
 
@@ -261,36 +360,127 @@ pub const Assets = struct {
             }
         }
 
-        const loader = self.loaders.get(type_hash) orelse return error.NoManagerForType;
+        const queued_req = blk: {
+            self.lockQueue();
+            defer self.unlockQueue();
 
-        const ctx = LoadContext{
-            .allocator = self.allocator,
-            .uri = resolved_uri,
-            .scheme_registry = &self.scheme_registry,
-            .assets = self,
+            var queue_index: usize = 0;
+            while (queue_index < self.queue.items.len) : (queue_index += 1) {
+                const req = &self.queue.items[queue_index];
+                if (req.handle == cache_key and req.type_hash == type_hash) {
+                    break :blk self.queue.swapRemove(queue_index);
+                }
+            }
+
+            break :blk null;
         };
+
+        if (queued_req) |req| {
+            var owned_req = req;
+            defer self.deinitLoadRequest(&owned_req);
+
+            const asset_ptr = try self.performLoad(owned_req.handle, owned_req.type_hash, owned_req.uri, if (owned_req.settings_ptr) |ptr| ptr else null);
+            return @ptrCast(@alignCast(asset_ptr));
+        }
 
         const settings_ptr: ?*const anyopaque = if (@TypeOf(settings) == @TypeOf(null))
             null
         else
             @ptrCast(&settings);
 
-        const asset_ptr = try loader.load_fn(loader.ptr, &ctx, settings_ptr);
-
-        try self.cache.put(cache_key, .{
-            .ptr = asset_ptr,
-            .type_hash = type_hash,
-        });
+        const asset_ptr = try self.performLoad(cache_key, type_hash, resolved_uri, settings_ptr);
 
         return @ptrCast(@alignCast(asset_ptr));
     }
 
     /// Load an asset and return a handle (for queued loading)
     pub fn loadAsset(self: *Assets, comptime AssetType: type, uri: []const u8, settings: anytype) anyerror!AssetHandle {
-        _ = try self.loadAssetNow(AssetType, uri, settings);
+        const type_hash = std.hash_map.hashString(@typeName(AssetType));
         const resolved = try self.resolveUri(uri);
-        defer self.allocator.free(resolved);
-        return std.hash_map.hashString(resolved);
+        var keep_resolved = false;
+        defer if (!keep_resolved) self.allocator.free(resolved);
+
+        const handle = std.hash_map.hashString(resolved);
+
+        if (self.cache.get(handle)) |entry| {
+            if (entry.type_hash == type_hash) {
+                return handle;
+            }
+        }
+
+        self.lockQueue();
+        for (self.queue.items) |req| {
+            if (req.handle == handle and req.type_hash == type_hash) {
+                self.unlockQueue();
+                return handle;
+            }
+        }
+        self.unlockQueue();
+
+        const settings_storage = blk: {
+            if (@TypeOf(settings) == @TypeOf(null)) {
+                break :blk .{ .ptr = @as(?*anyopaque, null), .destroy = @as(?*const fn (*anyopaque, std.mem.Allocator) void, null) };
+            }
+
+            const SettingsType = @TypeOf(settings);
+            if (@typeInfo(SettingsType) == .pointer) {
+                @compileError("Assets.loadAsset requires settings to be a value or null because queued requests copy settings into owned storage");
+            }
+
+            const settings_ptr = try self.allocator.create(SettingsType);
+            settings_ptr.* = settings;
+
+            const DestroySettings = struct {
+                fn destroy(ptr: *anyopaque, allocator: std.mem.Allocator) void {
+                    const typed_ptr: *SettingsType = @ptrCast(@alignCast(ptr));
+                    allocator.destroy(typed_ptr);
+                }
+            };
+
+            break :blk .{
+                .ptr = @as(?*anyopaque, @ptrCast(settings_ptr)),
+                .destroy = @as(?*const fn (*anyopaque, std.mem.Allocator) void, DestroySettings.destroy),
+            };
+        };
+        errdefer if (settings_storage.ptr) |settings_ptr| settings_storage.destroy.?(settings_ptr, self.allocator);
+
+        self.lockQueue();
+        defer self.unlockQueue();
+
+        for (self.queue.items) |req| {
+            if (req.handle == handle and req.type_hash == type_hash) {
+                if (settings_storage.ptr) |settings_ptr| {
+                    settings_storage.destroy.?(settings_ptr, self.allocator);
+                }
+                return handle;
+            }
+        }
+
+        try self.queue.append(self.allocator, .{
+            .handle = handle,
+            .type_hash = type_hash,
+            .uri = resolved,
+            .settings_ptr = settings_storage.ptr,
+            .destroy_settings_fn = settings_storage.destroy,
+        });
+
+        keep_resolved = true;
+
+        return handle;
+    }
+
+    pub fn process(self: *Assets) anyerror!void {
+        self.lockQueue();
+        const maybe_req = self.queue.pop();
+        self.unlockQueue();
+        if (maybe_req == null) {
+            return;
+        }
+
+        var req = maybe_req.?;
+        defer self.deinitLoadRequest(&req);
+
+        _ = try self.performLoad(req.handle, req.type_hash, req.uri, if (req.settings_ptr) |ptr| ptr else null);
     }
 
     pub fn unload(self: *Assets, comptime AssetType: type, handle: AssetHandle) void {
@@ -601,9 +791,10 @@ pub const ShaderSource = struct {
 
 /// Asset loader for raw shader source text files (GLSL, HLSL, etc.).
 /// Register with Assets before loading shader sources:
-///   try assets.addLoader(ShaderSource, ShaderSourceLoader{});
-/// Then load individual vertex or fragment sources via:
+///   try assets.addLoader(ShaderSource, ShaderSourceLoader, .{});
+/// Then queue individual vertex or fragment sources via:
 ///   const handle = try assets.loadAsset(ShaderSource, "file://shaders/my.frag.glsl", null);
+///   try assets.process();
 pub const ShaderSourceLoader = struct {
     pub const LoadSettings = struct {};
 
@@ -764,4 +955,83 @@ test "Assets unknown scheme" {
 
     const result = assets.scheme_registry.resolve(testing.allocator, "unknown://file.txt");
     try testing.expectError(error.UnknownScheme, result);
+}
+
+test "Assets queued load waits for process" {
+    const testing = std.testing;
+
+    const TestAsset = struct {
+        value: usize,
+    };
+
+    const TestLoader = struct {
+        pub const LoadSettings = struct {
+            multiplier: usize = 1,
+        };
+
+        pub fn load(_: *@This(), ctx: *const LoadContext, settings: ?*const LoadSettings) anyerror!TestAsset {
+            return .{
+                .value = ctx.uri.len * if (settings) |s| s.multiplier else 1,
+            };
+        }
+
+        pub fn unload(_: *@This(), asset: TestAsset) void {
+            _ = asset;
+        }
+    };
+
+    var assets = Assets.init(testing.allocator);
+    defer assets.deinit();
+    try assets.addLoader(TestAsset, TestLoader, .{});
+
+    const settings = TestLoader.LoadSettings{ .multiplier = 2 };
+    const handle = try assets.loadAsset(TestAsset, "embedded://queued.asset", settings);
+
+    try testing.expectEqual(@as(usize, 1), assets.amount());
+    try testing.expect(assets.get(TestAsset, handle) == null);
+
+    try assets.process();
+
+    try testing.expectEqual(@as(usize, 0), assets.amount());
+    const asset = assets.get(TestAsset, handle) orelse return error.TestUnexpectedResult;
+    try testing.expectEqual("embedded://queued.asset".len * settings.multiplier, asset.value);
+}
+
+test "Assets loadAssetNow consumes matching queued request" {
+    const testing = std.testing;
+
+    const TestAsset = struct {
+        value: usize,
+    };
+
+    const TestLoader = struct {
+        pub const LoadSettings = struct {
+            multiplier: usize = 1,
+        };
+
+        pub fn load(_: *@This(), ctx: *const LoadContext, settings: ?*const LoadSettings) anyerror!TestAsset {
+            return .{
+                .value = ctx.uri.len * if (settings) |s| s.multiplier else 1,
+            };
+        }
+
+        pub fn unload(_: *@This(), asset: TestAsset) void {
+            _ = asset;
+        }
+    };
+
+    var assets = Assets.init(testing.allocator);
+    defer assets.deinit();
+    try assets.addLoader(TestAsset, TestLoader, .{});
+
+    const queued_settings = TestLoader.LoadSettings{ .multiplier = 3 };
+    const handle = try assets.loadAsset(TestAsset, "embedded://queued-now.asset", queued_settings);
+
+    try testing.expectEqual(@as(usize, 1), assets.amount());
+
+    const asset = try assets.loadAssetNow(TestAsset, "embedded://queued-now.asset", null);
+
+    try testing.expectEqual(@as(usize, 0), assets.amount());
+    try testing.expectEqual("embedded://queued-now.asset".len * queued_settings.multiplier, asset.value);
+    try testing.expectEqual(asset, assets.get(TestAsset, handle).?);
 }
