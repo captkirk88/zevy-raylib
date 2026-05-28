@@ -11,7 +11,7 @@ fn addChildRelation(manager: *zevy_ecs.Manager, child: zevy_ecs.Entity, parent: 
 }
 
 test "flex layout basic row start" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     // Create container
@@ -44,7 +44,7 @@ test "flex layout basic row start" {
 }
 
 test "flex layout grow distribution" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -92,7 +92,7 @@ test "flex layout grow distribution" {
 }
 
 test "flex layout order sorting" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -123,7 +123,7 @@ test "flex layout order sorting" {
 }
 
 test "flex layout min/max constraints" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -157,7 +157,7 @@ test "flex layout min/max constraints" {
 }
 
 test "flex layout order negative and stable tie" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -192,7 +192,7 @@ test "flex layout order negative and stable tie" {
 }
 
 test "flex layout align_self override" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -224,7 +224,7 @@ test "flex layout align_self override" {
 }
 
 test "grid layout 2x2 basic" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -281,7 +281,7 @@ test "grid layout 2x2 basic" {
 }
 
 test "anchor layout center" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -307,7 +307,7 @@ test "anchor layout center" {
 }
 
 test "dock layout basic" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{
@@ -362,7 +362,7 @@ test "dock layout basic" {
 }
 
 test "grid layout gaps and padding" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const container = manager.create(.{

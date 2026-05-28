@@ -5,7 +5,7 @@ const zevy_ecs = @import("zevy_ecs");
 const tutil = @import("../test_utils.zig");
 
 test "Transform init position is zero" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const e = manager.create(.{common.Transform.init()});
@@ -19,7 +19,7 @@ test "Transform init position is zero" {
 }
 
 test "Transform translate updates position" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const e = manager.create(.{common.Transform.init()});
@@ -38,7 +38,7 @@ test "Transform translate updates position" {
 }
 
 test "initFromPosRotScale preserves translation and composes transforms" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const pos = rl.Vector3{ .x = 5.0, .y = -3.0, .z = 2.0 };
@@ -69,7 +69,7 @@ test "initFromPosRotScale preserves translation and composes transforms" {
 }
 
 test "Transform getRotation after rotate" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const e = manager.create(.{common.Transform.init()});
@@ -96,7 +96,7 @@ test "Transform getRotation after rotate" {
 }
 
 test "Transform setRotation preserves scale+translation" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const pos = rl.Vector3{ .x = 1.0, .y = 2.0, .z = 3.0 };
@@ -138,7 +138,7 @@ test "Transform setRotation preserves scale+translation" {
 }
 
 test "Transform getEuler returns rotation in radians" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const e = manager.create(.{common.Transform.init()});
@@ -163,7 +163,7 @@ test "Transform getEuler returns rotation in radians" {
 }
 
 test "Transform getEulerDegrees returns degrees" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const e = manager.create(.{common.Transform.init()});
@@ -196,7 +196,7 @@ test "Transform rotation with tolerance" {
 }
 
 test "Transform rotateDegrees" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const e = manager.create(.{common.Transform.init()});
@@ -217,7 +217,7 @@ test "Transform rotateDegrees" {
 }
 
 test "Transform local/world and direction" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const pos = rl.Vector3{ .x = 5.0, .y = -3.0, .z = 2.0 };
@@ -259,7 +259,7 @@ test "Transform rotateAround" {
 }
 
 test "Transform toWorldPoint Vector4" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const pos = rl.Vector3{ .x = 4.0, .y = -2.0, .z = 1.0 };
@@ -293,7 +293,7 @@ test "Transform toWorldPoint Vector4" {
 }
 
 test "Transform getScale returns per-axis scales" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const pos = rl.Vector3{ .x = 0.0, .y = 0.0, .z = 0.0 };
@@ -311,7 +311,7 @@ test "Transform getScale returns per-axis scales" {
 }
 
 test "Transform scale preserves translation and multiplies basis" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const pos = rl.Vector3{ .x = 1.0, .y = 2.0, .z = 3.0 };
@@ -339,7 +339,7 @@ test "Transform scale preserves translation and multiplies basis" {
 }
 
 test "Transform setScale sets absolute scale and preserves rotation/translation" {
-    var manager = try zevy_ecs.Manager.init(std.testing.allocator);
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
     defer manager.deinit();
 
     const pos = rl.Vector3{ .x = -1.0, .y = 0.5, .z = 2.0 };

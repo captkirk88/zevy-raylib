@@ -1,6 +1,10 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
 const rl = @import("raylib");
 const rg = @import("raygui");
+
+const zevy_reflect = @import("zevy_reflect");
 const zevy_ecs = @import("zevy_ecs");
 const input = @import("../input/root.zig");
 const io_types = @import("../io/types.zig");
@@ -11,23 +15,27 @@ const icons = @import("../input/icons.zig");
 const Assets = @import("../io/assets.zig").Assets;
 const ui_resources = @import("resources.zig");
 const ui_style = @import("style.zig");
-const builtin = @import("builtin");
+const app_plugin = @import("../app.plugin.zig");
 
 comptime {
     @setEvalBranchQuota(4000);
 }
 
-pub fn startupUiSystem(
-    commands: zevy_ecs.params.Commands,
-    assets: zevy_ecs.params.ResMut(Assets),
-) !void {
+pub fn startupUiSystem(commands: zevy_ecs.params.Commands, assets: zevy_ecs.params.ResMut(Assets), local_test: zevy_ecs.params.Local(u8)) !void {
     _ = assets;
 
-    // Register style eagerly so systems that depend on UIStyle can run in headless mode.
-    _ = commands.addResource(ui_style.UIStyle, ui_style.UIStyle.init()) catch {};
+    if (local_test.get() == null) {
+        local_test.set(1);
+    } else {
+        local_test.getPtr().?.* += 1;
+        std.debug.print("Startup system called {d} times\n", .{local_test.get().?});
+    }
+    commands.addResource(ui_style.UIStyle, ui_style.UIStyle.init()) catch {};
 
-    // Raylib UI startup requires a render device.
-    if (!rl.isWindowReady()) return;
+    if (!rl.isWindowReady()) {
+        std.debug.print("Window not ready, skipping UI startup.\n", .{});
+        return;
+    }
 
     rg.loadStyleDefault();
     const default_font = try rl.getFontDefault();

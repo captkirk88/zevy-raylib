@@ -216,7 +216,7 @@ pub fn main(init: std.process.Init) !u8 {
     const allocator = init.arena.allocator();
 
     // Initialize ECS
-    var ecs = try zevy_ecs.Manager.init(allocator);
+    var ecs = try zevy_ecs.Manager.init(allocator, init.io);
     defer {
         ecs.deinit();
         if (rl.isAudioDeviceReady()) rl.closeAudioDevice();

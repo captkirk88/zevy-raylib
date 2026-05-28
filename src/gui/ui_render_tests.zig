@@ -103,7 +103,7 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
     rl.setExitKey(.escape);
     rl.setTargetFPS(60);
 
-    var ecs = try zevy_ecs.Manager.init(allocator);
+    var ecs = try zevy_ecs.Manager.init(allocator, std.testing.io);
 
     if (description) |desc| {
         _ = ecs.create(.{
@@ -123,7 +123,7 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
     };
 
     // Setup Assets for loading the icon atlas
-    const assets = try ecs.addResource(Assets, Assets.init(allocator));
+    const assets = try ecs.addResource(Assets, Assets.init(std.testing.io, allocator));
     defer assets.deinit();
     var assets_guard = assets.lockWrite();
     defer assets_guard.deinit();

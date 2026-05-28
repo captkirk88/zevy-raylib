@@ -14,6 +14,7 @@ const ui = zevy_raylib.ui;
 const layout = zevy_raylib.ui.layout;
 const input = zevy_raylib.input;
 const rl = @import("raylib");
+const zevy_app = @import("app");
 
 // Import the plugins we need
 const RaylibPlugin = zevy_raylib.RaylibPlugin;
@@ -24,7 +25,16 @@ const ParamRegistry = zevy_raylib.RaylibParamRegistry;
 
 const CIRCLE_COUNT = 10_000;
 
-const DeltaTime = f32;
+const Scheduler = zevy_ecs.schedule.Scheduler;
+const Stage = zevy_ecs.schedule.Stage;
+const Stages = zevy_ecs.schedule.Stages;
+
+const Res = zevy_ecs.params.Res;
+const ResMut = zevy_ecs.params.ResMut;
+const Commands = zevy_ecs.params.Commands;
+const Query = zevy_ecs.params.Query;
+const EventReader = zevy_ecs.params.EventReader;
+const EventWriter = zevy_ecs.params.EventWriter;
 
 // Example components for our ECS
 const Position = struct {
@@ -46,10 +56,12 @@ const Sprite = struct {
 fn movementSystem(
     commands: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { pos: Position, vel: Velocity }),
-    dt_res: zevy_ecs.params.Res(DeltaTime),
+    dt_res: zevy_ecs.params.Res(zevy_raylib.timing.DeltaTime),
+    fixed_dt: zevy_ecs.params.Res(zevy_raylib.timing.FixedTimestepAccumulator),
 ) !void {
     _ = commands;
-    const dt = dt_res.get().*;
+    if (!fixed_dt.get().canUpdate()) return; // Only update when the fixed timestep accumulator allows it
+    const dt = dt_res.get().value;
 
     while (query.next()) |item| {
         const pos: *Position = item.pos;
@@ -87,7 +99,7 @@ const CloseMeButtonTag = struct {};
 
 fn buttonClickedSystem(
     commands: zevy_ecs.params.Commands,
-    exit_app_writer: zevy_ecs.params.EventWriter(zevy_raylib.ExitAppEvent),
+    exit_app_writer: zevy_ecs.params.EventWriter(zevy_app.ExitAppEvent),
     click_events: zevy_ecs.params.EventReader(zevy_raylib.ui.input.UIClickEvent),
     query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
@@ -109,185 +121,25 @@ fn buttonClickedSystem(
     }
 }
 
-// Main game loop system
-fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !zevy_raylib.ExitAppEvent {
-    const fixed_dt: f32 = 1.0 / 60.0; // 1/60 for physics/logic updates
-    var accum = zevy_raylib.FixedTimestepAccumulator.init(fixed_dt);
-    const dt_ptr = try ecs.addResource(DeltaTime, fixed_dt);
-    defer dt_ptr.deinit();
-    var eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First).sub(1));
-    if (eg.hasErrors()) {
-        std.log.err("Errors during PreStartup -> First stage:", .{});
-        var iter = eg.iterator();
-        while (iter.next()) |err| {
-            std.log.err("- {s}", .{@errorName(err)});
-        }
-    }
+fn startup(
+    commands: Commands,
+    assets: ResMut(zevy_raylib.Assets),
+    scheduler: ResMut(zevy_ecs.schedule.Scheduler),
+    relations: zevy_ecs.params.Relations,
+) !void {
+    // This system is just to demonstrate the PreStartup stage where you can set up resources and such before the main loop starts
+    std.log.info("Running startup system in PreStartup stage...", .{});
+    zevy_raylib.ui.systems.registerIconAtlasFromAssets(
+        commands.manager(),
+        assets.get(),
+        "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml",
+        .{},
+    );
 
-    var exit_app_event: zevy_raylib.ExitAppEvent = .Success;
-    while (!zevy_raylib.shouldClose(io_ctx)) {
-        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).sub(1));
-        if (eg.hasErrors()) {
-            std.log.err("Errors during First -> PreUpdate stage:", .{});
-            var iter = eg.iterator();
-            while (iter.next()) |err| {
-                std.log.err("- {s}", .{@errorName(err)});
-            }
-        }
-        {
-            if (ecs.getResource(zevy_ecs.EventStore(zevy_raylib.ExitAppEvent))) |exit_app_event_store_ptr| {
-                defer exit_app_event_store_ptr.deinit();
-                var exit_app_event_lock = exit_app_event_store_ptr.lockRead();
-                defer exit_app_event_lock.deinit();
-                if (exit_app_event_lock.get().len > 0) {
-                    exit_app_event = exit_app_event_lock.get().events.items[0].data;
-                    break;
-                }
-            }
-        }
-        // Run game logic updates in fixed timesteps for consistency
-        accum.beginFrame();
-        while (accum.consumeTick()) {
-            {
-                const dt_lock = dt_ptr.lockWrite();
-                dt_lock.get().* = fixed_dt;
-                dt_lock.deinit();
-            }
-
-            // Run PreUpdate stage (input updates happen here)
-            eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw).sub(1));
-            if (eg.hasErrors()) {
-                std.log.err("Errors during PreUpdate -> PreDraw stage:", .{});
-                var iter = eg.iterator();
-                while (iter.next()) |err| {
-                    std.log.err("- {s}", .{@errorName(err)});
-                }
-            }
-        }
-
-        // Render
-        zevy_raylib.beginDrawing();
-        defer zevy_raylib.endDrawing();
-
-        zevy_raylib.clearBackground(rl.Color.black);
-
-        // Run render systems (extended to include UI stage at PostDraw + 1000)
-        eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last).sub(1));
-        if (eg.hasErrors()) {
-            std.log.err("Errors during PreDraw -> Last stage:", .{});
-            var iter = eg.iterator();
-            while (iter.next()) |err| {
-                std.log.err("- {s}", .{@errorName(err)});
-            }
-        }
-
-        // Display FPS
-        rl.drawFPS(10, 10);
-        // draw tps
-        var tps_buf: [32]u8 = undefined;
-        const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{zevy_raylib.getTPS(&accum)}) catch "TPS: ?";
-        rl.drawText(
-            tps_text,
-            10,
-            rl.getScreenHeight() - 30,
-            16,
-            rl.Color.black,
-        );
-        rl.drawText("Zevy Raylib Plugin Integration Example", 10, 40, 20, rl.Color.lime);
-        rl.drawText("Press ESC to exit", 10, 70, 16, rl.Color.light_gray);
-
-        var buf: [128]u8 = undefined;
-        const entity_count = try std.fmt.bufPrintZ(&buf, "Total Entities: {d}", .{CIRCLE_COUNT});
-        rl.drawText(entity_count, 10, 100, 16, rl.Color.white);
-    }
-
-    eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Max));
-    if (eg.hasErrors()) {
-        std.log.err("Errors during Exit -> Max stage:", .{});
-        var iter = eg.iterator();
-        while (iter.next()) |err| {
-            std.log.err("- {s}", .{@errorName(err)});
-        }
-    }
-
-    return exit_app_event;
-}
-
-pub fn main(init: std.process.Init) !u8 {
-    const allocator = init.arena.allocator();
-
-    // Initialize ECS
-    var ecs = try zevy_ecs.Manager.init(allocator);
-    defer {
-        ecs.deinit();
-        if (rl.isAudioDeviceReady()) rl.closeAudioDevice();
-        if (rl.isWindowReady()) rl.closeWindow();
-    }
-
-    // Initialize plugin manager
-    var plugin_manager = plugins.PluginManager.init(allocator);
-    defer {
-        if (plugin_manager.deinit(&ecs)) |errors| {
-            for (errors) |err| {
-                std.log.err("{s}: {s}", .{ err.plugin, @errorName(err.err) });
-            }
-        }
-    }
-
-    std.log.info("Adding RaylibPlugin...", .{});
-    // Manually add plugins one by one to showcase integration
-    try plugin_manager.add(RaylibPlugin(ParamRegistry), RaylibPlugin(ParamRegistry){
-        .window_opts = .{
-            .title = std.fmt.comptimePrint("Circles! - {d} of them!", .{CIRCLE_COUNT}),
-            .resolution = .init(1280, 720),
-            .vsync = true,
-            .high_dpi = false,
-            .fullscreen_mode = .Windowed,
-        },
-        .log_level = .info,
-    });
-
-    std.log.info("Adding AssetsPlugin...", .{});
-    try plugin_manager.add(AssetsPlugin(ParamRegistry), .{});
-
-    std.log.info("Adding InputPlugin...", .{});
-    try plugin_manager.add(InputPlugin(ParamRegistry), .{});
-
-    std.log.info("Adding RayGuiPlugin...", .{});
-    try plugin_manager.add(UIPlugin(ParamRegistry), .{});
-
-    // Build all plugins (this calls their build() methods)
-    std.log.info("Building plugins...", .{});
-    try plugin_manager.build(&ecs);
-
-    // Load the icon atlas
-    {
-        var assets_ptr = ecs.getResource(zevy_raylib.Assets) orelse return error.MissingAssets;
-        defer assets_ptr.deinit();
-        var assets_lock = assets_ptr.lockWrite();
-        defer assets_lock.deinit();
-        zevy_raylib.ui.systems.registerIconAtlasFromAssets(
-            &ecs,
-            assets_lock.get(),
-            "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml",
-            .{},
-        );
-    }
-
-    // Get the scheduler that was created by the plugins
-    const scheduler = blk: {
-        var scheduler_ptr = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return error.MissingScheduler;
-        defer scheduler_ptr.deinit();
-        var scheduler_guard = scheduler_ptr.lockWrite();
-        defer scheduler_guard.deinit();
-        const scheduler = scheduler_guard.get();
-        // Register our custom systems
-        std.log.info("Registering custom systems...", .{});
-        scheduler.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostUpdate), buttonClickedSystem, zevy_ecs.DefaultParamRegistry);
-        scheduler.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update), movementSystem, zevy_ecs.DefaultParamRegistry);
-        scheduler.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Draw), renderSystem, zevy_ecs.DefaultParamRegistry);
-        break :blk scheduler;
-    };
+    std.log.info("Registering custom systems...", .{});
+    scheduler.get().addSystem(commands.manager(), Stage(Stages.PostUpdate), buttonClickedSystem, zevy_ecs.DefaultParamRegistry);
+    scheduler.get().addSystem(commands.manager(), Stage(Stages.Update), movementSystem, zevy_ecs.DefaultParamRegistry);
+    scheduler.get().addSystem(commands.manager(), Stage(Stages.Draw), renderSystem, zevy_ecs.DefaultParamRegistry);
 
     // Create some example entities
     std.log.info("Creating example entities...", .{});
@@ -305,7 +157,7 @@ pub fn main(init: std.process.Init) !u8 {
     const random = prng.random();
 
     for (0..CIRCLE_COUNT) |i| {
-        _ = ecs.create(.{
+        const ent = try commands.create(.{
             Position{
                 .x = random.float(f32) * @as(f32, @floatFromInt(rl.getScreenWidth())),
                 .y = random.float(f32) * @as(f32, @floatFromInt(rl.getScreenHeight())),
@@ -319,43 +171,78 @@ pub fn main(init: std.process.Init) !u8 {
                 .color = colors[i % colors.len],
             },
         });
+        ent.flush();
     }
 
     // Showing how to use gui
-    const root_container = ecs.create(.{
+    const root_container = try commands.create(.{
         layout.UIContainer.init("root"),
         // Screen bounds rectangle
         ui.components.UIRect.initScreen(),
     });
-    const close_button = ecs.create(.{
+    root_container.flush();
+    const close_button = try commands.create(.{
         ui.components.UIRect.init(0, 0, 100, 50), // TODO make this able to be set based on text size and padding
         ui.components.UIButton.init("CLOSE ME"),
         //ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }), TODO fix layout issue
         layout.AnchorLayout.init(.top_right),
         CloseMeButtonTag{},
     });
+    close_button.flush();
 
     // _ = ecs.create(.{
     //     ui.components.UIRect.initScreen(),
     //     ui.components.UIMessageBox.init("This should POP!", "This is a test, only a test...", "Ok;Cancel"),
     // });
 
-    {
-        // TODO layout.UIContainer.child("root") would be nicer than this manual relation management
-        const relations_ptr = ecs.getResource(zevy_ecs.relations.RelationManager) orelse try ecs.addResource(zevy_ecs.relations.RelationManager, .init(ecs.allocator));
-        defer relations_ptr.deinit();
-        var relations_guard = relations_ptr.lockWrite();
-        defer relations_guard.deinit();
-        const relations = relations_guard.get();
-        try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.kinds.Child);
+    // TODO layout.UIContainer.child("root") would be nicer than this manual relation management
+    try relations.add(commands.manager(), close_button.entity(), root_container.entity(), zevy_ecs.relations.kinds.Child);
+}
+
+fn renderDebugText_System(fixed_dt_res: Res(zevy_raylib.timing.FixedTimestepAccumulator)) !void {
+    // Display FPS
+    rl.drawFPS(10, 10);
+    // draw tps
+    var tps_buf: [32]u8 = undefined;
+    const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{zevy_raylib.getTPS(fixed_dt_res.get())}) catch "TPS: ?";
+    rl.drawText(
+        tps_text,
+        10,
+        rl.getScreenHeight() - 30,
+        16,
+        rl.Color.black,
+    );
+    rl.drawText("Zevy Raylib Plugin Integration Example", 10, 40, 20, rl.Color.lime);
+    rl.drawText("Press ESC to exit", 10, 70, 16, rl.Color.light_gray);
+
+    var buf: [128]u8 = undefined;
+    const entity_count = try std.fmt.bufPrintZ(&buf, "Total Entities: {d}", .{CIRCLE_COUNT});
+    rl.drawText(entity_count, 10, 100, 16, rl.Color.white);
+}
+
+pub fn main(init: std.process.Init) !void {
+    const app = zevy_app.new(init, ParamRegistry);
+    defer {
+        if (rl.isAudioDeviceReady()) rl.closeAudioDevice();
+        if (rl.isWindowReady()) rl.closeWindow();
     }
+    defer app.deinit();
 
-    std.log.info("Starting game loop...", .{});
-
-    // Run the game loop
-    const exit_code: u8 = @intFromEnum(try gameLoop(init.io, &ecs, scheduler));
-
+    std.log.info("Adding RaylibPlugin...", .{});
+    // Manually add plugins one by one to showcase integration
+    try app.addPlugin(RaylibPlugin(ParamRegistry), RaylibPlugin(ParamRegistry){
+        .window_opts = .{
+            .title = std.fmt.comptimePrint("Circles! - {d} of them!", .{CIRCLE_COUNT}),
+            .resolution = .init(1280, 720),
+            .vsync = true,
+            .high_dpi = false,
+            .fullscreen_mode = .Windowed,
+        },
+        .log_level = .info,
+    })
+        .addPlugin(AssetsPlugin(ParamRegistry), .{ .io = init.io })
+        .addPlugin(InputPlugin(ParamRegistry), .{})
+        .addPlugin(UIPlugin(ParamRegistry), .{})
+        .addSystem(Stage(Stages.PostDraw), renderDebugText_System).run();
     std.log.info("Shutting down...", .{});
-
-    return exit_code;
 }

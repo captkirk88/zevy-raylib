@@ -151,7 +151,7 @@ test "parse keyboardmouse texture atlas" {
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
 
-    var assets = Assets.init(allocator);
+    var assets = Assets.init(testing.io, allocator);
     defer assets.deinit();
 
     const xml_path = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
@@ -174,7 +174,7 @@ test "loadAssetNow IconAtlas from embedded path" {
     rl.initWindow(640, 480, "icons test loadAssetNow");
     defer rl.closeWindow();
 
-    var assets = Assets.init(allocator);
+    var assets = Assets.init(testing.io, allocator);
     defer assets.deinit();
 
     // Test that assets.loadAssetNow works with embedded IconAtlas
@@ -196,7 +196,7 @@ test "parse xbox texture atlas" {
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
 
-    var assets = Assets.init(allocator);
+    var assets = Assets.init(testing.io, allocator);
     defer assets.deinit();
 
     const xml_path = "embedded://Xbox Series/xbox-series_sheet_default.xml";
@@ -238,7 +238,7 @@ test "parse keyboardmouse via Assets resolver (embedded://)" {
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
 
-    var assets = Assets.init(allocator);
+    var assets = Assets.init(testing.io, allocator);
     defer assets.deinit();
 
     const uri = "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml";
@@ -259,7 +259,7 @@ test "parse playstation via Assets resolver (embedded://)" {
     rl.initWindow(640, 480, "icons test");
     defer rl.closeWindow();
 
-    var assets = Assets.init(allocator);
+    var assets = Assets.init(testing.io, allocator);
     defer assets.deinit();
 
     const uri = "embedded://PlayStation Series/playstation-series_sheet_default.xml";

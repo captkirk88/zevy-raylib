@@ -79,7 +79,7 @@ fn initTest(name: [:0]const u8) anyerror!Assets {
     // cause windowShouldClose() to return true immediately in the next test.
     rl.setExitKey(.null);
     const allocator = std.testing.allocator;
-    return Assets.init(allocator);
+    return Assets.init(std.testing.io, allocator);
 }
 
 fn deinitTest(assets: *Assets) void {

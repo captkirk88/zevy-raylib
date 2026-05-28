@@ -17,6 +17,7 @@ pub const ui = @import("gui/ui.zig");
 
 const app_plugin = @import("app.plugin.zig");
 pub const RaylibPlugin = app_plugin.RaylibPlugin;
+pub const WindowOpts = app_plugin.WindowOpts;
 pub const UIPlugin = ui.UIPlugin;
 pub const AssetsPlugin = @import("assets.plugin.zig").AssetsPlugin;
 pub const InputPlugin = @import("input.plugin.zig").InputPlugin;
@@ -35,11 +36,11 @@ pub const ShaderLoader = io.ShaderLoader;
 /// Graphics module: shader ECS integration
 pub const graphics = graphics_mod;
 
-pub const ExitAppEvent = app_plugin.ExitAppEvent;
-
 pub const params = struct {
     pub const Bindings = input.params.Bindings;
 };
+
+pub const timing = @import("utils/timing.zig");
 
 pub const RaylibParamRegistry = zevy_ecs.DefaultParamRegistry;
 
@@ -75,8 +76,8 @@ pub fn shouldClose(io_ctx: std.Io) bool {
 /// Returns ticks per second given the number of fixed-timestep updates processed
 /// in a frame and the actual elapsed frame time in seconds.
 /// Safe to call in headless mode (returns 0 when there is no window).
-pub fn getTPS(accum: *FixedTimestepAccumulator) usize {
-    const frame_time = if (rl.isWindowReady()) rl.getFrameTime() else accum.fixed_dt;
+pub fn getTPS(accum: *const timing.FixedTimestepAccumulator) usize {
+    const frame_time = if (rl.isWindowReady()) rl.getFrameTime() else accum.delta;
     if (frame_time == 0) return 0;
     return @intFromFloat(@as(f32, @floatFromInt(accum.updates)) / frame_time);
 }
@@ -98,56 +99,6 @@ pub fn clearBackground(color: rl.Color) void {
     if (!rl.isWindowReady()) return;
     rl.clearBackground(color);
 }
-
-/// Fixed-timestep accumulator for game logic updates.
-///
-/// Works in both windowed and headless (no window) mode.
-///
-/// Usage:
-/// ```zig
-/// var accum = FixedTimestepAccumulator.init(1.0 / 60.0);
-/// // each frame:
-/// while (!zevy_raylib.shouldClose(io)) {
-///     accum.beginFrame();
-///     while (accum.consumeTick()) { /* run fixed-dt systems */ }
-/// }
-/// ```
-pub const FixedTimestepAccumulator = struct {
-    const Self = @This();
-
-    accumulator: f32 = 0.0,
-    fixed_dt: f32,
-    /// Maximum fixed updates consumed per frame (spiral-of-death guard).
-    max_updates: usize = 5,
-    /// Frame times above this are clamped (spiral-of-death guard).
-    max_frame_time: f32 = 0.25,
-    /// Number of fixed updates consumed in the current frame (reset by beginFrame()).
-    updates: usize = 0,
-
-    pub fn init(fixed_dt: f32) Self {
-        return .{ .fixed_dt = fixed_dt };
-    }
-
-    /// Call once per frame. Reads the frame time (or uses fixed_dt in headless mode),
-    /// clamps it, and adds it to the accumulator. Resets the per-frame update counter.
-    pub fn beginFrame(self: *Self) void {
-        const frame_time = if (rl.isWindowReady()) rl.getFrameTime() else self.fixed_dt;
-        const clamped = @min(frame_time, self.max_frame_time);
-        self.accumulator += clamped;
-        self.updates = 0;
-    }
-
-    /// Returns true while there is accumulated time left to consume and the
-    /// per-frame update cap has not been reached. Drains one fixed_dt tick
-    /// per call and increments the update counter.
-    pub fn consumeTick(self: *Self) bool {
-        if (self.updates >= self.max_updates) return false;
-        if (self.accumulator < self.fixed_dt) return false;
-        self.accumulator -= self.fixed_dt;
-        self.updates += 1;
-        return true;
-    }
-};
 
 /// Registers all plugins defined in this package
 fn plug(init: std.process.Init, plugs: *plugins.PluginManager, headless: bool) anyerror!void {
@@ -193,8 +144,8 @@ fn testInit() std.process.Init {
 
 test "zevy_raylib" {
     const init = testInit();
-    const allocator = std.testing.allocator;
-    var ecs = try zevy_ecs.Manager.init(allocator);
+    const allocator = init.gpa;
+    var ecs = try zevy_ecs.Manager.init(allocator, init.io);
     var plugs = plugins.PluginManager.init(allocator);
     defer {
         _ = plugs.deinit(&ecs);
@@ -218,7 +169,7 @@ test "zevy_raylib" {
 test "zevy_raylib builds plugins headless" {
     const init = testInit();
     const allocator = std.testing.allocator;
-    var ecs = try zevy_ecs.Manager.init(allocator);
+    var ecs = try zevy_ecs.Manager.init(allocator, std.testing.io);
     var plugs = plugins.PluginManager.init(allocator);
     defer {
         _ = plugs.deinit(&ecs);

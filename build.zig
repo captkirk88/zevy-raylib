@@ -57,6 +57,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "xml", .module = xml_dep.module("xml") },
             .{ .name = "zevy_reflect", .module = zevy_reflect_dep.module("zevy_reflect") },
             .{ .name = "zevy_mem", .module = zevy_mem_dep.module("zevy_mem") },
+            .{ .name = "app", .module = zevy_ecs_dep.module("app") },
         },
     });
 
@@ -97,6 +98,7 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "plugins", .module = zevy_ecs_dep.module("plugins") },
         .{ .name = embed_opts.import_name, .module = embed_assets_mod },
         .{ .name = example_embed_opts.import_name, .module = example_embed_assets_mod },
+        .{ .name = "app", .module = zevy_ecs_dep.module("app") },
     }, target, optimize);
 
     try buildtools.fetch.addFetchStep(b, b.path("build.zig.zon"));

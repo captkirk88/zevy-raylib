@@ -3,18 +3,14 @@ const builtin = @import("builtin");
 const zevy_ecs = @import("zevy_ecs");
 const zevy_mem = @import("zevy_mem");
 const zevy_reflect = @import("zevy_reflect");
+const zevy_app = @import("app");
 const plugins = @import("plugins");
 const rl = @import("raylib");
 const raygui = @import("raygui");
-
+const zevy_raylib = @import("root.zig");
 const ui = @import("gui/ui.zig");
+const timing = @import("utils/timing.zig");
 const assets_plugin = @import("assets.plugin.zig");
-
-/// Event emitted when the application is going to exit
-pub const ExitAppEvent = enum(u8) {
-    Success = 0,
-    Error = 1,
-};
 
 pub const WindowOpts = struct {
     /// The title of the application window. This should be a short and descriptive name for your application, such as "My Game" or "Zevy App". The title is displayed in the title bar of the window and may also be used by the operating system to identify the application. It's important to choose a title that accurately represents your application and is easily recognizable to users.
@@ -119,39 +115,24 @@ pub fn RaylibPlugin(comptime ParamRegistry: type) type {
         raylib_logcallback: *const fn (c_int, [*c]const u8, raylib_log_callback.VaListParam) callconv(.c) void = raylib_log_callback.callback,
 
         pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) anyerror!void {
-            const log = std.log.scoped(.zevy_raylib);
             const sch_ref = try e.getOrAddResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator), null);
             defer sch_ref.deinit();
             var sch_guard = sch_ref.lockWrite();
             defer sch_guard.deinit();
             const sch = sch_guard.get();
 
-            try sch.registerEvent(
-                e,
-                ExitAppEvent,
-                ParamRegistry,
-            );
-
             var window_opts_change = zevy_reflect.Change(WindowOpts).init(self.window_opts);
             window_opts_change._prior_hash += 1; // Force changed state on startup to apply initial window options
             try e.addResourceRetained(zevy_reflect.Change(WindowOpts), window_opts_change);
             applyWindowOpts(&self.window_opts);
 
-            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup), startupRaylibSystem, ParamRegistry);
+            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup), startupRaylib_System, ParamRegistry);
 
             SetTraceLogCallback(self.raylib_logcallback);
             rl.setTraceLogLevel(self.log_level);
-            if (!self.window_opts.headless) {
-                const title_z = try self.window_opts.titleZ(std.heap.page_allocator);
-                defer std.heap.page_allocator.free(title_z);
-                rl.initWindow(self.window_opts.resolution.width, self.window_opts.resolution.height, title_z);
-                rl.initAudioDevice();
-                if (self.window_opts.target_fps < 30) self.window_opts.target_fps = 30;
-            } else {
-                log.info("Running in headless mode: Window and audio device will not be initialized.", .{});
-            }
-
-            rl.setTargetFPS(self.window_opts.target_fps);
+            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), checkShouldClose_System, ParamRegistry);
+            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), beginDrawing_System, ParamRegistry);
+            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw), endDrawing_System, ParamRegistry);
         }
 
         pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) anyerror!void {
@@ -207,13 +188,52 @@ const raylib_log_callback = struct {
 const Commands = zevy_ecs.commands.Commands;
 const ResMut = zevy_ecs.params.ResMut;
 
-fn startupRaylibSystem(_: Commands, window_res: ResMut(zevy_reflect.Change(WindowOpts))) void {
+fn startupRaylib_System(commands: Commands, window_res: ResMut(zevy_reflect.Change(WindowOpts))) !void {
+    const log = std.log.scoped(.zevy_raylib);
     const window = window_res.get();
+    var window_opts: WindowOpts = undefined;
     if (window.isChanged()) {
         window.finish();
-        const new_opts = window.get();
-        applyWindowOpts(new_opts);
+        window_opts = window.get().*;
+        applyWindowOpts(&window_opts);
     }
+
+    if (!window_opts.headless) {
+        const title_z = try window_opts.titleZ(commands.allocator());
+        defer commands.allocator().free(title_z);
+        rl.initWindow(window_opts.resolution.width, window_opts.resolution.height, title_z);
+        rl.initAudioDevice();
+        if (window_opts.target_fps < 30) window_opts.target_fps = 30;
+        applyWindowOpts(&window_opts);
+    } else {
+        log.info("Running in headless mode: Window and audio device will not be initialized.", .{});
+    }
+
+    rl.setTargetFPS(window_opts.target_fps);
+
+    const fixed_dt: f32 = 1.0 / 60.0; // 1/60 for physics/logic updates
+    try commands.manager().addResourceRetained(timing.FixedTimestepAccumulator, timing.FixedTimestepAccumulator.init(fixed_dt));
+    try commands.manager().addResourceRetained(timing.DeltaTime, .{ .value = fixed_dt });
+}
+
+fn checkShouldClose_System(commands: zevy_ecs.params.Commands, exitEvent_writer: zevy_ecs.params.EventWriter(zevy_app.ExitAppEvent)) void {
+    if (@import("root.zig").shouldClose(commands.io())) {
+        exitEvent_writer.write(.Success);
+    }
+}
+
+fn beginDrawing_System(fixed_dt_res: ResMut(timing.FixedTimestepAccumulator), dt_res: ResMut(timing.DeltaTime)) void {
+    const fixed_dt = fixed_dt_res.get();
+    fixed_dt.beginFrame();
+    const dt = fixed_dt.delta;
+    dt_res.get().value = dt;
+
+    zevy_raylib.beginDrawing();
+    zevy_raylib.clearBackground(rl.Color.black);
+}
+
+fn endDrawing_System() void {
+    zevy_raylib.endDrawing();
 }
 
 fn applyWindowOpts(opts: *WindowOpts) void {
