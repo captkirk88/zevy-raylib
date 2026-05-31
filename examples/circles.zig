@@ -20,8 +20,10 @@ const AssetsPlugin = zevy_raylib.AssetsPlugin;
 const InputPlugin = zevy_raylib.InputPlugin;
 const ParamRegistry = zevy_raylib.RaylibParamRegistry;
 
+// This is all you have to do for Zig to detect the panic handler
 pub const panic = zevy_ecs.panic;
-const CIRCLE_COUNT = 30_000;
+
+const CIRCLE_COUNT = 10_000;
 const ENABLE_UI = true;
 
 const Scheduler = zevy_ecs.schedule.Scheduler;
