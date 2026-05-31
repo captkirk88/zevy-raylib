@@ -4,13 +4,17 @@ const zevy_ecs = @import("zevy_ecs");
 const zevy_mem = @import("zevy_mem");
 const zevy_reflect = @import("zevy_reflect");
 const zevy_app = @import("app");
-const plugins = @import("plugins");
+const plugins = zevy_ecs.plugins;
 const rl = @import("raylib");
 const raygui = @import("raygui");
 const zevy_raylib = @import("root.zig");
 const ui = @import("gui/ui.zig");
 const timing = @import("utils/timing.zig");
 const assets_plugin = @import("assets.plugin.zig");
+
+const main_thread_poll_stage = zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate)
+    .add(50_000)
+    .withOp(.sync);
 
 pub const WindowOpts = struct {
     /// The title of the application window. This should be a short and descriptive name for your application, such as "My Game" or "Zevy App". The title is displayed in the title bar of the window and may also be used by the operating system to identify the application. It's important to choose a title that accurately represents your application and is easily recognizable to users.
@@ -104,46 +108,46 @@ pub const FullScreenMode = enum {
 };
 
 /// Raylib plugin for Zevy ECS
-pub fn RaylibPlugin(comptime ParamRegistry: type) type {
-    return struct {
-        const Name: []const u8 = "RaylibPlugin";
-        const Self = @This();
-        /// Window Options
-        window_opts: WindowOpts = .{},
-        log_level: rl.TraceLogLevel = .info,
-        /// Raylib log callback that redirects to zevy_raylib scoped logger
-        raylib_logcallback: *const fn (c_int, [*c]const u8, raylib_log_callback.VaListParam) callconv(.c) void = raylib_log_callback.callback,
+pub const RaylibPlugin = struct {
+    const Name: []const u8 = "RaylibPlugin";
+    const Self = @This();
+    /// Window Options
+    window_opts: WindowOpts = .{},
+    log_level: rl.TraceLogLevel = .info,
+    /// Raylib log callback that redirects to zevy_raylib scoped logger
+    raylib_logcallback: *const fn (c_int, [*c]const u8, raylib_log_callback.VaListParam) callconv(.c) void = raylib_log_callback.callback,
 
-        pub fn build(self: *Self, e: *zevy_ecs.Manager, _: *plugins.PluginManager) anyerror!void {
-            const sch_ref = try e.getOrAddResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(e.allocator), null);
-            defer sch_ref.deinit();
-            var sch_guard = sch_ref.lockWrite();
-            defer sch_guard.deinit();
-            const sch = sch_guard.get();
+    pub fn build(self: *Self, app: *zevy_ecs.app.App, _: *plugins.PluginManager) anyerror!void {
+        app
+            .addResource(zevy_reflect.Change(WindowOpts), .initChanged(self.window_opts))
+            .addSystem(
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreStartup),
+                startupRaylib_System,
+            )
+            .addSystem(
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate),
+                checkShouldClose_System,
+            )
+            .addSystem(
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First),
+                beginFrame_System,
+            )
+            .addSystem(
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last),
+                endFrame_System,
+            )
+            .done();
 
-            var window_opts_change = zevy_reflect.Change(WindowOpts).init(self.window_opts);
-            window_opts_change._prior_hash += 1; // Force changed state on startup to apply initial window options
-            try e.addResourceRetained(zevy_reflect.Change(WindowOpts), window_opts_change);
-            applyWindowOpts(&self.window_opts);
+        SetTraceLogCallback(self.raylib_logcallback);
+        rl.setTraceLogLevel(self.log_level);
+    }
 
-            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup), startupRaylib_System, ParamRegistry);
-
-            SetTraceLogCallback(self.raylib_logcallback);
-            rl.setTraceLogLevel(self.log_level);
-            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate), checkShouldClose_System, ParamRegistry);
-            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreDraw), beginDrawing_System, ParamRegistry);
-            sch.addSystem(e, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostDraw), endDrawing_System, ParamRegistry);
-        }
-
-        pub fn deinit(self: *Self, _: std.mem.Allocator, ecs: *zevy_ecs.Manager) anyerror!void {
-            // Do not close raylib here: plugin_manager.deinit() runs before
-            // ecs.deinit(), and ECS-owned assets may still need a live GL/audio
-            // context to unload safely.
-            _ = ecs;
-            _ = self;
-        }
-    };
-}
+    pub fn deinit(_: *Self, _: std.mem.Allocator, _: *zevy_ecs.Manager) anyerror!void {
+        // Do not close raylib here: plugin_manager.deinit() runs before
+        // ecs.deinit(), and ECS-owned assets may still need a live GL/audio
+        // context to unload safely.
+    }
+};
 
 // Extern functions
 extern fn SetTraceLogCallback(callback: ?*const fn (c_int, [*c]const u8, raylib_log_callback.VaListParam) callconv(.c) void) void;
@@ -203,8 +207,9 @@ fn startupRaylib_System(commands: Commands, window_res: ResMut(zevy_reflect.Chan
         defer commands.allocator().free(title_z);
         rl.initWindow(window_opts.resolution.width, window_opts.resolution.height, title_z);
         rl.initAudioDevice();
-        if (window_opts.target_fps < 30) window_opts.target_fps = 30;
-        applyWindowOpts(&window_opts);
+        rl.setExitKey(.escape);
+        //if (window_opts.target_fps < 30) window_opts.target_fps = 30;
+        //applyWindowOpts(&window_opts);
     } else {
         log.info("Running in headless mode: Window and audio device will not be initialized.", .{});
     }
@@ -212,27 +217,22 @@ fn startupRaylib_System(commands: Commands, window_res: ResMut(zevy_reflect.Chan
     rl.setTargetFPS(window_opts.target_fps);
 
     const fixed_dt: f32 = 1.0 / 60.0; // 1/60 for physics/logic updates
-    try commands.manager().addResourceRetained(timing.FixedTimestepAccumulator, timing.FixedTimestepAccumulator.init(fixed_dt));
-    try commands.manager().addResourceRetained(timing.DeltaTime, .{ .value = fixed_dt });
+    try commands.addResource(timing.FixedTimestepAccumulator, timing.FixedTimestepAccumulator.init(fixed_dt));
+    try commands.addResource(timing.DeltaTime, .{ .value = fixed_dt });
 }
 
 fn checkShouldClose_System(commands: zevy_ecs.params.Commands, exitEvent_writer: zevy_ecs.params.EventWriter(zevy_app.ExitAppEvent)) void {
-    if (@import("root.zig").shouldClose(commands.io())) {
+    if (zevy_raylib.shouldClose(commands.io())) {
         exitEvent_writer.write(.Success);
     }
 }
 
-fn beginDrawing_System(fixed_dt_res: ResMut(timing.FixedTimestepAccumulator), dt_res: ResMut(timing.DeltaTime)) void {
-    const fixed_dt = fixed_dt_res.get();
-    fixed_dt.beginFrame();
-    const dt = fixed_dt.delta;
-    dt_res.get().value = dt;
-
+fn beginFrame_System() void {
     zevy_raylib.beginDrawing();
     zevy_raylib.clearBackground(rl.Color.black);
 }
 
-fn endDrawing_System() void {
+fn endFrame_System() void {
     zevy_raylib.endDrawing();
 }
 

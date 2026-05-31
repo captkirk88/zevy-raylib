@@ -12,6 +12,14 @@ const InputBinding = input.InputBinding;
 const InputBindingCollection = input.InputBindingCollection;
 const InputManager = input.InputManager;
 
+const FirstPollRaylibMock = struct {
+    var enter_down = false;
+
+    fn isKeyDown(key: c_int) bool {
+        return key == @intFromEnum(KeyCode.key_enter) and enter_down;
+    }
+};
+
 test "InputKey equality and string conversion" {
     const allocator = testing.allocator;
 
@@ -327,6 +335,54 @@ test "Input manager action queries support multiple bindings per action" {
 
     try testing.expect(manager.isActionActive("ui_click"));
     try testing.expect(!manager.wasActionTriggered("ui_click"));
+}
+
+test "InputManager skips configured startup frames before triggering" {
+    const allocator = testing.allocator;
+
+    var manager = InputManager.init(allocator);
+    defer manager.deinit();
+
+    FirstPollRaylibMock.enter_down = false;
+
+    var enter_chord = InputChord.init(allocator);
+    try enter_chord.add(allocator, .{ .keyboard = .key_enter });
+    const action = try InputAction.init(allocator, "ui_confirm", "UI confirm/select");
+    try manager.addBinding(InputBinding.init(enter_chord, action));
+
+    manager.setRaylibBindings(.{
+        .is_key_down = FirstPollRaylibMock.isKeyDown,
+        .is_mouse_button_down = null,
+        .is_gamepad_available = null,
+        .is_gamepad_button_down = null,
+        .get_touch_point_count = null,
+        .get_touch_position = null,
+        .get_gesture_detected = null,
+        .is_gesture_detected = null,
+    });
+
+    manager.frames_to_skip_before_polling = 2;
+
+    FirstPollRaylibMock.enter_down = true;
+    try manager.update();
+    try testing.expect(manager.isActionActive("ui_confirm"));
+    try testing.expect(!manager.wasActionTriggered("ui_confirm"));
+    try testing.expectEqual(@as(u10, 1), manager.frames_to_skip_before_polling);
+
+    try manager.update();
+    try testing.expect(manager.isActionActive("ui_confirm"));
+    try testing.expect(!manager.wasActionTriggered("ui_confirm"));
+    try testing.expectEqual(@as(u10, 0), manager.frames_to_skip_before_polling);
+
+    FirstPollRaylibMock.enter_down = false;
+    try manager.update();
+    try testing.expect(!manager.isActionActive("ui_confirm"));
+    try testing.expect(!manager.wasActionTriggered("ui_confirm"));
+
+    FirstPollRaylibMock.enter_down = true;
+    try manager.update();
+    try testing.expect(manager.isActionActive("ui_confirm"));
+    try testing.expect(manager.wasActionTriggered("ui_confirm"));
 }
 
 test "InputBindingBuilder" {

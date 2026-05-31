@@ -9,7 +9,7 @@ const comps = ui.components;
 const input = @import("../input/root.zig");
 const style = @import("style.zig");
 const Assets = @import("../io/assets.zig").Assets;
-const ui_resources = @import("resources.zig");
+const ui_resources = @import("res.zig");
 
 const SKIP_IN_DEBUG = true;
 const is_debug = @import("builtin").mode == .Debug;
@@ -84,11 +84,7 @@ fn addChildRelation(ecs: *zevy_ecs.Manager, child: zevy_ecs.Entity, parent: zevy
 }
 
 fn runSchedulerStages(ecs: *zevy_ecs.Manager, start_stage: zevy_ecs.schedule.StageId, end_stage: zevy_ecs.schedule.StageId) !void {
-    const scheduler_ref = ecs.getResource(zevy_ecs.schedule.Scheduler) orelse return error.MissingScheduler;
-    defer scheduler_ref.deinit();
-    var scheduler_guard = scheduler_ref.lockWrite();
-    defer scheduler_guard.deinit();
-    const eg = scheduler_guard.get().runStages(ecs, start_stage, end_stage);
+    const eg = ecs.scheduler().runStages(ecs, start_stage, end_stage);
     try eg.throw();
 }
 
@@ -131,17 +127,12 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
     // Load the icon atlas
     ui.systems.registerIconAtlasFromAssets(&ecs, assets_guard.get(), "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml", .{});
 
-    var sch = try ecs.addResource(zevy_ecs.schedule.Scheduler, try zevy_ecs.schedule.Scheduler.init(ecs.allocator));
-    defer sch.deinit();
-    var sch_guard = sch.lockWrite();
-    defer sch_guard.deinit();
-    const scheduler = sch_guard.get();
+    const scheduler = ecs.scheduler();
 
     scheduler.addSystem(
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Startup),
         ui.systems.startupUiSystem,
-        zevy_ecs.DefaultParamRegistry,
     );
 
     // Ensure the InputManager is updated each frame before UI interaction detection
@@ -149,7 +140,6 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
         &ecs,
         zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate),
         testInputUpdateSystem,
-        zevy_ecs.DefaultParamRegistry,
     );
 
     // UI interaction detection relies on InputManager having been updated (PreUpdate).
@@ -166,7 +156,6 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
             ui.systems.dockLayoutSystem,
             ui.input.uiInteractionDetectionSystem,
         }),
-        zevy_ecs.DefaultParamRegistry,
     );
     scheduler.addSystem(
         &ecs,
@@ -175,7 +164,6 @@ fn initTest(name: [:0]const u8, description: ?[:0]const u8) anyerror!zevy_ecs.Ma
             ui.systems.uiRenderSystem,
             ui.systems.uiInputKeyRenderSystem,
         }),
-        zevy_ecs.DefaultParamRegistry,
     );
 
     return ecs;
@@ -202,7 +190,7 @@ fn testLoop(ecs: *zevy_ecs.Manager, update_fn: fn (commands: zevy_ecs.params.Com
         if (now - start >= max_duration_ms) break;
 
         {
-            const cmds = try zevy_ecs.commands.CommandsInner.init(ecs.allocator, ecs);
+            const cmds = try zevy_ecs.commands.CommandsInner.init(ecs.allocator(), ecs);
             defer cmds.deinit();
             update_fn(cmds);
         }
@@ -590,15 +578,11 @@ test "UI Focus Navigation Demo" {
     _ = btn3;
 
     {
-        const sch = ecs.getResource(zevy_ecs.schedule.Scheduler).?;
-        defer sch.deinit();
-        var sch_guard = sch.lockWrite();
-        defer sch_guard.deinit();
-
+        const sch = ecs.scheduler();
         // Register the focus navigation system for this test so Tab will cycle focus
-        sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostUpdate), ui.input.uiFocusNavigationSystem, zevy_ecs.DefaultParamRegistry);
+        sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PostUpdate), ui.input.uiFocusNavigationSystem);
         // Add our debug draw system so focused element is outlined
-        sch_guard.get().addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last), focusDebugDrawSystem, zevy_ecs.DefaultParamRegistry);
+        sch.addSystem(&ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last), focusDebugDrawSystem);
     }
 
     try testLoop(&ecs, struct {

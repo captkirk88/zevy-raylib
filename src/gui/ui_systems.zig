@@ -13,7 +13,7 @@ const layout = @import("ui_layout.zig");
 const renderer = @import("ui_renderer.zig");
 const icons = @import("../input/icons.zig");
 const Assets = @import("../io/assets.zig").Assets;
-const ui_resources = @import("resources.zig");
+const ui_resources = @import("res.zig");
 const ui_style = @import("style.zig");
 const app_plugin = @import("../app.plugin.zig");
 
@@ -748,7 +748,7 @@ pub fn registerIconAtlasFromAssets(manager: *zevy_ecs.Manager, assets: *Assets, 
         std.log.err("Failed to load icon atlas from '{s}': {}", .{ path, err });
         return;
     };
-    manager.addResourceRetained(@import("resources.zig").UIIconAtlasHandle, @import("resources.zig").UIIconAtlasHandle.init(handle)) catch |err| {
+    manager.addResourceRetained(ui_resources.UIIconAtlasHandle, ui_resources.UIIconAtlasHandle.init(handle)) catch |err| {
         std.log.err("Failed to register icon atlas resource: {}", .{err});
     };
 }
@@ -843,7 +843,7 @@ pub fn gridLayoutSystem(
         defer child_infos.deinit(commands.allocator());
 
         for (children) |child| {
-            var ent_cmds = try commands.entity(child);
+            var ent_cmds = commands.entity(child);
             defer ent_cmds.deinit();
             if (try ent_cmds.get(components.UIRect)) |child_rect| {
                 try child_infos.append(commands.allocator(), ChildInfo{
@@ -903,7 +903,7 @@ pub fn anchorLayoutSystem(
         if (children.len == 0) continue;
 
         for (children) |child| {
-            var ent_cmds = try commands.entity(child);
+            var ent_cmds = commands.entity(child);
             defer ent_cmds.deinit();
             const child_ui_rect = try ent_cmds.get(components.UIRect) orelse continue;
             const anchor = try ent_cmds.get(layout.AnchorLayout) orelse continue;

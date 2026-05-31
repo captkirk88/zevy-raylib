@@ -12,6 +12,7 @@ const ui = zevy_raylib.ui;
 const layout = zevy_raylib.ui.layout;
 const input = zevy_raylib.input;
 const rl = @import("raylib");
+const app = @import("app");
 
 // Import the plugins we need
 const RaylibPlugin = zevy_raylib.RaylibPlugin;
@@ -86,7 +87,7 @@ const CloseMeButtonTag = struct {};
 
 fn buttonClickedSystem(
     manager: zevy_ecs.params.Commands,
-    exit_app_writer: zevy_ecs.params.EventWriter(zevy_raylib.ExitAppEvent),
+    exit_app_writer: zevy_ecs.params.EventWriter(app.ExitAppEvent),
     click_events: zevy_ecs.params.EventReader(zevy_raylib.ui.input.UIClickEvent),
     query: zevy_ecs.params.Query(struct {
         entity: zevy_ecs.Entity,
@@ -108,9 +109,9 @@ fn buttonClickedSystem(
 }
 
 // Main game loop system
-fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !zevy_raylib.ExitAppEvent {
+fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedule.Scheduler) !app.ExitAppEvent {
     const fixed_dt: f32 = 1.0 / 60.0; // 1/60 for physics/logic updates
-    var accum = zevy_raylib.FixedTimestepAccumulator.init(fixed_dt);
+    var accum = zevy_raylib.timing.FixedTimestepAccumulator.init(fixed_dt);
     const dt_ptr = try ecs.addResource(DeltaTime, fixed_dt);
     defer dt_ptr.deinit();
 
@@ -123,7 +124,7 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
         }
     }
 
-    var exit_app_event: zevy_raylib.ExitAppEvent = .Success;
+    var exit_app_event: app.ExitAppEvent = .Success;
     while (!zevy_raylib.shouldClose(io_ctx)) {
         eg = scheduler.runStages(ecs, zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.First), zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.PreUpdate).sub(1));
         if (eg.hasErrors()) {
@@ -134,7 +135,7 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
             }
         }
         {
-            if (ecs.getResource(zevy_ecs.EventStore(zevy_raylib.ExitAppEvent))) |exit_app_event_store_ptr| {
+            if (ecs.getResource(zevy_ecs.EventStore(app.ExitAppEvent))) |exit_app_event_store_ptr| {
                 defer exit_app_event_store_ptr.deinit();
                 var exit_app_event_lock = exit_app_event_store_ptr.lockRead();
                 defer exit_app_event_lock.deinit();
@@ -146,7 +147,7 @@ fn gameLoop(io_ctx: std.Io, ecs: *zevy_ecs.Manager, scheduler: *zevy_ecs.schedul
         }
         // Run game logic updates in fixed timesteps for consistency
         accum.beginFrame();
-        while (accum.consumeTick()) {
+        while (accum.update()) {
             {
                 const dt_lock = dt_ptr.lockWrite();
                 dt_lock.get().* = fixed_dt;
@@ -233,24 +234,24 @@ pub fn main(init: std.process.Init) !u8 {
         }
     }
 
-    std.log.info("Adding RaylibPlugin...", .{});
     // Manually add plugins one by one to showcase integration
-    try plugin_manager.add(RaylibPlugin(ParamRegistry), RaylibPlugin(ParamRegistry){
-        .title = "Zevy Raylib Example",
-        .width = 1280,
-        .height = 720,
+    try plugin_manager.add(RaylibPlugin(ParamRegistry), .{
+        .window_opts = .{
+            .title = "Zevy Raylib Example",
+            .resolution = .init(1280, 720),
+            .headless = true,
+        },
         .log_level = .info,
-        .headless = true,
     });
 
     std.log.info("Adding AssetsPlugin...", .{});
     try plugin_manager.add(AssetsPlugin, .{});
 
     std.log.info("Adding InputPlugin...", .{});
-    try plugin_manager.add(InputPlugin(ParamRegistry), .{});
+    try plugin_manager.add(InputPlugin, .{});
 
     std.log.info("Adding RayGuiPlugin...", .{});
-    try plugin_manager.add(UIPlugin(ParamRegistry), .{});
+    try plugin_manager.add(UIPlugin, .{});
 
     // Build all plugins (this calls their build() methods)
     std.log.info("Building plugins...", .{});

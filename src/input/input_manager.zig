@@ -138,6 +138,7 @@ pub const InputManager = struct {
     bindings: InputBindings,
     current_state: InputState,
     previous_state: InputState,
+    frames_to_skip_before_polling: u10,
     event_handlers: std.ArrayList(EventHandlerInfo),
     allocator: std.mem.Allocator,
 
@@ -147,6 +148,7 @@ pub const InputManager = struct {
             .bindings = InputBindings.init(allocator),
             .current_state = InputState.init(allocator),
             .previous_state = InputState.init(allocator),
+            .frames_to_skip_before_polling = 1,
             .event_handlers = std.ArrayList(EventHandlerInfo).initCapacity(allocator, 10) catch |err| {
                 std.debug.panic("Initializing InputManager: {s}", .{@errorName(err)});
             },
@@ -208,6 +210,15 @@ pub const InputManager = struct {
         // Update current state
         self.current_state.clear();
         try self.updateInputState();
+
+        // Treat startup polls as a baseline so inputs held while the window is
+        // appearing do not become synthetic triggers when the app first begins.
+        if (self.frames_to_skip_before_polling != 0) {
+            self.previous_state.clear();
+            try self.previous_state.pressed_keys.appendSlice(self.allocator, self.current_state.pressed_keys.items);
+            self.frames_to_skip_before_polling -= 1;
+            return;
+        }
 
         // Process input events
         try self.processInputEvents();

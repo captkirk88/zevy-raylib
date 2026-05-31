@@ -4,11 +4,8 @@
 //!
 //! It showcases how to set up the ECS manager, plugin manager, and register custom systems
 //! for movement and rendering. A simple UI button is also created to demonstrate UI interaction.
-
 const std = @import("std");
-const zevy_mem = @import("zevy_mem");
 const zevy_ecs = @import("zevy_ecs");
-const plugins = @import("plugins");
 const zevy_raylib = @import("zevy_raylib");
 const ui = zevy_raylib.ui;
 const layout = zevy_raylib.ui.layout;
@@ -23,7 +20,9 @@ const AssetsPlugin = zevy_raylib.AssetsPlugin;
 const InputPlugin = zevy_raylib.InputPlugin;
 const ParamRegistry = zevy_raylib.RaylibParamRegistry;
 
-const CIRCLE_COUNT = 10_000;
+pub const panic = zevy_ecs.panic;
+const CIRCLE_COUNT = 30_000;
+const ENABLE_UI = true;
 
 const Scheduler = zevy_ecs.schedule.Scheduler;
 const Stage = zevy_ecs.schedule.Stage;
@@ -47,7 +46,7 @@ const Velocity = struct {
     y: f32,
 };
 
-const Sprite = struct {
+const Circle = struct {
     radius: f32,
     color: rl.Color,
 };
@@ -57,10 +56,8 @@ fn movementSystem(
     commands: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { pos: Position, vel: Velocity }),
     dt_res: zevy_ecs.params.Res(zevy_raylib.timing.DeltaTime),
-    fixed_dt: zevy_ecs.params.Res(zevy_raylib.timing.FixedTimestepAccumulator),
 ) !void {
     _ = commands;
-    if (!fixed_dt.get().canUpdate()) return; // Only update when the fixed timestep accumulator allows it
     const dt = dt_res.get().value;
 
     while (query.next()) |item| {
@@ -78,17 +75,17 @@ fn movementSystem(
 
 // Example system that renders circles based on their Position and Sprite components
 fn renderSystem(
-    commands: zevy_ecs.params.Commands,
-    query: zevy_ecs.params.Query(struct { pos: Position, sprite: Sprite }),
+    query: zevy_ecs.params.Query(struct { pos: Position, sprite: Circle }),
 ) !void {
-    _ = commands;
-
     while (query.next()) |item| {
         const pos: *Position = item.pos;
-        const sprite: *Sprite = item.sprite;
+        const sprite: *Circle = item.sprite;
 
         rl.drawCircleV(
-            rl.Vector2{ .x = pos.x, .y = pos.y },
+            rl.Vector2{
+                .x = pos.x,
+                .y = pos.y,
+            },
             sprite.radius,
             sprite.color,
         );
@@ -123,23 +120,22 @@ fn buttonClickedSystem(
 
 fn startup(
     commands: Commands,
-    assets: ResMut(zevy_raylib.Assets),
-    scheduler: ResMut(zevy_ecs.schedule.Scheduler),
+    _: ResMut(zevy_raylib.Assets),
     relations: zevy_ecs.params.Relations,
 ) !void {
-    // This system is just to demonstrate the PreStartup stage where you can set up resources and such before the main loop starts
-    std.log.info("Running startup system in PreStartup stage...", .{});
-    zevy_raylib.ui.systems.registerIconAtlasFromAssets(
-        commands.manager(),
-        assets.get(),
-        "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml",
-        .{},
-    );
+    // This system demonstrates example setup during startup, after plugins have initialized.
+    std.log.info("Running startup system in Startup stage...", .{});
+    // zevy_raylib.ui.systems.registerIconAtlasFromAssets(
+    //     commands.manager(),
+    //     assets.get(),
+    //     "embedded://Keyboard & Mouse/keyboard-&-mouse_sheet_default.xml",
+    //     .{},
+    // );
 
     std.log.info("Registering custom systems...", .{});
-    scheduler.get().addSystem(commands.manager(), Stage(Stages.PostUpdate), buttonClickedSystem, zevy_ecs.DefaultParamRegistry);
-    scheduler.get().addSystem(commands.manager(), Stage(Stages.Update), movementSystem, zevy_ecs.DefaultParamRegistry);
-    scheduler.get().addSystem(commands.manager(), Stage(Stages.Draw), renderSystem, zevy_ecs.DefaultParamRegistry);
+    try commands.addSystem(Stage(Stages.PostUpdate), buttonClickedSystem);
+    try commands.addSystem(Stage(Stages.FixedUpdate), movementSystem);
+    try commands.addSystem(Stage(Stages.Draw), renderSystem);
 
     // Create some example entities
     std.log.info("Creating example entities...", .{});
@@ -157,61 +153,79 @@ fn startup(
     const random = prng.random();
 
     for (0..CIRCLE_COUNT) |i| {
-        const ent = try commands.create(.{
-            Position{
+        var ent = commands.create();
+        defer ent.deinit();
+        try ent
+            .add(Position, .{
                 .x = random.float(f32) * @as(f32, @floatFromInt(rl.getScreenWidth())),
                 .y = random.float(f32) * @as(f32, @floatFromInt(rl.getScreenHeight())),
-            },
-            Velocity{
+            })
+            .add(Velocity, .{
                 .x = (random.float(f32) - 0.5) * 200.0, // pixels per second
                 .y = (random.float(f32) - 0.5) * 200.0, // pixels per second
-            },
-            Sprite{
+            })
+            .add(Circle, .{
                 .radius = 10 + random.float(f32) * 20,
                 .color = colors[i % colors.len],
-            },
-        });
-        ent.flush();
+            }).flush();
     }
 
-    // Showing how to use gui
-    const root_container = try commands.create(.{
-        layout.UIContainer.init("root"),
-        // Screen bounds rectangle
-        ui.components.UIRect.initScreen(),
-    });
-    root_container.flush();
-    const close_button = try commands.create(.{
-        ui.components.UIRect.init(0, 0, 100, 50), // TODO make this able to be set based on text size and padding
-        ui.components.UIButton.init("CLOSE ME"),
-        //ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }), TODO fix layout issue
-        layout.AnchorLayout.init(.top_right),
-        CloseMeButtonTag{},
-    });
-    close_button.flush();
+    if (ENABLE_UI) {
+        // Showing how to use gui
+        var root_container = commands.create();
+        try root_container
+            .add(layout.UIContainer, .init("root"))
+            .add(ui.components.UIRect, .initScreen()).flush();
+        var close_button = commands.create();
+        try close_button
+            .add(ui.components.UIRect, .init(0, 0, 100, 50)) // TODO make this able to be set based on text size and padding
+            .add(ui.components.UIButton, .init("CLOSE ME"))
+            .add(layout.AnchorLayout, .init(.top_right))
+            .add(CloseMeButtonTag, .{}).flush();
 
-    // _ = ecs.create(.{
-    //     ui.components.UIRect.initScreen(),
-    //     ui.components.UIMessageBox.init("This should POP!", "This is a test, only a test...", "Ok;Cancel"),
-    // });
+        // _ = ecs.create(.{
+        //     ui.components.UIRect.initScreen(),
+        //     ui.components.UIMessageBox.init("This should POP!", "This is a test, only a test...", "Ok;Cancel"),
+        // });
 
-    // TODO layout.UIContainer.child("root") would be nicer than this manual relation management
-    try relations.add(commands.manager(), close_button.entity(), root_container.entity(), zevy_ecs.relations.kinds.Child);
+        // TODO layout.UIContainer.child("root") would be nicer than this manual relation management
+        try relations.add(commands.manager(), close_button.entity(), root_container.entity(), zevy_ecs.relations.kinds.Child);
+    }
 }
 
 fn renderDebugText_System(fixed_dt_res: Res(zevy_raylib.timing.FixedTimestepAccumulator)) !void {
+    const fixed_dt = fixed_dt_res.get();
+    const diagnostics = fixed_dt.diagnostics;
+
     // Display FPS
     rl.drawFPS(10, 10);
     // draw tps
     var tps_buf: [32]u8 = undefined;
-    const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{zevy_raylib.getTPS(fixed_dt_res.get())}) catch "TPS: ?";
+    const tps_text = std.fmt.bufPrintZ(&tps_buf, "TPS: {d}", .{zevy_raylib.getTPS(fixed_dt)}) catch "TPS: ?";
     rl.drawText(
         tps_text,
         10,
         rl.getScreenHeight() - 30,
         16,
-        rl.Color.black,
+        rl.Color.yellow,
     );
+
+    var fixed_buf: [128]u8 = undefined;
+    const dropped_ms: i32 = @intFromFloat(if (diagnostics) |diag| diag.dropped_time else 1 * 1000.0);
+    const fixed_text = std.fmt.bufPrintZ(
+        &fixed_buf,
+        "Fixed: {d} steps dropped: {d}ms overloaded: {any}",
+        .{ if (diagnostics) |diag| diag.updates else 0, dropped_ms, if (diagnostics) |diag| diag.overloaded else null },
+    ) catch "Fixed: ?";
+    const overloaded = diagnostics != null and diagnostics.?.overloaded;
+    rl.drawText(
+        fixed_text,
+        10,
+        rl.getScreenHeight() - 50,
+        16,
+        if (overloaded) rl.Color.orange else rl.Color.green,
+    );
+
     rl.drawText("Zevy Raylib Plugin Integration Example", 10, 40, 20, rl.Color.lime);
     rl.drawText("Press ESC to exit", 10, 70, 16, rl.Color.light_gray);
 
@@ -221,28 +235,33 @@ fn renderDebugText_System(fixed_dt_res: Res(zevy_raylib.timing.FixedTimestepAccu
 }
 
 pub fn main(init: std.process.Init) !void {
-    const app = zevy_app.new(init, ParamRegistry);
+    var app = zevy_app.new(init);
     defer {
         if (rl.isAudioDeviceReady()) rl.closeAudioDevice();
         if (rl.isWindowReady()) rl.closeWindow();
     }
     defer app.deinit();
 
-    std.log.info("Adding RaylibPlugin...", .{});
-    // Manually add plugins one by one to showcase integration
-    try app.addPlugin(RaylibPlugin(ParamRegistry), RaylibPlugin(ParamRegistry){
-        .window_opts = .{
-            .title = std.fmt.comptimePrint("Circles! - {d} of them!", .{CIRCLE_COUNT}),
-            .resolution = .init(1280, 720),
-            .vsync = true,
-            .high_dpi = false,
-            .fullscreen_mode = .Windowed,
-        },
-        .log_level = .info,
-    })
-        .addPlugin(AssetsPlugin(ParamRegistry), .{ .io = init.io })
-        .addPlugin(InputPlugin(ParamRegistry), .{})
-        .addPlugin(UIPlugin(ParamRegistry), .{})
-        .addSystem(Stage(Stages.PostDraw), renderDebugText_System).run();
+    app = app
+        .addPlugin(RaylibPlugin{
+            .window_opts = .{
+                .title = std.fmt.comptimePrint("Circles! - {d} of them!", .{CIRCLE_COUNT}),
+                .resolution = .init(1280, 720),
+                .vsync = false,
+                .high_dpi = false,
+                .fullscreen_mode = .Windowed,
+            },
+            .log_level = .info,
+        })
+        .addPlugin(AssetsPlugin{})
+        .addPlugin(InputPlugin{})
+        .addSystem(Stage(Stages.Startup), startup)
+        .addSystem(Stage(Stages.PostDraw), renderDebugText_System);
+
+    if (ENABLE_UI) {
+        app = app.addPlugin(UIPlugin{});
+    }
+
+    try app.run();
     std.log.info("Shutting down...", .{});
 }
