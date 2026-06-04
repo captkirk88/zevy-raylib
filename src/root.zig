@@ -3,7 +3,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const zevy_ecs = @import("zevy_ecs");
 const app = @import("zevy_ecs").app;
-const plugins = @import("plugins");
+const plugins = zevy_ecs.plugins;
 const rl = @import("raylib");
 const io = @import("io/root.zig");
 const graphics_mod = @import("graphics/root.zig");
@@ -11,6 +11,7 @@ pub const input = @import("input/root.zig");
 
 const TestApp = struct {
     manager: *zevy_ecs.Manager,
+
     pub fn ecs(self: *TestApp) *zevy_ecs.Manager {
         return self.manager;
     }
@@ -25,6 +26,13 @@ const TestApp = struct {
     }
 };
 
+const zevy_mem = @import("zevy_mem");
+var test_pluginManager: zevy_mem.Lazy(plugins.PluginManager) = .init(std.heap.page_allocator, struct {
+    pub fn get(alloc: std.mem.Allocator) plugins.PluginManager {
+        return plugins.PluginManager.init(alloc);
+    }
+}.get);
+
 const test_app_vtable: app.VTable = .{
     .addSystem = test_app_addSystem,
     .addPlugin = test_app_addPlugin,
@@ -36,6 +44,13 @@ const test_app_vtable: app.VTable = .{
     .addResource = test_app_addResource,
     .addResourceRef = test_app_addResourceRef,
     .removeResource = test_app_removeResource,
+    .pluginManager = struct {
+        pub fn get(self: *anyopaque) *plugins.PluginManager {
+            const app_impl: *TestApp = @ptrCast(@alignCast(self));
+            _ = app_impl;
+            return test_pluginManager.get();
+        }
+    }.get, // Not needed for these tests
     .io = test_app_io,
     .allocator = test_app_allocator,
     .ecs = test_app_ecs,
