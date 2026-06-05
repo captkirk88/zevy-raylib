@@ -194,6 +194,7 @@ const ResMut = zevy_ecs.params.ResMut;
 
 fn startupRaylib_System(commands: Commands, window_res: ResMut(zevy_reflect.Change(WindowOpts))) !void {
     const log = std.log.scoped(.zevy_raylib);
+    const allocator = commands.allocator();
     const window = window_res.get();
     var window_opts: WindowOpts = undefined;
     if (window.isChanged()) {
@@ -203,8 +204,8 @@ fn startupRaylib_System(commands: Commands, window_res: ResMut(zevy_reflect.Chan
     }
 
     if (!window_opts.headless) {
-        const title_z = try window_opts.titleZ(commands.allocator());
-        defer commands.allocator().free(title_z);
+        const title_z = try window_opts.titleZ(allocator);
+        defer allocator.free(title_z);
         rl.initWindow(window_opts.resolution.width, window_opts.resolution.height, title_z);
         rl.initAudioDevice();
         rl.setExitKey(.escape);
@@ -222,8 +223,17 @@ fn startupRaylib_System(commands: Commands, window_res: ResMut(zevy_reflect.Chan
 }
 
 fn checkShouldClose_System(commands: zevy_ecs.params.Commands, exitEvent_writer: zevy_ecs.params.EventWriter(zevy_app.ExitAppEvent)) void {
-    if (zevy_raylib.shouldClose(commands.io())) {
+    if (zevy_raylib.shouldClose(commands.io(), null)) {
         exitEvent_writer.write(.Success);
+    }
+}
+
+fn closingSystem(exitEvent_reader: zevy_ecs.params.EventReader(zevy_app.ExitAppEvent)) void {
+    while (exitEvent_reader.read()) |event| {
+        std.log.info("Exit event received with result: {s}", .{switch (event.data) {
+            .Success => "Success",
+            .Error => "Error",
+        }});
     }
 }
 

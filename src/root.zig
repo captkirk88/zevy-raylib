@@ -207,10 +207,12 @@ pub const RaylibParamRegistry = zevy_ecs.DefaultParamRegistry;
 ///
 /// Note: End-of-stream may indicate Ctrl+C in some terminal configurations,
 /// but can also indicate stdin closure/redirection. In both cases this exits.
-pub fn shouldClose(io_ctx: std.Io) bool {
+pub fn shouldClose(io_ctx: std.Io, key: ?rl.KeyboardKey) bool {
     if (rl.isWindowReady()) {
-        rl.pollInputEvents();
-        return rl.windowShouldClose();
+        // Raylib pumps events during its frame lifecycle; rely on the window close
+        // flag directly and keep ESC as an explicit fallback.
+        if (rl.windowShouldClose()) return true;
+        return rl.isKeyPressed(key orelse .escape);
     }
 
     if (builtin.os.tag == .windows) {
