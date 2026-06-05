@@ -38,12 +38,20 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    var raylib_dep_args = rlz.Options{
+        .linkage = .dynamic,
+        .opengl_version = rlz.OpenglVersion.gl_4_3,
+    };
+    if (target.result.abi == .android or target.result.abi == .androideabi) {
+        raylib_dep_args.linkage = .static;
+        raylib_dep_args.opengl_version = .gles_3;
+    }
     //const os_tag = @import("builtin").os.tag;
     const raylib_dep = b.dependency("raylib_zig", .{
         .target = target,
         .optimize = optimize,
-        .linkage = .dynamic,
-        .opengl_version = rlz.OpenglVersion.auto,
+        .linkage = raylib_dep_args.linkage,
+        .opengl_version = raylib_dep_args.opengl_version,
     });
 
     const raylib_artifact = raylib_dep.artifact("raylib"); // raylib C library
