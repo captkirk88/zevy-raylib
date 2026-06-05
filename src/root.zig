@@ -4,7 +4,10 @@ const builtin = @import("builtin");
 const zevy_ecs = @import("zevy_ecs");
 const app = @import("zevy_ecs").app;
 const plugins = zevy_ecs.plugins;
-const rl = @import("raylib");
+
+/// The public API of raylib-zig
+pub const rl = @import("raylib");
+
 const io = @import("io/root.zig");
 const graphics_mod = @import("graphics/root.zig");
 pub const input = @import("input/root.zig");
