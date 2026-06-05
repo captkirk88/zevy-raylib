@@ -1,6 +1,7 @@
 const std = @import("std");
 const ecs_build = @import("zevy_ecs");
 const buildtools = @import("zevy_buildtools");
+const rlz = @import("raylib_zig");
 
 const ModuleImport = struct {
     name: []const u8,
@@ -42,7 +43,11 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .linkage = .dynamic,
+        .opengl_version = rlz.OpenglVersion.auto,
     });
+
+    const raylib_artifact = raylib_dep.artifact("raylib"); // raylib C library
+    //raylib_artifact.root_module.addCMacro("SUPPORT_FILEFORMAT_JPG", "");
 
     const mod = b.addModule("zevy_raylib", .{
         .root_source_file = b.path("src/root.zig"),
@@ -59,6 +64,8 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "app", .module = zevy_ecs_dep.module("app") },
         },
     });
+
+    mod.linkLibrary(raylib_artifact);
 
     const embed_opts: buildtools.embed.EmbedAssetsOptions = .{
         .assets_dir = "embedded_assets/",
