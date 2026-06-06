@@ -136,6 +136,10 @@ pub const RaylibPlugin = struct {
                 zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Last),
                 endFrame_System,
             )
+            .addSystem(
+                zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Exit),
+                exittingSystem,
+            )
             .done();
 
         SetTraceLogCallback(self.raylib_logcallback);
@@ -228,12 +232,12 @@ fn checkShouldClose_System(commands: zevy_ecs.params.Commands, exitEvent_writer:
     }
 }
 
-fn closingSystem(exitEvent_reader: zevy_ecs.params.EventReader(zevy_app.ExitAppEvent)) void {
-    while (exitEvent_reader.read()) |event| {
-        std.log.info("Exit event received with result: {s}", .{switch (event.data) {
-            .Success => "Success",
-            .Error => "Error",
-        }});
+fn exittingSystem(exitEvent_reader: zevy_ecs.params.EventReader(zevy_app.ExitAppEvent)) void {
+    const exitting = !exitEvent_reader.isEmpty();
+
+    if (exitting) {
+        if (zevy_raylib.rl.isAudioDeviceReady()) zevy_raylib.rl.closeAudioDevice();
+        if (zevy_raylib.rl.isWindowReady()) zevy_raylib.rl.closeWindow();
     }
 }
 

@@ -201,12 +201,20 @@ pub const timing = @import("utils/timing.zig");
 pub const RaylibParamRegistry = zevy_ecs.MergedSystemParamRegistry(&.{ params.Bindings, zevy_ecs.DefaultParamRegistry });
 
 /// Default plugins. These are not automatically registered
-pub const RaylibDefaultPlugins = &[_]type{
-    RaylibPlugin,
-    AssetsPlugin,
-    InputPlugin,
-    UIPlugin,
-};
+pub fn defaultPlugins(plugs: *plugins.PluginManager, title: []const u8) anyerror!void {
+    try plugs.add(RaylibPlugin, .{
+        .window_opts = .{
+            .title = title,
+            .headless = false,
+            .vsync = false,
+            .resolution = .init(800, 600),
+        },
+        .log_level = .info,
+    });
+    try plugs.add(AssetsPlugin, .{});
+    try plugs.add(InputPlugin, .{});
+    try plugs.add(UIPlugin, .{});
+}
 
 /// Returns true when the application should stop.
 /// In windowed mode delegates to `rl.windowShouldClose()`.
