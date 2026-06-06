@@ -6,13 +6,13 @@
 
 const std = @import("std");
 const zevy_ecs = @import("zevy_ecs");
-const plugins = @import("plugins");
+const plugins = zevy_ecs.plugins;
 const zevy_raylib = @import("zevy_raylib");
 const ui = zevy_raylib.ui;
 const layout = zevy_raylib.ui.layout;
 const input = zevy_raylib.input;
 const rl = @import("raylib");
-const app = @import("app");
+const app = zevy_ecs.app;
 
 // Import the plugins we need
 const RaylibPlugin = zevy_raylib.RaylibPlugin;

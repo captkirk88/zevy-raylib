@@ -36,98 +36,27 @@ var test_pluginManager: zevy_mem.Lazy(plugins.PluginManager) = .init(std.heap.pa
     }
 }.get);
 
-const test_app_vtable: app.VTable = .{
-    .addSystem = test_app_addSystem,
-    .addPlugin = test_app_addPlugin,
-    .addEvent = test_app_addEvent,
-    .addEventWithCleanupAtStage = test_app_addEventWithCleanupAtStage,
-    .addStage = test_app_addStage,
-    .registerState = test_app_registerState,
-    .unregisterState = test_app_unregisterState,
-    .addResource = test_app_addResource,
-    .addResourceRef = test_app_addResourceRef,
-    .removeResource = test_app_removeResource,
-    .pluginManager = struct {
+const test_app_vtable = app.BaseVTableType.create(struct {
+    pub const io = test_app_io;
+    pub const allocator = test_app_allocator;
+    pub const ecs = test_app_ecs;
+    pub const scheduler = test_app_scheduler;
+    pub const pluginManager = struct {
         pub fn get(self: *anyopaque) *plugins.PluginManager {
             const app_impl: *TestApp = @ptrCast(@alignCast(self));
             _ = app_impl;
             return test_pluginManager.get();
         }
-    }.get, // Not needed for these tests
-    .io = test_app_io,
-    .allocator = test_app_allocator,
-    .ecs = test_app_ecs,
-    .scheduler = test_app_scheduler,
-    .update = test_app_update,
-    .run = test_app_run,
-    .deinit = test_app_deinit,
-};
+    }.get;
+    pub const update = test_app_update;
+    pub const run = test_app_run;
+    pub const deinit = test_app_deinit;
+});
 
 fn test_app_to_interface(app_impl: *TestApp) app.App {
     var app_iface: app.App = undefined;
-    app.populate(&app_iface, app_impl, &test_app_vtable);
+    app.populate(&app_iface, app_impl, &test_app_vtable.vtable);
     return app_iface;
-}
-
-fn test_app_addSystem(self: *anyopaque, stage: zevy_ecs.schedule.StageId, system: anytype) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.manager.scheduler().addSystem(app_impl.manager, stage, system);
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_addPlugin(self: *anyopaque, plugin: anytype) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    _ = plugin;
-    _ = app_impl;
-    std.debug.panic("TestApp wrapper does not support addPlugin");
-}
-
-fn test_app_addEvent(self: *anyopaque, comptime EventType: type) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.scheduler().registerEvent(app_impl.manager, EventType) catch |err| @panic(@errorName(err));
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_addEventWithCleanupAtStage(self: *anyopaque, comptime EventType: type, stage: zevy_ecs.schedule.StageId) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.scheduler().registerEventWithCleanupAtStage(app_impl.manager, EventType, stage) catch |err| @panic(@errorName(err));
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_addStage(self: *anyopaque, stage: zevy_ecs.schedule.StageId) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.scheduler().addStage(stage) catch |err| @panic(@errorName(err));
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_registerState(self: *anyopaque, comptime StateEnum: type) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.scheduler().registerState(app_impl.manager, StateEnum) catch |err| @panic(@errorName(err));
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_unregisterState(self: *anyopaque, comptime StateEnum: type) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.scheduler().unregisterState(app_impl.manager, StateEnum) catch |err| @panic(@errorName(err));
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_addResource(self: *anyopaque, comptime ResourceType: type, resource: ResourceType) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.manager.addResourceRetained(ResourceType, resource) catch |err| @panic(@errorName(err));
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_addResourceRef(self: *anyopaque, comptime ResourceType: type, resource_ref: zevy_ecs.Ref(ResourceType)) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.manager.addResourceRef(ResourceType, resource_ref) catch |err| @panic(@errorName(err));
-    return test_app_to_interface(app_impl);
-}
-
-fn test_app_removeResource(self: *anyopaque, comptime ResourceType: type) app.App {
-    const app_impl: *TestApp = @ptrCast(@alignCast(self));
-    app_impl.manager.removeResource(ResourceType);
-    return test_app_to_interface(app_impl);
 }
 
 fn test_app_io(self: *anyopaque) std.Io {

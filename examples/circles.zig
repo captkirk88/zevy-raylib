@@ -11,7 +11,7 @@ const ui = zevy_raylib.ui;
 const layout = zevy_raylib.ui.layout;
 const input = zevy_raylib.input;
 const rl = @import("raylib");
-const zevy_app = @import("app");
+const zevy_app = zevy_ecs.app;
 
 // Import the plugins we need
 const RaylibPlugin = zevy_raylib.RaylibPlugin;

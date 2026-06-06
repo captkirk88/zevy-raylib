@@ -1,4 +1,4 @@
-const zevy_app = @import("app");
+const zevy_ecs = @import("zevy_ecs");
 
 pub const DeltaTime = struct {
     value: f32,
@@ -21,4 +21,4 @@ pub const DeltaTime = struct {
 ///     accum.finishFrame();
 /// }
 /// ```
-pub const FixedTimestepAccumulator = zevy_app.FixedTimestepAccumulator;
+pub const FixedTimestepAccumulator = zevy_ecs.app.FixedTimestepAccumulator;
