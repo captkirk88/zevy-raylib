@@ -198,7 +198,15 @@ pub const params = struct {
 
 pub const timing = @import("utils/timing.zig");
 
-pub const RaylibParamRegistry = zevy_ecs.DefaultParamRegistry;
+pub const RaylibParamRegistry = zevy_ecs.MergedSystemParamRegistry(&.{ params.Bindings, zevy_ecs.DefaultParamRegistry });
+
+/// Default plugins. These are not automatically registered
+pub const RaylibDefaultPlugins = &[_]type{
+    RaylibPlugin,
+    AssetsPlugin,
+    InputPlugin,
+    UIPlugin,
+};
 
 /// Returns true when the application should stop.
 /// In windowed mode delegates to `rl.windowShouldClose()`.
