@@ -199,7 +199,7 @@ const PairKey = struct { v: AssetHandle, f: AssetHandle };
 ///
 /// Register in the `PreDraw` stage (before render systems):
 ///   scheduler.addSystem(&ecs, Stage(Stages.PreDraw), resolveShaderSystem, ParamRegistry);
-pub fn resolveShaderSystem(
+pub fn resolveShaders_System(
     commands: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { shader: ShaderComponent }),
     assets_res: zevy_ecs.params.ResMut(Assets),
@@ -209,10 +209,10 @@ pub fn resolveShaderSystem(
 
     // Deduplication map: (vert_handle orelse 0, frag_handle orelse 0) → compiled AssetHandle.
     // Entities sharing the same source handles receive the same compiled GPU program.
-    if (compiled_local.isSet() == false) {
+    if (compiled_local.getPtr() == null) {
         compiled_local.set(std.AutoHashMap(PairKey, AssetHandle).init(commands.allocator()));
     }
-    const compiled = compiled_local.getPtr();
+    const compiled = compiled_local.getPtr().?;
 
     while (query.next()) |item| {
         const comp: *ShaderComponent = item.shader;
@@ -263,7 +263,7 @@ pub fn resolveShaderSystem(
 /// the asset manager. Register in the `Exit` stage so GPU programs are freed before
 /// raylib shuts down:
 ///   scheduler.addSystem(&ecs, Stage(Stages.Exit), cleanupShaderSystem, ParamRegistry);
-pub fn cleanupShaderSystem(
+pub fn cleanupShaders_System(
     _: zevy_ecs.params.Commands,
     query: zevy_ecs.params.Query(struct { shader: ShaderComponent }),
     assets_res: zevy_ecs.params.ResMut(Assets),
