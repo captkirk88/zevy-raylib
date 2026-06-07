@@ -213,7 +213,7 @@ fn renderDebugText_System(fixed_dt_res: Res(zevy_raylib.timing.FixedTimestepAccu
     const dropped_ms: i32 = @intFromFloat(if (diagnostics) |diag| diag.dropped_time else 1 * 1000.0);
     const fixed_text = std.fmt.bufPrintZ(
         &fixed_buf,
-        "Fixed: {d} steps dropped: {d}ms overloaded: {any}",
+        "Fixed: {d} steps, dropped: {d}ms, overloaded: {any}",
         .{ if (diagnostics) |diag| diag.updates else 0, dropped_ms, if (diagnostics) |diag| diag.overloaded else null },
     ) catch "Fixed: ?";
     const overloaded = diagnostics != null and diagnostics.?.overloaded;
@@ -233,12 +233,34 @@ fn renderDebugText_System(fixed_dt_res: Res(zevy_raylib.timing.FixedTimestepAccu
     rl.drawText(entity_count, 10, 100, 16, rl.Color.white);
 }
 
+fn convergeAroundMouse(
+    query: Query(struct {
+        entity: zevy_ecs.Entity,
+        pos: Position,
+        vel: Velocity,
+    }),
+    input_man: Res(zevy_raylib.input.InputManager),
+) !void {
+    const speed = 0.4;
+    const mouse_pos = rl.getMousePosition();
+    if (input_man.get().getCurrentState().isPressed(.{ .mouse = .left })) {
+        while (query.next()) |item| {
+            const pos: *Position = item.pos;
+            const vel: *Velocity = item.vel;
+
+            const direction = rl.Vector2{
+                .x = mouse_pos.x - pos.x,
+                .y = mouse_pos.y - pos.y,
+            };
+
+            vel.x = direction.x * speed;
+            vel.y = direction.y * speed;
+        }
+    }
+}
+
 pub fn main(init: std.process.Init) !void {
     var app = zevy_app.new(init);
-    defer {
-        if (rl.isAudioDeviceReady()) rl.closeAudioDevice();
-        if (rl.isWindowReady()) rl.closeWindow();
-    }
     defer app.deinit();
 
     app = app
@@ -255,7 +277,8 @@ pub fn main(init: std.process.Init) !void {
         .addPlugin(AssetsPlugin{})
         .addPlugin(InputPlugin{})
         .addSystem(Stage(Stages.Startup), startup)
-        .addSystem(Stage(Stages.PostDraw), renderDebugText_System);
+        .addSystem(Stage(Stages.PostDraw), renderDebugText_System)
+        .addSystem(Stage(Stages.Update), convergeAroundMouse);
 
     if (ENABLE_UI) {
         app = app.addPlugin(UIPlugin{});
