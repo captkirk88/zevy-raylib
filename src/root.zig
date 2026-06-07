@@ -5,6 +5,13 @@ const zevy_ecs = @import("zevy_ecs");
 const app = @import("zevy_ecs").app;
 const plugins = zevy_ecs.plugins;
 
+pub const utils = struct {
+    pub const IdGenerator = @import("utils/id_generator.zig").IdGenerator;
+    pub const generateId = @import("utils/id_generator.zig").generateId;
+};
+
+pub const strings = @import("utils/strings.zig");
+
 /// The public API of raylib-zig
 pub const rl = @import("raylib");
 
@@ -298,4 +305,6 @@ test {
     std.testing.refAllDecls(io);
     std.testing.refAllDecls(input);
     std.testing.refAllDecls(ui);
+    std.testing.refAllDecls(@import("utils/strings_test.zig"));
+    std.testing.refAllDecls(@import("utils/id_generator_test.zig"));
 }

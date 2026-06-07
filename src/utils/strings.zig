@@ -19,67 +19,146 @@ pub const CompareOptions = enum {
     cultureAwareIgnoreCase,
 };
 
-fn toLowerAscii(b: u8) u8 {
-    if (b >= 'A' and b <= 'Z') return b + 32;
-    return b;
-}
+pub const StringSize = enum {
+    u8,
+    u16,
 
-pub fn startsWith(hay: []const u8, needle: []const u8, opt: CompareOptions) bool {
-    if (needle.len > hay.len) return false;
-    switch (opt) {
-        .ordinal, .invariant, .cultureAware => {
-            // Binary / culture-sensitive startsWith (no case-folding)
-            return std.mem.eql(u8, hay[0..needle.len], needle);
-        },
-        .ordinalIgnoreCase => {
-            var i: usize = 0;
-            while (i < needle.len) : (i += 1) {
-                if (toLowerAscii(hay[i]) != toLowerAscii(needle[i])) return false;
-            }
-            return true;
-        },
-        .invariantIgnoreCase, .cultureAwareIgnoreCase => {
-            // Normalize and casefold both strings then check prefix.
-            // For CultureAwareIgnoreCase we fall back to invariant behavior if ICU isn't present.
-            // Use an allocator on the stack via the general purpose allocator for now.
-            var arena = std.heap.page_allocator;
-            const hay_cf = casefoldNormalizeAlloc(arena, hay) catch return false;
-            defer arena.free(hay_cf);
-            const needle_cf = casefoldNormalizeAlloc(arena, needle) catch {
-                return false;
+    pub fn Type(self: StringSize) type {
+        switch (self) {
+            .u8 => return u8,
+            .u16 => return u16,
+        }
+    }
+
+    pub fn fromType(comptime T: type) StringSize {
+        return switch (T) {
+            u8 => .u8,
+            u16 => .u16,
+            else => @compileError("Invalid type"),
+        };
+    }
+};
+
+pub fn String(comptime S: StringSize) type {
+    return struct {
+        const Self = @This();
+        const T = S.Type();
+        bytes: []const T,
+
+        pub const empty = Self{
+            .bytes = &[_]T{},
+        };
+
+        pub fn init(v: []const T) Self {
+            return .{
+                .bytes = v,
             };
-            defer arena.free(needle_cf);
-            if (needle_cf.len > hay_cf.len) return false;
-            return std.mem.eql(u8, hay_cf[0..needle_cf.len], needle_cf);
-        },
-    }
-}
+        }
 
-pub fn equals(a: []const u8, b: []const u8, opt: CompareOptions) bool {
-    if (a.len != b.len) return false;
-    switch (opt) {
-        .ordinal, .invariant, .cultureAware => return std.mem.eql(u8, a, b),
-        .ordinalIgnoreCase => {
-            var i: usize = 0;
-            while (i < a.len) : (i += 1) {
-                if (toLowerAscii(a[i]) != toLowerAscii(b[i])) return false;
+        pub fn len(self: *const Self) usize {
+            return self.bytes.len;
+        }
+
+        pub fn clone(self: *const Self) Self {
+            return .{ .bytes = self.bytes };
+        }
+
+        pub fn toLowerAscii(self: *const Self) !Self {
+            const out = try std.heap.page_allocator.alloc(T, self.bytes.len);
+            for (self.bytes, 0..self.bytes.len) |ch, i| {
+                out[i] = toLowerAsciiC(S, ch);
             }
-            return true;
-        },
-        .invariantIgnoreCase, .cultureAwareIgnoreCase => {
-            // Use Unicode-aware casefolding
-            // Use the default allocator for temporary buffers
-            var arena = std.heap.page_allocator;
-            const ac = casefoldNormalizeAlloc(arena, a) catch return false;
-            defer arena.free(ac);
-            const bc = casefoldNormalizeAlloc(arena, b) catch return false;
-            defer arena.free(bc);
-            return std.mem.eql(u8, ac, bc);
-        },
-    }
+            return .{ .bytes = out };
+        }
+
+        pub fn eql(self: *const Self, other: *const Self) bool {
+            return std.mem.eql(T, self.bytes, other.bytes);
+        }
+
+        pub fn eqlSz(self: *const Self, comptime Sz: StringSize, other: *const Self) bool {
+            return std.mem.eql(Sz.Type(), self.bytes, other.bytes);
+        }
+
+        pub fn startsWith(self: *const Self, other: []const T, opt: CompareOptions) bool {
+            if (other.len > self.len()) return false;
+            switch (opt) {
+                .ordinal, .invariant, .cultureAware => {
+                    // Binary / culture-sensitive startsWith (no case-folding)
+                    return std.mem.eql(T, self.bytes[0..other.len], other);
+                },
+                .ordinalIgnoreCase => {
+                    for (self.bytes[0..other.len], 0..other.len) |ch, i| {
+                        if (toLowerAsciiC(S, ch) != toLowerAsciiC(S, other[i])) return false;
+                    }
+                    return true;
+                },
+                .invariantIgnoreCase, .cultureAwareIgnoreCase => {
+                    // Normalize and casefold both strings then check prefix.
+                    // For CultureAwareIgnoreCase we fall back to invariant behavior if ICU isn't present.
+                    // Use an allocator on the stack via the general purpose allocator for now.
+                    const allocator = std.heap.page_allocator;
+                    const self_cf = casefoldNormalizeAlloc(allocator, S, self.bytes) catch return false;
+                    defer allocator.free(self_cf);
+                    const other_cf = casefoldNormalizeAlloc(allocator, S, other) catch {
+                        return false;
+                    };
+                    defer allocator.free(other_cf);
+                    if (other_cf.len > self_cf.len) return false;
+                    return std.mem.eql(T, self_cf[0..other_cf.len], other_cf);
+                },
+            }
+        }
+
+        pub fn indexOf(self: *const Self, other: []const T, opt: CompareOptions) ?usize {
+            return indexOfAlloc(S, std.heap.page_allocator, self.bytes, other, opt);
+        }
+
+        pub fn swapSz(self: *const Self, comptime S2: StringSize) error{
+            InvalidUtf8,
+            DanglingSurrogateHalf,
+            ExpectedSecondSurrogateHalf,
+            UnexpectedSecondSurrogateHalf,
+            OutOfMemory,
+        }!String(S2) {
+            if (S == S2) return String(S2).init(self.bytes);
+
+            if (S == .u8 and S2 == .u16) {
+                const utf16_bytes = try std.unicode.utf8ToUtf16LeAlloc(std.heap.page_allocator, self.bytes);
+                return String(.u16).init(utf16_bytes);
+            } else if (S == .u16 and S2 == .u8) {
+                const utf8_bytes = try std.unicode.utf16LeToUtf8Alloc(std.heap.page_allocator, self.bytes);
+                return String(.u8).init(utf8_bytes);
+            }
+
+            @compileError("Unsupported swapSz conversion");
+        }
+
+        pub fn format(self: *const Self, writer: *std.Io.Writer) error{WriteFailed}!void {
+            switch (S) {
+                .u8 => try writer.writeAll(self.bytes),
+                .u16 => {
+                    // For UTF-16, we need to convert to UTF-8 before writing.
+                    const utf8_bytes = std.unicode.utf16LeToUtf8Alloc(std.heap.page_allocator, self.bytes) catch return error.WriteFailed;
+                    defer std.heap.page_allocator.free(utf8_bytes);
+                    try writer.writeAll(utf8_bytes);
+                },
+            }
+        }
+    };
 }
 
-pub fn indexOf(hay: []const u8, needle: []const u8, opt: CompareOptions) ?usize {
+pub fn toLowerAsciiC(comptime T: StringSize, c: T.Type()) T.Type() {
+    const A_UPPER: T.Type() = 'A';
+    const Z_UPPER: T.Type() = 'Z';
+    if (c >= A_UPPER and c <= Z_UPPER) return c + 32;
+    return c;
+}
+
+pub fn indexOf(comptime Sz: StringSize, hay: []const Sz.Type(), needle: []const Sz.Type(), opt: CompareOptions) ?usize {
+    return indexOfAlloc(Sz, std.heap.page_allocator, hay, needle, opt);
+}
+
+pub fn indexOfAlloc(comptime Sz: StringSize, allocator: std.mem.Allocator, hay: []const Sz.Type(), needle: []const Sz.Type(), opt: CompareOptions) ?usize {
     if (needle.len == 0) return 0;
     if (needle.len > hay.len) return null;
     const last = hay.len - needle.len;
@@ -95,14 +174,14 @@ pub fn indexOf(hay: []const u8, needle: []const u8, opt: CompareOptions) ?usize 
                     matched = false;
                     break;
                 },
-                .ordinalIgnoreCase => if (toLowerAscii(hc) != toLowerAscii(nc)) {
+                .ordinalIgnoreCase => if (toLowerAsciiC(Sz, hc) != toLowerAsciiC(Sz, nc)) {
                     matched = false;
                     break;
                 },
                 .invariantIgnoreCase, .cultureAwareIgnoreCase => {
                     // Use equalsUnicode to check this candidate substring with normalization
                     const sub = hay[i .. i + needle.len];
-                    if (!(equalsUnicode(std.heap.page_allocator, sub, needle, opt) catch false)) {
+                    if (!(equalsUnicode(allocator, sub, needle, opt) catch false)) {
                         matched = false;
                         break;
                     }
@@ -114,15 +193,25 @@ pub fn indexOf(hay: []const u8, needle: []const u8, opt: CompareOptions) ?usize 
     return null;
 }
 
+pub fn casefoldNormalize(comptime Sz: StringSize, s: []const Sz.Type()) ![]Sz.Type() {
+    return casefoldNormalizeAlloc(std.heap.page_allocator, Sz, s);
+}
+
 /// Casefold and canonicalize a UTF-8 string into a newly allocated buffer.
 /// This is a best-effort helper for Unicode-invariant comparisons. It handles
 /// ASCII case mapping and a small set of compatibility mappings (ligatures, ß).
-pub fn casefoldNormalizeAlloc(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
+pub fn casefoldNormalizeAlloc(allocator: std.mem.Allocator, comptime Sz: StringSize, s: []const Sz.Type()) ![]Sz.Type() {
+    const T = Sz.Type();
     // Small heuristic: pre-allocate same length or slightly larger to avoid growth churn
-    var out = try allocator.alloc(u8, s.len * 2 + 8);
+    var out = try allocator.alloc(T, s.len * 2 + 8);
     var wrote: usize = 0;
 
-    var view = try std.unicode.Utf8View.init(s);
+    var view = switch (Sz) {
+        .u8 => try std.unicode.Utf8View.init(s),
+        .u16 => try std.unicode.Utf8View.init(std.unicode.utf16LeToUtf8Alloc(allocator, s)),
+    };
+    defer if (Sz == .u16) allocator.free(view.bytes);
+
     var iter = view.iterator();
     while (true) {
         const cp_slice = iter.nextCodepointSlice() orelse break;
@@ -187,8 +276,8 @@ pub fn equalsUnicode(allocator: std.mem.Allocator, a: []const u8, b: []const u8,
     }
 
     // case-insensitive: produce casefolded/normalized buffers and compare
-    const a_cf = try casefoldNormalizeAlloc(allocator, a);
-    const b_cf = try casefoldNormalizeAlloc(allocator, b);
+    const a_cf = try casefoldNormalizeAlloc(allocator, .u8, a);
+    const b_cf = try casefoldNormalizeAlloc(allocator, .u8, b);
     const res = std.mem.eql(u8, a_cf, b_cf);
     allocator.free(a_cf);
     allocator.free(b_cf);
@@ -196,7 +285,7 @@ pub fn equalsUnicode(allocator: std.mem.Allocator, a: []const u8, b: []const u8,
 }
 
 pub fn contains(hay: []const u8, needle: []const u8, opt: CompareOptions) bool {
-    return indexOf(hay, needle, opt) != null;
+    return indexOf(.u8, hay, needle, opt) != null;
 }
 
 /// Safely return a slice of `s` from `start` for `len` bytes.
@@ -216,7 +305,7 @@ pub fn sliceRange(s: []const u8, start: usize, end: usize) ?[]const u8 {
 }
 
 /// Parse an integer from a byte slice. Returns null if parsing fails.
-/// Parse an integer from a byte slice into any integer type T.
+/// Parse an integer from a byte slice into any integer type `IntType`.
 /// Returns `null` if parsing fails.
 pub fn parseIntNullable(comptime IntType: type, s: []const u8, base: u8) ?IntType {
     const res = std.fmt.parseInt(IntType, s, base) catch return null;
@@ -230,5 +319,3 @@ pub fn trimAsciiWhitespace(s: []const u8) []const u8 {
     while (end > start and (s[end - 1] == ' ' or s[end - 1] == '\t' or s[end - 1] == '\n' or s[end - 1] == '\r')) : (end -= 1) {}
     return s[start..end];
 }
-
-pub const Strings = struct {};

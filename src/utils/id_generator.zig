@@ -6,29 +6,21 @@ pub const IdGenerator = struct {
 
     /// Generate a unique ID with the given prefix
     /// Returns an owned string that must be freed by the caller
-    pub fn generateOwned(self: *IdGenerator, allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
+    pub fn generate(self: *IdGenerator, allocator: std.mem.Allocator, prefix: ?[]const u8) ![]u8 {
+        if (self.counter.load(.acquire) == std.math.maxInt(u32)) {
+            self.counter.store(1, .release);
+        }
         const id_num = self.counter.fetchAdd(1, .monotonic);
-        return try std.fmt.allocPrint(allocator, "{s}_{d}", .{ prefix, id_num });
-    }
-
-    /// Generate a unique ID with default "id" prefix
-    /// Returns an owned string that must be freed by the caller
-    pub fn generateIdOwned(self: *IdGenerator, allocator: std.mem.Allocator) ![]u8 {
-        return try self.generateOwned(allocator, "id");
+        const prefix_str = prefix orelse "id";
+        return try std.fmt.allocPrint(allocator, "{s}_{d}", .{ prefix_str, id_num });
     }
 };
 
 /// Global ID generator instance for convenience
-var global_id_generator = IdGenerator{};
+pub var global_id_generator = IdGenerator{};
 
 /// Convenience function to generate a unique owned ID with the given prefix
 /// using the global generator. Returns an owned string that must be freed by the caller.
-pub fn generateIdOwned(allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
-    return try global_id_generator.generateOwned(allocator, prefix);
-}
-
-/// Convenience function to generate a unique owned ID with default "id" prefix
-/// Returns an owned string that must be freed by the caller.
-pub fn generateUniqueIdOwned(allocator: std.mem.Allocator) ![]u8 {
-    return try global_id_generator.generateIdOwned(allocator);
+pub fn generateId(allocator: std.mem.Allocator, prefix: ?[]const u8) ![]u8 {
+    return try global_id_generator.generate(allocator, prefix);
 }
