@@ -324,22 +324,15 @@ pub fn main(init: std.process.Init) !u8 {
         // Screen bounds rectangle
         ui.components.UIRect.initScreen(),
     });
-    const close_button = ecs.create(.{
+    _ = root_container;
+    _ = ecs.create(.{
         ui.components.UIRect.init(0, 0, 100, 50),
         ui.components.UIButton.init("Close Me"),
         ui.components.UIInputKey.initSingle(input.InputKey{ .keyboard = input.KeyCode.key_enter }),
         layout.AnchorLayout.init(.top_right),
+        layout.UIContainer.child("root"),
         CloseMeButtonTag{},
     });
-
-    {
-        const relations_ptr = ecs.getResource(zevy_ecs.relations.RelationManager) orelse try ecs.addResource(zevy_ecs.relations.RelationManager, .init(ecs.allocator));
-        defer relations_ptr.deinit();
-        var relations_guard = relations_ptr.lockWrite();
-        defer relations_guard.deinit();
-        const relations = relations_guard.get();
-        try relations.add(&ecs, close_button, root_container, zevy_ecs.relations.kinds.Child);
-    }
 
     std.log.info("Starting game loop... Press Ctrl+C to exit.", .{});
 

@@ -425,3 +425,36 @@ test "grid layout gaps and padding" {
         try std.testing.expectEqual(@as(f32, 10.0) + cell_height + 20.0, ui_rect.rect.y);
     } else try std.testing.expect(false);
 }
+
+test "implicit UI hierarchy setup system" {
+    var manager = try zevy_ecs.Manager.init(std.testing.allocator, std.testing.io);
+    defer manager.deinit();
+
+    // Create a parent container
+    const parent = manager.createEmpty();
+    try manager.addComponent(parent, ui.components.UIRect, ui.components.UIRect.init(0.0, 0.0, 100.0, 100.0));
+    try manager.addComponent(parent, ui.layout.UIContainer, ui.layout.UIContainer.init("test_parent"));
+
+    // Create a child element using UINode
+    const child_node = manager.createEmpty();
+    try manager.addComponent(child_node, ui.components.UIRect, ui.components.UIRect.init(0, 0, 10.0, 10.0));
+    try manager.addComponent(child_node, ui.components.UINode, ui.components.UINode.init("test_parent"));
+
+    // Create a child container using UIContainer.child
+    const child_container = manager.createEmpty();
+    try manager.addComponent(child_container, ui.components.UIRect, ui.components.UIRect.init(0, 0, 10.0, 10.0));
+    try manager.addComponent(child_container, ui.layout.UIContainer, ui.layout.UIContainer.child("test_parent"));
+
+    const system = zevy_ecs.ToSystem(ui.systems.uiHierarchySystem, zevy_ecs.DefaultParamRegistry);
+    _ = try system.run(&manager, system.ctx);
+
+    // Verify relations were established
+    const rel_ref = manager.getResource(zevy_ecs.relations.RelationManager) orelse return error.MissingRelationManager;
+    defer rel_ref.deinit();
+    var rel_guard = rel_ref.lockWrite();
+    defer rel_guard.deinit();
+
+    try std.testing.expect(try rel_guard.get().has(&manager, child_node, parent, zevy_ecs.relations.kinds.Child));
+    try std.testing.expect(try rel_guard.get().has(&manager, child_container, parent, zevy_ecs.relations.kinds.Child));
+}
+

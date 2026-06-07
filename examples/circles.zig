@@ -123,7 +123,6 @@ fn buttonClickedSystem(
 fn startup(
     commands: Commands,
     _: ResMut(zevy_raylib.Assets),
-    relations: zevy_ecs.params.Relations,
 ) !void {
     // This system demonstrates example setup during startup, after plugins have initialized.
     std.log.info("Running startup system in Startup stage...", .{});
@@ -183,15 +182,13 @@ fn startup(
             .add(ui.components.UIRect, .init(0, 0, 100, 50)) // TODO make this able to be set based on text size and padding
             .add(ui.components.UIButton, .init("CLOSE ME"))
             .add(layout.AnchorLayout, .init(.top_right))
+            .add(layout.UIContainer, .child("root"))
             .add(CloseMeButtonTag, .{}).flush();
 
         // _ = ecs.create(.{
         //     ui.components.UIRect.initScreen(),
         //     ui.components.UIMessageBox.init("This should POP!", "This is a test, only a test...", "Ok;Cancel"),
         // });
-
-        // TODO layout.UIContainer.child("root") would be nicer than this manual relation management
-        try relations.add(commands.manager(), close_button.entity(), root_container.entity(), zevy_ecs.relations.kinds.Child);
     }
 }
 
@@ -253,7 +250,7 @@ pub fn main(init: std.process.Init) !void {
                 .high_dpi = false,
                 .fullscreen_mode = .Windowed,
             },
-            .log_level = .info,
+            .log_level = .debug,
         })
         .addPlugin(AssetsPlugin{})
         .addPlugin(InputPlugin{})

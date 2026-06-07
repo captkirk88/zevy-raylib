@@ -56,6 +56,7 @@ pub const UIPlugin = struct {
             .addSystem(
                 zevy_ecs.schedule.Stage(zevy_ecs.schedule.Stages.Update),
                 zevy_ecs.chain(.{
+                    systems.uiHierarchySystem,
                     input.sliderInteractionSystem,
                     input.toggleInteractionSystem,
                     systems.anchorLayoutSystem,

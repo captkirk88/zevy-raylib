@@ -515,3 +515,14 @@ pub const UIInputKey = struct {
         return self.keys[0..@as(usize, self.len)];
     }
 };
+
+/// Component representing a UI Node in the hierarchy.
+/// If parent_id is specified, the hierarchy system will automatically
+/// relate this entity to the container with that ID.
+pub const UINode = struct {
+    parent_id: ?[]const u8 = null,
+
+    pub fn init(parent_id: ?[]const u8) UINode {
+        return .{ .parent_id = parent_id };
+    }
+};

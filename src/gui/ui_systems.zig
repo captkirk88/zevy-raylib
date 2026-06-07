@@ -28,7 +28,7 @@ pub fn startupUiSystem(commands: zevy_ecs.params.Commands, assets: zevy_ecs.para
         local_test.set(1);
     } else {
         local_test.getPtr().?.* += 1;
-        std.debug.print("Startup system called {d} times\n", .{local_test.get().?});
+        if (builtin.is_test) std.debug.print("Startup system called {d} times\n", .{local_test.get().?});
     }
     commands.addResource(ui_style.UIStyle, ui_style.UIStyle.init()) catch {};
 
@@ -1005,6 +1005,79 @@ pub fn dockLayoutSystem(
                     ui_rect.rect.width = remaining.width;
                     ui_rect.rect.height = remaining.height;
                 },
+            }
+        }
+    }
+}
+
+pub fn uiHierarchySystem(
+    commands: zevy_ecs.params.Commands,
+    added_nodes: zevy_ecs.params.OnAdded(components.UINode),
+    removed_nodes: zevy_ecs.params.OnRemoved(components.UINode),
+    added_containers: zevy_ecs.params.OnAdded(layout.UIContainer),
+    removed_containers: zevy_ecs.params.OnRemoved(layout.UIContainer),
+    container_query: zevy_ecs.params.Query(struct {
+        entity: zevy_ecs.Entity,
+        container: layout.UIContainer,
+    }),
+    relations: zevy_ecs.params.Relations,
+) anyerror!void {
+    const allocator = commands.allocator();
+    // Process removed components/entities first
+    for (removed_nodes.iter()) |entity| {
+        relations.removeEntity(entity);
+    }
+    for (removed_containers.iter()) |entity| {
+        relations.removeEntity(entity);
+    }
+
+    // Collect all containers from the query to iterate them multiple times without reset()
+    var containers = try std.ArrayList(struct { entity: zevy_ecs.Entity, container: layout.UIContainer }).initCapacity(commands.allocator(), 128);
+    defer containers.deinit(allocator);
+
+    while (container_query.next()) |p| {
+        try containers.append(allocator, .{ .entity = p.entity, .container = p.container.* });
+    }
+    container_query.deinit();
+
+    // Process added UINode components
+    for (added_nodes.iter()) |entry| {
+        if (entry.comp.parent_id) |p_id| {
+            var found_parent: ?zevy_ecs.Entity = null;
+            for (containers.items) |p| {
+                if (std.mem.eql(u8, p.container.id, p_id)) {
+                    found_parent = p.entity;
+                    break;
+                }
+            }
+            if (found_parent) |parent| {
+                if (!try relations.has(commands.manager(), entry.entity, parent, zevy_ecs.relations.kinds.Child)) {
+                    try relations.add(commands.manager(), entry.entity, parent, zevy_ecs.relations.kinds.Child);
+                }
+            } else {
+                std.log.warn("UI hierarchy system: parent container '{s}' not found for entity", .{p_id});
+            }
+        }
+    }
+
+    // Process added UIContainer components (if they have parent_id set)
+    for (added_containers.iter()) |entry| {
+        if (entry.comp.parent_id) |p_id| {
+            var found_parent: ?zevy_ecs.Entity = null;
+            for (containers.items) |p| {
+                if (std.mem.eql(u8, p.container.id, p_id)) {
+                    if (!p.entity.eql(entry.entity)) {
+                        found_parent = p.entity;
+                        break;
+                    }
+                }
+            }
+            if (found_parent) |parent| {
+                if (!try relations.has(commands.manager(), entry.entity, parent, zevy_ecs.relations.kinds.Child)) {
+                    try relations.add(commands.manager(), entry.entity, parent, zevy_ecs.relations.kinds.Child);
+                }
+            } else {
+                std.log.warn("UI hierarchy system: parent container '{s}' not found for container ID '{s}'", .{ p_id, entry.comp.id });
             }
         }
     }

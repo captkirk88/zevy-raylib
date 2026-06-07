@@ -454,6 +454,8 @@ pub const AnchorPosition = struct {
 pub const UIContainer = struct {
     /// Optional identifier for this container
     id: []const u8 = "",
+    /// Optional parent container identifier if this is a child or nested container
+    parent_id: ?[]const u8 = null,
     /// Whether this container clips children to its bounds
     clip_children: bool = false,
 
@@ -467,7 +469,20 @@ pub const UIContainer = struct {
             const formatted = std.fmt.bufPrint(&id_buffer, "ui_container_{d}", .{id_num}) catch "ui_container";
             break :blk formatted;
         };
-        return .{ .id = final_id };
+        return .{ .id = final_id, .parent_id = null };
+    }
+
+    pub fn child(parent_id: []const u8) UIContainer {
+        return .{
+            .id = "",
+            .parent_id = parent_id,
+        };
+    }
+
+    pub fn initNested(id: ?[]const u8, parent_id: []const u8) UIContainer {
+        var result = UIContainer.init(id);
+        result.parent_id = parent_id;
+        return result;
     }
 
     pub fn withClipping(self: UIContainer, clip: bool) UIContainer {
