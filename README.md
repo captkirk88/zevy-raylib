@@ -1,3 +1,6 @@
+> [!NOTE]
+> Archived, see [zevy-ecs](https://www.github.com/captkirk88/zevy-ecs) README for details.
+
 # Zevy Raylib
 
 [license]: https://img.shields.io/github/license/captkirk88/zevy-raylib?style=for-the-badge&logo=opensourcehardware&label=License&logoColor=C0CAF5&labelColor=414868&color=8c73cc
